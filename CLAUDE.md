@@ -49,27 +49,8 @@ pnpm --filter @alliance-risk/web test -- --testPathPattern=some.test
 
 pnpm monorepo with two packages under `packages/`:
 
-- **`@alliance-risk/api`** (`packages/api/`) — NestJS 10 backend (CommonJS, port 3001)
-- **`@alliance-risk/web`** (`packages/web/`) — Next.js 15 frontend with App Router (port 3000)
-
-### API Package (`packages/api/`)
-- NestJS convention: module → service → controller
-- Each Bedrock model is a provider in `src/router/models/`
-- DTOs for all controller input/output
-- Tests: unit in `test/unit/`, integration in `test/integration/`
-- E2E test config in `test/jest-e2e.json`
-- ESLint with `@typescript-eslint` recommended rules
-- TypeScript: strict mode, decorators enabled (`emitDecoratorMetadata` + `experimentalDecorators`)
-
-### Web Package (`packages/web/`)
-- Next.js App Router with pages in `src/app/`
-- Components in `src/components/{feature}/`
-- API calls via `src/lib/api-client.ts` (never direct to Bedrock)
-- Custom hooks in `src/hooks/`
-- Path alias: `@/*` maps to `src/*`
-- Tests: Jest via `next/jest` wrapper, jsdom environment, Testing Library
-- Test setup file: `jest.setup.js` (imports `@testing-library/jest-dom`)
-- ESLint extends `next/core-web-vitals`
+- **`@alliance-risk/api`** (`packages/api/`) — NestJS 10 backend (CommonJS, port 3001) → see [`packages/api/CLAUDE.md`](packages/api/CLAUDE.md)
+- **`@alliance-risk/web`** (`packages/web/`) — Next.js 15 frontend with App Router (port 3000) → see [`packages/web/CLAUDE.md`](packages/web/CLAUDE.md)
 
 ## Rules
 

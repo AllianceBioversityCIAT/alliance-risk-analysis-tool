@@ -1,6 +1,13 @@
 {
   "name": "alliance-risk-analysis-tool",
   "private": true,
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@nestjs/core",
+      "sharp",
+      "unrs-resolver"
+    ]
+  },
   "scripts": {
     "dev:api": "pnpm --filter @alliance-risk/api dev",
     "dev:web": "pnpm --filter @alliance-risk/web dev",
@@ -8,8 +15,5 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["esbuild", "@swc/core", "@nestjs/core", "sharp", "unrs-resolver"]
   }
 }
