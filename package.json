@@ -1,0 +1,12 @@
+{
+  "name": "alliance-risk-analysis-tool",
+  "private": true,
+  "scripts": {
+    "dev:api": "pnpm --filter @alliance-risk/api dev",
+    "dev:web": "pnpm --filter @alliance-risk/web dev",
+    "dev": "pnpm run dev:api & pnpm run dev:web",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "lint": "pnpm -r lint"
+  }
+}
