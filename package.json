@@ -8,5 +8,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["esbuild", "@swc/core", "@nestjs/core", "sharp", "unrs-resolver"]
   }
 }
