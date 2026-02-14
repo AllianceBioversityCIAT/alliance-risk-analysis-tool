@@ -5,6 +5,9 @@ node_modules/
 dist/
 .next/
 
+#docs
+docs/
+
 # Environment files
 .env
 .env.*
@@ -26,6 +29,7 @@ Thumbs.db
 # AI tools
 .agents/
 .claude/
+.mcp.json
 
 # Debug logs
 npm-debug.log*
