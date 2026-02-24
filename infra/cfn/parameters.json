@@ -1,0 +1,32 @@
+{
+  "dev": {
+    "Parameters": {
+      "Environment": "dev",
+      "VpcId": "vpc-0295c23eeee02b9cc",
+      "SubnetIds": "subnet-0464ac157a67a4d5d,subnet-0dec6271ca38d2f4f,subnet-0e616b471639f15ec,subnet-0f2b677ab84bc4059,subnet-040f6c89005332f8c,subnet-0d51486f53e46024e",
+      "ApiCodeS3Bucket": "alliance-risk-deploy-dev",
+      "ApiCodeS3Key": "api/latest.zip",
+      "CorsOrigin": "*"
+    }
+  },
+  "staging": {
+    "Parameters": {
+      "Environment": "staging",
+      "VpcId": "vpc-0295c23eeee02b9cc",
+      "SubnetIds": "subnet-0464ac157a67a4d5d,subnet-0dec6271ca38d2f4f,subnet-0e616b471639f15ec,subnet-0f2b677ab84bc4059,subnet-040f6c89005332f8c,subnet-0d51486f53e46024e",
+      "ApiCodeS3Bucket": "alliance-risk-deploy-dev",
+      "ApiCodeS3Key": "api/latest.zip",
+      "CorsOrigin": "https://staging.alliance-risk.example.com"
+    }
+  },
+  "production": {
+    "Parameters": {
+      "Environment": "production",
+      "VpcId": "vpc-0295c23eeee02b9cc",
+      "SubnetIds": "subnet-0464ac157a67a4d5d,subnet-0dec6271ca38d2f4f,subnet-0e616b471639f15ec,subnet-0f2b677ab84bc4059,subnet-040f6c89005332f8c,subnet-0d51486f53e46024e",
+      "ApiCodeS3Bucket": "alliance-risk-deploy-dev",
+      "ApiCodeS3Key": "api/latest.zip",
+      "CorsOrigin": "https://app.alliance-risk.example.com"
+    }
+  }
+}

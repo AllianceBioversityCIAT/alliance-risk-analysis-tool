@@ -4,6 +4,8 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "@nestjs/core",
+      "@prisma/engines",
+      "prisma",
       "sharp",
       "unrs-resolver"
     ]
@@ -15,5 +17,8 @@
     "build": "pnpm -r build",
     "test": "pnpm -r test",
     "lint": "pnpm -r lint"
+  },
+  "dependencies": {
+    "@radix-ui/react-visually-hidden": "^1.2.4"
   }
 }

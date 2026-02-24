@@ -4,13 +4,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Agricultural risk assessment platform. Uses 9 AWS Bedrock models and 7 Knowledge Bases.
+CGIAR Agricultural Risk Intelligence Tool (MVP). Multi-agent pipeline using AWS Bedrock models for document parsing, gap detection, risk analysis, and report generation across 7 risk categories.
 
 ## Before Implementing
 
-1. Read the spec in `docs/specs/{module}/`
-2. Review ADRs in `docs/adrs/`
-3. Check OpenAPI spec at `docs/api/openapi.yaml`
+1. Read the Spec-Driven Development (SDD) documentation in `docs/specs/{module}/`. For every module, there MUST be at least 3 files:
+   - `requirements.md` (What are we building and why)
+   - `design.md` (How are we building it, architecture, data flow)
+   - `task.md` (Step-by-step implementation plan)
+2. Check OpenAPI spec at `docs/api/openapi.yaml`
+3. **CRITICAL:** Always read the specific `CLAUDE.md` for the package you are working in *before* writing code:
+   - Frontend changes: Read `packages/web/CLAUDE.md`
+   - Backend changes: Read `packages/api/CLAUDE.md`
+   - Infrastructure changes: Read `infra/CLAUDE.md`
 
 ## Build & Development Commands
 
@@ -37,6 +43,7 @@ pnpm lint
 # Target a single package
 pnpm --filter @alliance-risk/api <script>
 pnpm --filter @alliance-risk/web <script>
+pnpm --filter @alliance-risk/shared <script>
 
 # Run a single test file (API)
 pnpm --filter @alliance-risk/api test -- --testPathPattern=app.controller
@@ -47,18 +54,41 @@ pnpm --filter @alliance-risk/web test -- --testPathPattern=some.test
 
 ## Architecture
 
-pnpm monorepo with two packages under `packages/`:
+pnpm monorepo with three packages and an infrastructure directory:
 
 - **`@alliance-risk/api`** (`packages/api/`) — NestJS 10 backend (CommonJS, port 3001) → see [`packages/api/CLAUDE.md`](packages/api/CLAUDE.md)
 - **`@alliance-risk/web`** (`packages/web/`) — Next.js 15 frontend with App Router (port 3000) → see [`packages/web/CLAUDE.md`](packages/web/CLAUDE.md)
+- **`@alliance-risk/shared`** (`packages/shared/`) — Shared enums, types, and constants consumed by both API and Web
+- **`@alliance-risk/infra`** (`infra/`) — AWS CDK + CloudFormation infrastructure → see [`infra/CLAUDE.md`](infra/CLAUDE.md)
+
+### Data Flow
+
+```
+Frontend (Next.js) → API Client → API Gateway → API Lambda (NestJS)
+                                                    ├── Cognito (auth)
+                                                    ├── Prisma → RDS PostgreSQL
+                                                    └── JobsService → Worker Lambda → Bedrock
+```
+
+### Async Processing
+
+Long-running AI operations use a fire-and-forget pattern:
+1. API Lambda creates a Job record (PENDING) and invokes Worker Lambda asynchronously
+2. Worker Lambda processes the job (Bedrock calls) and updates Job status
+3. Frontend polls `GET /api/jobs/:id` until COMPLETED or FAILED
 
 ## Rules
 
 - **Frontend NEVER talks directly to Bedrock** — always through the API
-- Do not hardcode model IDs; use `bedrock.config.ts`
+- Do not hardcode model IDs; use `bedrock.config.ts` from `@alliance-risk/shared`
 - Tests required for all routing and scoring logic
+- All API responses use `ApiResponse<T>` or `PaginatedResponse<T>` from shared types
+- DB credentials go through Secrets Manager, never hardcoded or in `.env` committed to git
 
 ## Key Constraints
+
 - ESLint 8.x is used (required for `eslint-config-next` and `@typescript-eslint` compatibility)
 - `pnpm.onlyBuiltDependencies` in root `package.json` whitelists packages needing postinstall scripts
 - Web test script includes `--passWithNoTests` since test files may not always exist
+- Prisma schema lives in `packages/api/prisma/schema.prisma`
+- Shared package must be built (`pnpm --filter @alliance-risk/shared build`) before API or Web can import from it

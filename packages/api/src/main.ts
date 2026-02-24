@@ -1,26 +1,13 @@
 import { NestFactory } from '@nestjs/core';
-import { Logger, ValidationPipe } from '@nestjs/common';
+import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { HttpExceptionFilter } from './common/filters/http-exception.filter';
+import { configureApp } from './configure-app';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
-  app.enableCors({
-    origin: process.env.CORS_ORIGIN || 'http://localhost:3000',
-  });
-
-  app.useGlobalPipes(
-    new ValidationPipe({
-      whitelist: true,
-      transform: true,
-      forbidNonWhitelisted: true,
-    }),
-  );
-
-  app.useGlobalFilters(new HttpExceptionFilter());
-
+  configureApp(app);
   await app.listen(3001);
+  Logger.log('Application is running on: http://localhost:3001/api', 'Bootstrap');
 }
 
 bootstrap().catch((err) => {

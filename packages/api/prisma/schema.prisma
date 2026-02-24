@@ -1,0 +1,199 @@
+// packages/api/prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ──────────────────────────────────────────────
+
+enum AgentSection {
+  parser
+  gap_detector
+  risk_analysis
+  report_generation
+}
+
+enum JobStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+enum JobType {
+  AI_PREVIEW
+  PARSE_DOCUMENT
+  GAP_DETECTION
+  RISK_ANALYSIS
+  REPORT_GENERATION
+}
+
+enum PromptChangeType {
+  CREATE
+  UPDATE
+  DELETE
+  ACTIVATE
+  DEACTIVATE
+}
+
+// ─── Models ─────────────────────────────────────────────
+
+/// Lightweight sync of Cognito user for FK references.
+/// Primary user data lives in Cognito.
+model User {
+  id        String   @id @default(uuid())
+  cognitoId String   @unique @map("cognito_id")
+  email     String   @unique
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdPrompts Prompt[]       @relation("PromptCreatedBy")
+  updatedPrompts Prompt[]       @relation("PromptUpdatedBy")
+  comments       PromptComment[]
+  changes        PromptChange[]
+  jobs           Job[]
+
+  @@map("users")
+}
+
+/// Stores the LATEST version of a prompt. No JOIN needed for reads.
+/// On update: snapshot current state to PromptVersion, then update in place.
+model Prompt {
+  id         String       @id @default(uuid())
+  name       String       @db.VarChar(200)
+  section    AgentSection
+  subSection String?      @map("sub_section") @db.VarChar(100)
+  route      String?
+  categories String[]     @default([])
+  tags       String[]     @default([])
+  version    Int          @default(1)
+  isActive   Boolean      @default(true) @map("is_active")
+
+  // Prompt content
+  systemPrompt       String  @map("system_prompt") @db.Text
+  userPromptTemplate String  @map("user_prompt_template") @db.Text
+  tone               String? @default("Professional and informative") @db.VarChar(500)
+  outputFormat       String? @default("Clear and structured response") @map("output_format") @db.VarChar(5000)
+  fewShot            Json?   @map("few_shot") // FewShotExample[]
+  context            Json? // PromptContext
+
+  // Metadata
+  commentsCount Int      @default(0) @map("comments_count")
+  createdById   String   @map("created_by_id")
+  updatedById   String   @map("updated_by_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  createdBy User            @relation("PromptCreatedBy", fields: [createdById], references: [id])
+  updatedBy User            @relation("PromptUpdatedBy", fields: [updatedById], references: [id])
+  versions  PromptVersion[]
+  comments  PromptComment[]
+  changes   PromptChange[]
+
+  @@index([section, isActive])
+  @@index([section, route, subSection, isActive])
+  @@map("prompts")
+}
+
+/// Historical snapshot of a prompt at a specific version.
+model PromptVersion {
+  id       String       @id @default(uuid())
+  promptId String       @map("prompt_id")
+  version  Int
+
+  // Snapshot of all prompt fields at this version
+  name               String       @db.VarChar(200)
+  section            AgentSection
+  subSection         String?      @map("sub_section") @db.VarChar(100)
+  route              String?
+  categories         String[]     @default([])
+  tags               String[]     @default([])
+  isActive           Boolean      @map("is_active")
+  systemPrompt       String       @map("system_prompt") @db.Text
+  userPromptTemplate String       @map("user_prompt_template") @db.Text
+  tone               String?      @db.VarChar(500)
+  outputFormat       String?      @map("output_format") @db.VarChar(5000)
+  fewShot            Json?        @map("few_shot")
+  context            Json?
+
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+
+  @@unique([promptId, version])
+  @@map("prompt_versions")
+}
+
+/// Threaded comments on prompts.
+model PromptComment {
+  id        String   @id @default(uuid())
+  promptId  String   @map("prompt_id")
+  parentId  String?  @map("parent_id")
+  content   String   @db.VarChar(1000)
+  authorId  String   @map("author_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  prompt  Prompt          @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  author  User            @relation(fields: [authorId], references: [id])
+  parent  PromptComment?  @relation("CommentReplies", fields: [parentId], references: [id])
+  replies PromptComment[] @relation("CommentReplies")
+
+  @@index([promptId])
+  @@map("prompt_comments")
+}
+
+/// Audit trail for prompt mutations.
+model PromptChange {
+  id         String           @id @default(uuid())
+  promptId   String           @map("prompt_id")
+  version    Int
+  changeType PromptChangeType @map("change_type")
+  changes    Json // { field: { old: value, new: value } }
+  comment    String?          @db.VarChar(500)
+  authorId   String           @map("author_id")
+  createdAt  DateTime         @default(now()) @map("created_at")
+
+  // Relations
+  prompt Prompt @relation(fields: [promptId], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [authorId], references: [id])
+
+  @@index([promptId, createdAt(sort: Desc)])
+  @@map("prompt_changes")
+}
+
+// ─── Async Processing ────────────────────────────────────
+
+/// Tracks async Bedrock operations. Created by API Lambda,
+/// processed by Worker Lambda, polled by frontend.
+model Job {
+  id          String    @id @default(uuid())
+  type        JobType
+  status      JobStatus @default(PENDING)
+  input       Json // serialized request payload
+  result      Json? // output from worker
+  error       String? // error message if FAILED
+  attempts    Int       @default(0)
+  maxAttempts Int       @default(3) @map("max_attempts")
+  createdById String    @map("created_by_id")
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now()) @map("created_at")
+  startedAt   DateTime? @map("started_at")
+  completedAt DateTime? @map("completed_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  @@index([status, createdAt])
+  @@map("jobs")
+}
+
+// ─── Future Placeholders ────────────────────────────────
+// Assessment, Document, RiskScore, RiskRule
+// Will be added in Epic 1-4 module specifications.
