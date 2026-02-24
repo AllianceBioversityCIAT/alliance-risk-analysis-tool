@@ -6,7 +6,8 @@ dist/
 .next/
 
 #docs
-docs/
+docs/specs/
+docs/env*
 
 # Environment files
 .env
