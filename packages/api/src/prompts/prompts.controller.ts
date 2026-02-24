@@ -10,8 +10,7 @@ import {
   UseGuards,
   HttpCode,
   HttpStatus,
-  ParseIntPipe,
-  Optional,
+  BadRequestException,
 } from '@nestjs/common';
 import { AdminGuard } from '../common/guards/admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -63,8 +62,9 @@ export class PromptsController {
   @Get(':id')
   async findOne(
     @Param('id') id: string,
-    @Query('version', new ParseIntPipe({ optional: true })) @Optional() version?: number,
+    @Query('version') versionRaw?: string,
   ) {
+    const version = this.parseOptionalInt(versionRaw, 'version');
     const prompt = await this.promptsService.findOne(id, version);
     return { data: prompt };
   }
@@ -86,8 +86,9 @@ export class PromptsController {
   async delete(
     @Param('id') id: string,
     @CurrentUser() user: UserInfo,
-    @Query('version', new ParseIntPipe({ optional: true })) @Optional() version?: number,
+    @Query('version') versionRaw?: string,
   ) {
+    const version = this.parseOptionalInt(versionRaw, 'version');
     await this.promptsService.delete(id, user.userId, version);
   }
 
@@ -122,5 +123,14 @@ export class PromptsController {
   async getHistory(@Param('id') id: string) {
     const history = await this.changeHistoryService.getHistory(id);
     return { data: history };
+  }
+
+  private parseOptionalInt(value: string | undefined, paramName: string): number | undefined {
+    if (value === undefined || value === '') return undefined;
+    const parsed = parseInt(value, 10);
+    if (isNaN(parsed)) {
+      throw new BadRequestException(`Validation failed: ${paramName} must be an integer`);
+    }
+    return parsed;
   }
 }

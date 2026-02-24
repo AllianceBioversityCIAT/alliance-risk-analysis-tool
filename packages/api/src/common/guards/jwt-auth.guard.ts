@@ -7,16 +7,25 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
+import { PrismaService } from '../../database/prisma.service';
+
+export interface TokenClaims {
+  userId: string;   // Cognito sub claim (from token)
+  email: string;
+  username: string;
+  isAdmin: boolean;
+}
 
 export interface UserClaims {
-  userId: string;
+  userId: string;   // DB internal UUID (users.id)
+  cognitoId: string; // Cognito sub claim
   email: string;
   username: string;
   isAdmin: boolean;
 }
 
 export interface CognitoVerifier {
-  verifyToken(token: string): Promise<UserClaims>;
+  verifyToken(token: string): Promise<TokenClaims>;
 }
 
 export const COGNITO_VERIFIER = 'COGNITO_VERIFIER';
@@ -26,6 +35,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private reflector: Reflector,
     @Inject(COGNITO_VERIFIER) private cognitoVerifier: CognitoVerifier,
+    private prisma: PrismaService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -44,8 +54,24 @@ export class JwtAuthGuard implements CanActivate {
 
     const token = authHeader.substring(7);
     try {
-      const user = await this.cognitoVerifier.verifyToken(token);
-      request.user = user;
+      const claims = await this.cognitoVerifier.verifyToken(token);
+      const cognitoId = claims.userId; // TokenClaims.userId is the Cognito sub
+
+      // Upsert user in DB so FK references are always valid
+      const dbUser = await this.prisma.user.upsert({
+        where: { cognitoId },
+        create: { cognitoId, email: claims.email || cognitoId },
+        update: { email: claims.email || cognitoId },
+        select: { id: true },
+      });
+
+      request.user = {
+        userId: dbUser.id,    // DB internal UUID used for FK relations
+        cognitoId,
+        email: claims.email,
+        username: claims.username,
+        isAdmin: claims.isAdmin,
+      };
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');

@@ -25,7 +25,7 @@ import { ConfigService } from '@nestjs/config';
 import * as jwt from 'jsonwebtoken';
 import { JwksClient } from 'jwks-rsa';
 import { CognitoException } from '../common/exceptions/cognito.exception';
-import { UserClaims } from '../common/guards/jwt-auth.guard';
+import { TokenClaims } from '../common/guards/jwt-auth.guard';
 import { CognitoUser, LoginResponse } from '@alliance-risk/shared';
 
 export interface PaginatedUsers {
@@ -264,7 +264,7 @@ export class CognitoService implements OnModuleInit {
     }
   }
 
-  async verifyToken(token: string): Promise<UserClaims> {
+  async verifyToken(token: string): Promise<TokenClaims> {
     const environment = this.configService.get<string>('ENVIRONMENT', 'development');
 
     if (environment === 'production') {
@@ -278,6 +278,9 @@ export class CognitoService implements OnModuleInit {
   // ─── Admin Methods ───────────────────────────────────────────────────────────
 
   async listUsers(limit = 60, paginationToken?: string): Promise<PaginatedUsers> {
+    if (!this.userPoolId) {
+      return { users: [], paginationToken: undefined };
+    }
     try {
       const command = new ListUsersCommand({
         UserPoolId: this.userPoolId,
@@ -452,6 +455,9 @@ export class CognitoService implements OnModuleInit {
   }
 
   async listGroups(): Promise<string[]> {
+    if (!this.userPoolId) {
+      return [];
+    }
     try {
       const command = new ListGroupsCommand({
         UserPoolId: this.userPoolId,
@@ -539,7 +545,7 @@ export class CognitoService implements OnModuleInit {
     }
   }
 
-  private decodeToken(token: string): UserClaims {
+  private decodeToken(token: string): TokenClaims {
     try {
       const parts = token.split('.');
       if (parts.length !== 3) {
@@ -556,7 +562,7 @@ export class CognitoService implements OnModuleInit {
     }
   }
 
-  private async verifyWithJwks(token: string): Promise<UserClaims> {
+  private async verifyWithJwks(token: string): Promise<TokenClaims> {
     if (!this.jwksClient) {
       throw new Error('JWKS client not initialized — verifyToken called before onModuleInit');
     }
@@ -580,7 +586,7 @@ export class CognitoService implements OnModuleInit {
     }
   }
 
-  private mapPayloadToUser(payload: Record<string, unknown>): UserClaims {
+  private mapPayloadToUser(payload: Record<string, unknown>): TokenClaims {
     const sub = payload['sub'] as string | undefined;
     const email =
       (payload['email'] as string | undefined) ??

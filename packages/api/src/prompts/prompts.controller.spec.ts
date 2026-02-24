@@ -148,9 +148,14 @@ describe('PromptsController', () => {
     it('should return a specific version', async () => {
       mockPromptsService.findOne.mockResolvedValueOnce({ ...basePrompt, version: 1 });
 
-      await controller.findOne('prompt-1', 1);
+      await controller.findOne('prompt-1', '1');
 
       expect(mockPromptsService.findOne).toHaveBeenCalledWith('prompt-1', 1);
+    });
+
+    it('should throw BadRequestException for non-numeric version', async () => {
+      const { BadRequestException } = await import('@nestjs/common');
+      await expect(controller.findOne('prompt-1', 'abc')).rejects.toThrow(BadRequestException);
     });
 
     it('should throw NotFoundException for missing prompt', async () => {
@@ -187,6 +192,14 @@ describe('PromptsController', () => {
       await controller.delete('prompt-1', mockAdminUser, undefined);
 
       expect(mockPromptsService.delete).toHaveBeenCalledWith('prompt-1', mockAdminUser.userId, undefined);
+    });
+
+    it('should delete a specific version', async () => {
+      mockPromptsService.delete.mockResolvedValueOnce(undefined);
+
+      await controller.delete('prompt-1', mockAdminUser, '2');
+
+      expect(mockPromptsService.delete).toHaveBeenCalledWith('prompt-1', mockAdminUser.userId, 2);
     });
   });
 

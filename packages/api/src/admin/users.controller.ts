@@ -28,10 +28,17 @@ export class UsersController {
   @Get()
   async listUsers(
     @Query('limit') limit?: string,
-    @Query('paginationToken') paginationToken?: string,
+    @Query('nextToken') nextToken?: string,
   ) {
-    const parsedLimit = limit ? parseInt(limit, 10) : 60;
-    return this.cognitoService.listUsers(parsedLimit, paginationToken);
+    const parsedLimit = Math.min(limit ? parseInt(limit, 10) : 60, 60); // Cognito max is 60
+    const result = await this.cognitoService.listUsers(parsedLimit, nextToken);
+    return {
+      data: {
+        users: result.users,
+        nextToken: result.paginationToken,
+        total: result.users.length,
+      },
+    };
   }
 
   /**

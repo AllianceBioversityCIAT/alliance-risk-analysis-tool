@@ -46,17 +46,23 @@ describe('UsersController', () => {
   });
 
   describe('listUsers()', () => {
-    it('should return paginated user list', async () => {
+    it('should return paginated user list wrapped in data envelope', async () => {
       const mockResponse = { users: [mockAdminUser], paginationToken: undefined };
       mockCognitoService.listUsers.mockResolvedValueOnce(mockResponse);
 
       const result = await controller.listUsers();
 
-      expect(result).toEqual(mockResponse);
+      expect(result).toEqual({
+        data: {
+          users: mockResponse.users,
+          nextToken: undefined,
+          total: mockResponse.users.length,
+        },
+      });
       expect(mockCognitoService.listUsers).toHaveBeenCalledWith(60, undefined);
     });
 
-    it('should pass limit and paginationToken when provided', async () => {
+    it('should pass limit and nextToken when provided', async () => {
       mockCognitoService.listUsers.mockResolvedValueOnce({ users: [], paginationToken: undefined });
 
       await controller.listUsers('10', 'some-token');

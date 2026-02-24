@@ -1,17 +1,26 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { JwtAuthGuard, UserClaims, CognitoVerifier } from './jwt-auth.guard';
+import { JwtAuthGuard, CognitoVerifier, TokenClaims } from './jwt-auth.guard';
+import { PrismaService } from '../../database/prisma.service';
 
-const mockUser: UserClaims = {
-  userId: 'user-1',
+const mockClaims: TokenClaims = {
+  userId: 'cognito-sub-1',
   email: 'test@example.com',
   username: 'test@example.com',
   isAdmin: false,
 };
 
+const mockDbUser = { id: 'db-uuid-1' };
+
 const mockVerifier: CognitoVerifier = {
-  verifyToken: jest.fn().mockResolvedValue(mockUser),
+  verifyToken: jest.fn().mockResolvedValue(mockClaims),
 };
+
+const mockPrisma = {
+  user: {
+    upsert: jest.fn().mockResolvedValue(mockDbUser),
+  },
+} as unknown as PrismaService;
 
 function createMockContext(
   authHeader?: string,
@@ -34,8 +43,9 @@ describe('JwtAuthGuard', () => {
   let reflector: Reflector;
 
   beforeEach(() => {
+    jest.clearAllMocks();
     reflector = new Reflector();
-    guard = new JwtAuthGuard(reflector, mockVerifier);
+    guard = new JwtAuthGuard(reflector, mockVerifier, mockPrisma);
   });
 
   it('should allow @Public() routes without a token', async () => {
@@ -56,9 +66,9 @@ describe('JwtAuthGuard', () => {
     await expect(guard.canActivate(ctx)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('should attach user to request and return true for valid token', async () => {
+  it('should attach user to request with DB id and return true for valid token', async () => {
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(false);
-    const request = { headers: { authorization: 'Bearer valid-token' }, user: undefined };
+    const request = { headers: { authorization: 'Bearer valid-token' }, user: undefined as unknown };
     const ctx = {
       getHandler: () => ({}),
       getClass: () => ({}),
@@ -66,7 +76,15 @@ describe('JwtAuthGuard', () => {
     } as unknown as ExecutionContext;
 
     expect(await guard.canActivate(ctx)).toBe(true);
-    expect(request.user).toEqual(mockUser);
+    expect(request.user).toMatchObject({
+      userId: mockDbUser.id,
+      cognitoId: mockClaims.userId,
+      email: mockClaims.email,
+      isAdmin: mockClaims.isAdmin,
+    });
+    expect(mockPrisma.user.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { cognitoId: mockClaims.userId } }),
+    );
   });
 
   it('should throw UnauthorizedException for an invalid token', async () => {

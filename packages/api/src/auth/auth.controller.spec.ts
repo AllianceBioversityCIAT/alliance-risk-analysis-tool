@@ -219,7 +219,7 @@ describe('AuthController', () => {
       mockCognitoService.getCurrentUser.mockResolvedValueOnce(mockCognitoUser);
 
       const result = await controller.getMe(
-        { userId: 'user-1', email: 'test@example.com', username: 'test@example.com', isAdmin: false },
+        { userId: 'user-1', cognitoId: 'cognito-sub-1', email: 'test@example.com', username: 'test@example.com', isAdmin: false },
         { headers: { authorization: 'Bearer mock-access-token' } },
       );
 

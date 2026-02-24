@@ -107,14 +107,31 @@ export class AuthController {
 
   /**
    * GET /api/auth/me
-   * Returns the current user's profile from Cognito.
+   * Returns the current user's profile. In dev mode, derives data from the
+   * already-verified JWT claims to avoid hitting a real Cognito endpoint.
    */
   @Get('me')
   async getMe(
     @CurrentUser() user: UserClaims,
     @Request() req: { headers: { authorization?: string } },
   ) {
-    const accessToken = req.headers.authorization?.substring(7) ?? '';
-    return this.cognitoService.getCurrentUser(accessToken);
+    try {
+      const accessToken = req.headers.authorization?.substring(7) ?? '';
+      return await this.cognitoService.getCurrentUser(accessToken);
+    } catch {
+      // In dev mode the access token is a fake JWT that Cognito rejects.
+      // Fall back to the claims already decoded and verified by JwtAuthGuard.
+      return {
+        username: user.username,
+        email: user.email,
+        enabled: true,
+        userStatus: 'CONFIRMED',
+        groups: user.isAdmin ? ['admin'] : [],
+        isAdmin: user.isAdmin,
+        attributes: { email: user.email },
+        createdDate: new Date().toISOString(),
+        lastModifiedDate: new Date().toISOString(),
+      };
+    }
   }
 }

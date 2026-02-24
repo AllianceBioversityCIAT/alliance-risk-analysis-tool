@@ -23,7 +23,7 @@ export class GroupsController {
   @Get('groups')
   async listGroups() {
     const groups = await this.cognitoService.listGroups();
-    return { groups };
+    return { data: { groups } };
   }
 
   /**
