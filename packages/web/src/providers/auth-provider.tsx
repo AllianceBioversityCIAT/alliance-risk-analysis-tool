@@ -87,7 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     ): Promise<LoginResult> => {
       const response = await apiClient.post<LoginResponse>(
         '/api/auth/login',
-        { username: email, password },
+        { email, password },
       );
 
       const data = response.data;

@@ -16,8 +16,7 @@ import {
   FormItem,
   FormMessage,
 } from '@/components/ui/form';
-import apiClient from '@/lib/api-client';
-import { tokenManager } from '@/lib/token-manager';
+import { useAuth } from '@/providers/auth-provider';
 
 const loginSchema = z.object({
   email: z
@@ -42,6 +41,7 @@ interface LoginFormProps {
 export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
+  const { login } = useAuth();
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -57,33 +57,11 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
   const onSubmit = async (values: LoginFormValues) => {
     setServerError(null);
     try {
-      const response = await apiClient.post<{
-        accessToken?: string;
-        refreshToken?: string;
-        expiresIn?: number;
-        requiresPasswordChange?: boolean;
-        session?: string;
-        username?: string;
-      }>('/api/auth/login', {
-        email: values.email,
-        password: values.password,
-      });
+      const result = await login(values.email, values.password, values.rememberMe);
 
-      const data = response.data;
-
-      if (data.requiresPasswordChange && data.session && data.username) {
-        onPasswordChangeRequired?.(data.session, data.username);
+      if (result.requiresPasswordChange && result.session && result.username) {
+        onPasswordChangeRequired?.(result.session, result.username);
         return;
-      }
-
-      if (data.accessToken) {
-        tokenManager.setTokens(
-          {
-            accessToken: data.accessToken,
-            refreshToken: data.refreshToken ?? '',
-          },
-          values.rememberMe,
-        );
       }
 
       onSuccess?.();

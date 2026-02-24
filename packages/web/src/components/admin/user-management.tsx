@@ -41,8 +41,6 @@ import { useUsers, useDeleteUser } from '@/hooks/use-users';
 import { CreateUserModal } from './create-user-modal';
 import { EditUserModal } from './edit-user-modal';
 
-const PAGE_SIZE = 10;
-
 const ROLE_COLORS: Record<string, string> = {
   admin: 'bg-violet-100 text-violet-800 border-violet-200',
   user: 'bg-blue-100 text-blue-800 border-blue-200',
@@ -118,16 +116,25 @@ export function UserManagement() {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user'>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
-  const [page, setPage] = useState(0);
+
+  // Server-side cursor pagination: stack of nextTokens for each page visited.
+  // cursors[0] = undefined (first page), cursors[1] = token for page 2, etc.
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const currentCursorIndex = cursors.length - 1;
+  const currentCursor = cursors[currentCursorIndex];
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalUser, setEditModalUser] = useState<CognitoUser | null>(null);
   const [deleteModalUser, setDeleteModalUser] = useState<CognitoUser | null>(null);
 
-  const { data, isLoading, isError } = useUsers(100);
+  // Fetch one page of up to 60 users from Cognito via the current cursor.
+  const { data, isLoading, isError } = useUsers(60, currentCursor);
   const deleteUser = useDeleteUser();
 
-  // Client-side filtering and pagination
+  const hasNextPage = !!data?.nextToken;
+  const hasPrevPage = currentCursorIndex > 0;
+
+  // Client-side filtering applied to the current page only.
   const filteredUsers = useMemo(() => {
     const users = data?.users ?? [];
     return users.filter((u) => {
@@ -148,25 +155,31 @@ export function UserManagement() {
     });
   }, [data, searchQuery, roleFilter, statusFilter]);
 
-  const totalPages = Math.ceil(filteredUsers.length / PAGE_SIZE);
-  const paginatedUsers = filteredUsers.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  const handleNextPage = () => {
+    if (data?.nextToken) {
+      setCursors((prev) => [...prev, data.nextToken]);
+    }
+  };
 
-  const startIdx = filteredUsers.length === 0 ? 0 : page * PAGE_SIZE + 1;
-  const endIdx = Math.min((page + 1) * PAGE_SIZE, filteredUsers.length);
+  const handlePrevPage = () => {
+    setCursors((prev) => (prev.length > 1 ? prev.slice(0, -1) : prev));
+  };
+
+  const resetCursors = () => setCursors([undefined]);
 
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
-    setPage(0);
+    resetCursors();
   };
 
   const handleRoleFilterChange = (value: string) => {
     setRoleFilter(value as 'all' | 'admin' | 'user');
-    setPage(0);
+    resetCursors();
   };
 
   const handleStatusFilterChange = (value: string) => {
     setStatusFilter(value as 'all' | 'active' | 'inactive');
-    setPage(0);
+    resetCursors();
   };
 
   const handleDeleteConfirm = async () => {
@@ -276,14 +289,14 @@ export function UserManagement() {
                   Failed to load users. Please try again.
                 </TableCell>
               </TableRow>
-            ) : paginatedUsers.length === 0 ? (
+            ) : filteredUsers.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-10 text-center text-sm text-muted-foreground">
                   No users found.
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedUsers.map((user) => (
+              filteredUsers.map((user) => (
                 <TableRow key={user.username}>
                   <TableCell>
                     <div className="flex items-center gap-3">
@@ -352,41 +365,31 @@ export function UserManagement() {
       </div>
 
       {/* Pagination */}
-      {!isLoading && filteredUsers.length > 0 && (
+      {!isLoading && (hasPrevPage || hasNextPage || filteredUsers.length > 0) && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
           <span>
-            Showing {startIdx} to {endIdx} of {filteredUsers.length} results
+            {filteredUsers.length === 0
+              ? 'No results on this page'
+              : `Showing ${filteredUsers.length} result${filteredUsers.length !== 1 ? 's' : ''} — page ${currentCursorIndex + 1}`}
           </span>
           <div className="flex items-center gap-1">
             <Button
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={() => setPage((p) => Math.max(0, p - 1))}
-              disabled={page === 0}
+              onClick={handlePrevPage}
+              disabled={!hasPrevPage}
               aria-label="Previous page"
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            {Array.from({ length: totalPages }).map((_, i) => (
-              <Button
-                key={i}
-                variant={i === page ? 'default' : 'outline'}
-                size="icon"
-                className="h-8 w-8 text-xs"
-                onClick={() => setPage(i)}
-                aria-label={`Page ${i + 1}`}
-                aria-current={i === page ? 'page' : undefined}
-              >
-                {i + 1}
-              </Button>
-            ))}
+            <span className="px-2 text-xs font-medium">{currentCursorIndex + 1}</span>
             <Button
               variant="outline"
               size="icon"
               className="h-8 w-8"
-              onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
-              disabled={page >= totalPages - 1}
+              onClick={handleNextPage}
+              disabled={!hasNextPage}
               aria-label="Next page"
             >
               <ChevronRight className="h-4 w-4" />
