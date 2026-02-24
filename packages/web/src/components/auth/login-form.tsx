@@ -4,11 +4,11 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Eye, EyeOff, Loader2, Mail, Lock } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Form,
   FormControl,
@@ -16,6 +16,7 @@ import {
   FormItem,
   FormMessage,
 } from '@/components/ui/form';
+import { InputWithIcon } from '@/components/shared/input-with-icon';
 import { useAuth } from '@/providers/auth-provider';
 
 const loginSchema = z.object({
@@ -91,18 +92,19 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
           name="email"
           render={({ field }) => (
             <FormItem>
-              <Label htmlFor="email" className="text-sm font-medium text-foreground">
-                Email address
+              <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+                Email Address
               </Label>
               <FormControl>
-                <Input
+                <InputWithIcon
                   id="email"
+                  icon={Mail}
                   type="email"
-                  placeholder="you@example.com"
+                  placeholder="name@organization.org"
                   autoComplete="email"
                   autoFocus
                   disabled={isSubmitting}
-                  className="h-10"
+                  className="h-10 bg-[#F9FAFB] border-[#D1D5DB]"
                   {...field}
                 />
               </FormControl>
@@ -118,12 +120,12 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
           render={({ field }) => (
             <FormItem>
               <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-sm font-medium text-foreground">
+                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
                   Password
                 </Label>
                 <Link
                   href="/forgot-password"
-                  className="text-xs text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                  className="text-xs font-semibold text-[#00857D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                   tabIndex={isSubmitting ? -1 : 0}
                 >
                   Forgot password?
@@ -131,13 +133,14 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
               </div>
               <FormControl>
                 <div className="relative">
-                  <Input
+                  <InputWithIcon
                     id="password"
+                    icon={Lock}
                     type={showPassword ? 'text' : 'password'}
                     placeholder="••••••••"
                     autoComplete="current-password"
                     disabled={isSubmitting}
-                    className="h-10 pr-10"
+                    className="h-10 pr-10 bg-[#F9FAFB] border-[#D1D5DB]"
                     {...field}
                   />
                   <button
@@ -160,36 +163,36 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
           )}
         />
 
-        {/* Remember me */}
-        <FormField
-          control={form.control}
-          name="rememberMe"
-          render={({ field }) => (
-            <FormItem className="flex items-center gap-2">
-              <FormControl>
-                <input
-                  id="rememberMe"
-                  type="checkbox"
-                  checked={field.value}
-                  onChange={field.onChange}
-                  disabled={isSubmitting}
-                  className="h-4 w-4 rounded border-border text-primary focus:ring-ring cursor-pointer"
-                />
-              </FormControl>
-              <Label
-                htmlFor="rememberMe"
-                className="text-sm font-normal text-muted-foreground cursor-pointer select-none"
-              >
-                Remember me
-              </Label>
-            </FormItem>
-          )}
-        />
+        {/* Remember me + Forgot password row */}
+        <div className="flex items-center justify-between">
+          <FormField
+            control={form.control}
+            name="rememberMe"
+            render={({ field }) => (
+              <FormItem className="flex items-center gap-2 space-y-0">
+                <FormControl>
+                  <Checkbox
+                    id="rememberMe"
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    disabled={isSubmitting}
+                  />
+                </FormControl>
+                <Label
+                  htmlFor="rememberMe"
+                  className="text-sm font-normal text-muted-foreground cursor-pointer select-none"
+                >
+                  Remember me
+                </Label>
+              </FormItem>
+            )}
+          />
+        </div>
 
         {/* Submit */}
         <Button
           type="submit"
-          className="w-full h-10 font-medium"
+          className="w-full h-10 font-medium bg-[#00857D] hover:bg-[#006B65] text-white rounded-lg"
           disabled={isSubmitting}
         >
           {isSubmitting ? (

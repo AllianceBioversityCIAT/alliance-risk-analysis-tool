@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/auth-provider';
+import { AppLayout } from '@/components/layout/app-layout';
 
 export default function AdminLayout({
   children,
@@ -17,22 +18,22 @@ export default function AdminLayout({
       if (!isAuthenticated) {
         router.push('/login');
       } else if (!isAdmin) {
-        router.push('/');
+        router.push('/dashboard');
       }
     }
   }, [isAuthenticated, isAdmin, isLoading, router]);
 
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated || !isAdmin) {
-    return null;
-  }
-
-  return <>{children}</>;
+  // Always render AppLayout shell to avoid white screen on navigation.
+  // Guards fire via useEffect; never return null to prevent layout unmount flash.
+  return (
+    <AppLayout>
+      {isLoading ? (
+        <div className="flex h-full items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      ) : (
+        children
+      )}
+    </AppLayout>
+  );
 }

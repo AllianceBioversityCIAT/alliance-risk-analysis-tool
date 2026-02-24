@@ -9,6 +9,10 @@ import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
 import { JobStatus, JobType } from '@alliance-risk/shared';
 import { PrismaService } from '../database/prisma.service';
 import { AiPreviewHandler } from './handlers/ai-preview.handler';
+import { ParseDocumentHandler } from './handlers/parse-document.handler';
+import { GapDetectionHandler } from './handlers/gap-detection.handler';
+import { RiskAnalysisHandler } from './handlers/risk-analysis.handler';
+import { ReportGenerationHandler } from './handlers/report-generation.handler';
 import type { Job } from '@prisma/client';
 
 type JobStatusPrisma = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
@@ -22,6 +26,10 @@ export class JobsService {
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
     private readonly aiPreviewHandler: AiPreviewHandler,
+    private readonly parseDocumentHandler: ParseDocumentHandler,
+    private readonly gapDetectionHandler: GapDetectionHandler,
+    private readonly riskAnalysisHandler: RiskAnalysisHandler,
+    private readonly reportGenerationHandler: ReportGenerationHandler,
   ) {
     this.lambdaClient = new LambdaClient({
       region: this.configService.get<string>('AWS_REGION') ?? 'us-east-1',
@@ -138,6 +146,14 @@ export class JobsService {
 
       if (job.type === JobType.AI_PREVIEW) {
         result = await this.aiPreviewHandler.execute(job.input as unknown as Parameters<AiPreviewHandler['execute']>[0]);
+      } else if (job.type === JobType.PARSE_DOCUMENT) {
+        result = await this.parseDocumentHandler.execute(job.input as unknown as Parameters<ParseDocumentHandler['execute']>[0]);
+      } else if (job.type === JobType.GAP_DETECTION) {
+        result = await this.gapDetectionHandler.execute(job.input as unknown as Parameters<GapDetectionHandler['execute']>[0]);
+      } else if (job.type === JobType.RISK_ANALYSIS) {
+        result = await this.riskAnalysisHandler.execute(job.input as unknown as Parameters<RiskAnalysisHandler['execute']>[0]);
+      } else if (job.type === JobType.REPORT_GENERATION) {
+        result = await this.reportGenerationHandler.execute(job.input as unknown as Parameters<ReportGenerationHandler['execute']>[0]);
       } else {
         throw new Error(`No handler registered for job type: ${job.type}`);
       }

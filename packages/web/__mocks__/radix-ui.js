@@ -250,6 +250,27 @@ const TabsContent = React.forwardRef(({ children, value, ...props }, ref) =>
 TabsContent.displayName = 'Tabs.Content';
 const Tabs = { Root: TabsRoot, List: TabsList, Trigger: TabsTrigger, Content: TabsContent };
 
+// ─── Checkbox ─────────────────────────────────────────────────────────────────
+// checkbox.tsx: <CheckboxPrimitive.Root .../> <CheckboxPrimitive.Indicator .../>
+const CheckboxRoot = React.forwardRef(({ children, checked, onCheckedChange, ...props }, ref) =>
+  React.createElement(
+    'button',
+    {
+      role: 'checkbox',
+      'aria-checked': checked,
+      onClick: () => onCheckedChange?.(!checked),
+      ...props,
+      ref,
+    },
+    children,
+  ),
+);
+CheckboxRoot.displayName = 'Checkbox.Root';
+const CheckboxIndicator = ({ children, ...props }) =>
+  React.createElement('span', props, children);
+CheckboxIndicator.displayName = 'Checkbox.Indicator';
+const Checkbox = { Root: CheckboxRoot, Indicator: CheckboxIndicator };
+
 module.exports = {
   Slot,
   Label,
@@ -258,4 +279,5 @@ module.exports = {
   Dialog,
   Select,
   Tabs,
+  Checkbox,
 };

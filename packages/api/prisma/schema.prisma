@@ -52,11 +52,13 @@ model User {
   updatedAt DateTime @updatedAt @map("updated_at")
 
   // Relations
-  createdPrompts Prompt[]       @relation("PromptCreatedBy")
-  updatedPrompts Prompt[]       @relation("PromptUpdatedBy")
-  comments       PromptComment[]
-  changes        PromptChange[]
-  jobs           Job[]
+  createdPrompts     Prompt[]            @relation("PromptCreatedBy")
+  updatedPrompts     Prompt[]            @relation("PromptUpdatedBy")
+  comments           PromptComment[]
+  changes            PromptChange[]
+  jobs               Job[]
+  assessments        Assessment[]
+  assessmentComments AssessmentComment[]
 
   @@map("users")
 }
@@ -194,6 +196,195 @@ model Job {
   @@map("jobs")
 }
 
-// ─── Future Placeholders ────────────────────────────────
-// Assessment, Document, RiskScore, RiskRule
-// Will be added in Epic 1-4 module specifications.
+// ─── Assessment Enums ───────────────────────────────────
+
+enum AssessmentStatus {
+  DRAFT
+  ANALYZING
+  ACTION_REQUIRED
+  COMPLETE
+}
+
+enum IntakeMode {
+  UPLOAD
+  GUIDED_INTERVIEW
+  MANUAL_ENTRY
+}
+
+enum RiskCategory {
+  FINANCIAL
+  CLIMATE_ENVIRONMENTAL
+  BEHAVIORAL
+  OPERATIONAL
+  MARKET
+  GOVERNANCE_LEGAL
+  TECHNOLOGY_DATA
+}
+
+enum RiskLevel {
+  LOW
+  MODERATE
+  HIGH
+  CRITICAL
+}
+
+enum GapFieldStatus {
+  MISSING
+  PARTIAL
+  VERIFIED
+}
+
+enum RecommendationPriority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+// ─── Assessment Models ───────────────────────────────────
+
+model Assessment {
+  id               String           @id @default(uuid())
+  name             String           @db.VarChar(200)
+  companyName      String           @map("company_name") @db.VarChar(200)
+  companyType      String?          @map("company_type") @db.VarChar(100)
+  country          String           @default("Kenya") @db.VarChar(100)
+  status           AssessmentStatus @default(DRAFT)
+  intakeMode       IntakeMode       @map("intake_mode")
+  progress         Int              @default(0)
+  overallRiskScore Float?           @map("overall_risk_score")
+  overallRiskLevel RiskLevel?       @map("overall_risk_level")
+  userId           String           @map("user_id")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  user             User                @relation(fields: [userId], references: [id])
+  documents        AssessmentDocument[]
+  gapFields        GapField[]
+  riskScores       RiskScore[]
+  comments         AssessmentComment[]
+  interviewAnswers InterviewAnswer[]
+  dataEntries      DataEntry[]
+
+  @@index([userId, status])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("assessments")
+}
+
+model AssessmentDocument {
+  id           String   @id @default(uuid())
+  assessmentId String   @map("assessment_id")
+  fileName     String   @map("file_name") @db.VarChar(255)
+  s3Key        String   @map("s3_key") @db.VarChar(500)
+  mimeType     String   @map("mime_type") @db.VarChar(50)
+  fileSize     Int      @map("file_size")
+  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId])
+  @@map("assessment_documents")
+}
+
+model GapField {
+  id             String         @id @default(uuid())
+  assessmentId   String         @map("assessment_id")
+  category       RiskCategory
+  field          String         @db.VarChar(200)
+  label          String         @db.VarChar(200)
+  extractedValue String?        @map("extracted_value") @db.Text
+  correctedValue String?        @map("corrected_value") @db.Text
+  status         GapFieldStatus @default(MISSING)
+  isMandatory    Boolean        @default(false) @map("is_mandatory")
+  order          Int            @default(0)
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@index([assessmentId, category])
+  @@map("gap_fields")
+}
+
+model RiskScore {
+  id            String       @id @default(uuid())
+  assessmentId  String       @map("assessment_id")
+  category      RiskCategory
+  score         Float
+  level         RiskLevel
+  subcategories Json         // SubcategoryScore[]
+  evidence      String?      @db.Text
+  narrative     String?      @db.Text
+
+  // Relations
+  assessment      Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  recommendations Recommendation[]
+
+  @@unique([assessmentId, category])
+  @@map("risk_scores")
+}
+
+model Recommendation {
+  id          String                 @id @default(uuid())
+  riskScoreId String                 @map("risk_score_id")
+  text        String                 @db.Text
+  priority    RecommendationPriority
+  isEdited    Boolean                @default(false) @map("is_edited")
+  editedText  String?                @map("edited_text") @db.Text
+  order       Int                    @default(0)
+
+  // Relations
+  riskScore RiskScore @relation(fields: [riskScoreId], references: [id], onDelete: Cascade)
+
+  @@index([riskScoreId])
+  @@map("recommendations")
+}
+
+model AssessmentComment {
+  id           String   @id @default(uuid())
+  assessmentId String   @map("assessment_id")
+  userId       String   @map("user_id")
+  content      String   @db.VarChar(2000)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id])
+
+  @@index([assessmentId, createdAt])
+  @@map("assessment_comments")
+}
+
+model InterviewAnswer {
+  id           String @id @default(uuid())
+  assessmentId String @map("assessment_id")
+  step         Int
+  questionKey  String @map("question_key") @db.VarChar(100)
+  question     String @db.Text
+  answer       String @db.Text
+  answerType   String @map("answer_type") @db.VarChar(50)
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, questionKey])
+  @@index([assessmentId, step])
+  @@map("interview_answers")
+}
+
+model DataEntry {
+  id           String       @id @default(uuid())
+  assessmentId String       @map("assessment_id")
+  category     RiskCategory
+  field        String       @db.VarChar(200)
+  value        String       @db.Text
+  unit         String?      @db.VarChar(50)
+  currency     String?      @db.VarChar(10)
+
+  // Relations
+  assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  @@unique([assessmentId, category, field])
+  @@index([assessmentId])
+  @@map("data_entries")
+}

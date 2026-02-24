@@ -11,6 +11,20 @@ jest.mock('@/lib/api-client', () => ({
   default: { post: (...args: unknown[]) => mockPost(...args) },
 }));
 
+const mockLogin = jest.fn().mockImplementation(async (email, password, rememberMe) => {
+  // Delegate to mockPost so existing tests that set up mockPost.mockResolvedValueOnce still work
+  const response = await mockPost('/api/auth/login', { email, password });
+  const data = response.data;
+  // Simulate what AuthProvider.login does: store tokens if not password change required
+  if (!data.requiresPasswordChange && data.accessToken) {
+    mockSetTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken }, rememberMe);
+  }
+  return data;
+});
+jest.mock('@/providers/auth-provider', () => ({
+  useAuth: () => ({ login: mockLogin }),
+}));
+
 const mockSetTokens = jest.fn();
 jest.mock('@/lib/token-manager', () => ({
   tokenManager: {

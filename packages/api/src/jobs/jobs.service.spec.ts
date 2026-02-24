@@ -3,6 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import { NotFoundException, ForbiddenException } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { AiPreviewHandler } from './handlers/ai-preview.handler';
+import { ParseDocumentHandler } from './handlers/parse-document.handler';
+import { GapDetectionHandler } from './handlers/gap-detection.handler';
+import { RiskAnalysisHandler } from './handlers/risk-analysis.handler';
+import { ReportGenerationHandler } from './handlers/report-generation.handler';
 import { PrismaService } from '../database/prisma.service';
 import { JobStatus, JobType } from '@alliance-risk/shared';
 
@@ -25,6 +29,8 @@ const mockPrisma = {
 const mockAiPreviewHandler = {
   execute: jest.fn(),
 };
+
+const mockStubHandler = { execute: jest.fn() };
 
 const mockConfigService = {
   get: jest.fn((key: string) => {
@@ -67,6 +73,10 @@ describe('JobsService', () => {
         { provide: PrismaService, useValue: mockPrisma },
         { provide: ConfigService, useValue: mockConfigService },
         { provide: AiPreviewHandler, useValue: mockAiPreviewHandler },
+        { provide: ParseDocumentHandler, useValue: mockStubHandler },
+        { provide: GapDetectionHandler, useValue: mockStubHandler },
+        { provide: RiskAnalysisHandler, useValue: mockStubHandler },
+        { provide: ReportGenerationHandler, useValue: mockStubHandler },
       ],
     }).compile();
 

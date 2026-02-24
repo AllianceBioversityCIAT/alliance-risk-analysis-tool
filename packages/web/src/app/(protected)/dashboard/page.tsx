@@ -1,10 +1,144 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import { ClipboardList, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { StatCard } from '@/components/dashboard/stat-card';
+import { AssessmentTable } from '@/components/dashboard/assessment-table';
+import {
+  useAssessments,
+  useAssessmentStats,
+  useDeleteAssessment,
+  type AssessmentFilters,
+} from '@/hooks/use-assessments';
+import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
+
+const PAGE_SIZE = 10;
+
 export default function DashboardPage() {
+  const router = useRouter();
+  const [currentPage, setCurrentPage] = useState(1);
+  const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const [filters, setFilters] = useState<AssessmentFilters>({ limit: PAGE_SIZE });
+
+  const { data: stats, isLoading: statsLoading } = useAssessmentStats();
+  const { data: assessmentsData, isLoading: assessmentsLoading } = useAssessments({
+    ...filters,
+    cursor: cursors[currentPage - 1],
+  });
+  const { mutate: deleteAssessment } = useDeleteAssessment();
+
+  // Map API response to table row shape
+  const tableRows: AssessmentRowData[] = (assessmentsData?.data ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    companyName: a.companyName,
+    status: a.status,
+    progress: a.progress,
+    updatedAt: a.updatedAt,
+  }));
+
+  const handleNextPage = useCallback(() => {
+    if (assessmentsData?.nextCursor) {
+      setCursors((prev) => {
+        const next = [...prev];
+        next[currentPage] = assessmentsData.nextCursor ?? undefined;
+        return next;
+      });
+      setCurrentPage((p) => p + 1);
+    }
+  }, [assessmentsData?.nextCursor, currentPage]);
+
+  const handlePrevPage = useCallback(() => {
+    if (currentPage > 1) {
+      setCurrentPage((p) => p - 1);
+    }
+  }, [currentPage]);
+
+  const handleView = useCallback(
+    (id: string) => {
+      router.push(`/assessments/${id}/gap-detector`);
+    },
+    [router],
+  );
+
+  const handleEdit = useCallback(
+    (id: string) => {
+      router.push(`/assessments/${id}/risk-scorecard`);
+    },
+    [router],
+  );
+
+  const handleDelete = useCallback(
+    (id: string) => {
+      if (confirm('Are you sure you want to delete this assessment? This action cannot be undone.')) {
+        deleteAssessment(id);
+      }
+    },
+    [deleteAssessment],
+  );
+
+  const total = assessmentsData?.total ?? 0;
+  const hasNextPage = !!assessmentsData?.nextCursor;
+  const hasPrevPage = currentPage > 1;
+
   return (
-    <div className="container mx-auto p-8">
-      <h1 className="text-2xl font-bold">Dashboard</h1>
-      <p className="mt-2 text-muted-foreground">
-        Welcome to the Alliance Risk Analysis platform. Dashboard coming in Epic 1.
-      </p>
+    <div className="p-6 space-y-6">
+      {/* Page Header */}
+      <div>
+        <h1 className="text-xl font-bold text-foreground">Dashboard</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Overview of all risk assessments
+        </p>
+      </div>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatCard
+          icon={ClipboardList}
+          value={stats?.total ?? 0}
+          label="Total Assessments"
+          iconBgClass="bg-primary/10"
+          isLoading={statsLoading}
+        />
+        <StatCard
+          icon={CheckCircle}
+          value={stats?.completed ?? 0}
+          label="Completed"
+          iconBgClass="bg-green-100"
+          isLoading={statsLoading}
+        />
+        <StatCard
+          icon={Clock}
+          value={stats?.active ?? 0}
+          label="Active"
+          iconBgClass="bg-blue-100"
+          isLoading={statsLoading}
+        />
+        <StatCard
+          icon={AlertTriangle}
+          value={stats?.drafts ?? 0}
+          label="Drafts"
+          iconBgClass="bg-orange-100"
+          isLoading={statsLoading}
+        />
+      </div>
+
+      {/* Assessment Table */}
+      <AssessmentTable
+        assessments={tableRows}
+        total={total}
+        currentPage={currentPage}
+        pageSize={PAGE_SIZE}
+        hasNextPage={hasNextPage}
+        hasPrevPage={hasPrevPage}
+        isLoading={assessmentsLoading}
+        onNextPage={handleNextPage}
+        onPrevPage={handlePrevPage}
+        onView={handleView}
+        onEdit={handleEdit}
+        onDelete={handleDelete}
+      />
     </div>
   );
 }

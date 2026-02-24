@@ -17,6 +17,12 @@ CGIAR Agricultural Risk Intelligence Tool (MVP). Multi-agent pipeline using AWS 
    - Frontend changes: Read `packages/web/CLAUDE.md`
    - Backend changes: Read `packages/api/CLAUDE.md`
    - Infrastructure changes: Read `infra/CLAUDE.md`
+4. For UI/frontend work, consult the Figma design documentation in [`docs/figma-design/`](docs/figma-design/README.md):
+   - Design tokens (colors, typography, spacing): `docs/figma-design/design-tokens.md`
+   - CSS variable updates: `docs/figma-design/globals-update.md`
+   - Component patterns (22 reusable patterns): `docs/figma-design/component-patterns.md`
+   - Icon mapping (Material → Lucide): `docs/figma-design/icon-mapping.md`
+   - Per-screen implementation guides: `docs/figma-design/screens/`
 
 ## Build & Development Commands
 

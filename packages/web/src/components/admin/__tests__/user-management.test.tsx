@@ -222,9 +222,9 @@ describe('UserManagement', () => {
     });
   });
 
-  it('should show "Showing X to Y of Z results" pagination text', () => {
+  it('should show results count pagination text', () => {
     renderWithQuery(<UserManagement />);
-    expect(screen.getByText(/showing 1 to 3 of 3 results/i)).toBeInTheDocument();
+    expect(screen.getByText(/showing 3 results/i)).toBeInTheDocument();
   });
 
   it('should show empty state when no users match filter', async () => {

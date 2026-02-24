@@ -1,8 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/auth-provider';
+import { AppLayout } from '@/components/layout/app-layout';
+import { StartAssessmentModal } from '@/components/assessment/start-assessment-modal';
 
 export default function ProtectedLayout({
   children,
@@ -11,6 +13,7 @@ export default function ProtectedLayout({
 }) {
   const { isAuthenticated, isLoading } = useAuth();
   const router = useRouter();
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -18,17 +21,19 @@ export default function ProtectedLayout({
     }
   }, [isAuthenticated, isLoading, router]);
 
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return null;
-  }
-
-  return <>{children}</>;
+  // Always render AppLayout shell to avoid white screen on navigation.
+  // The spinner renders inside the shell while auth resolves; redirect
+  // happens via useEffect so we never return null here.
+  return (
+    <AppLayout onStartAssessment={() => setModalOpen(true)}>
+      {isLoading ? (
+        <div className="flex h-full items-center justify-center">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      ) : (
+        children
+      )}
+      <StartAssessmentModal open={modalOpen} onOpenChange={setModalOpen} />
+    </AppLayout>
+  );
 }

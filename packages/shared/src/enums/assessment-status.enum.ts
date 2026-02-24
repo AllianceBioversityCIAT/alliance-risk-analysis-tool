@@ -1,0 +1,6 @@
+export enum AssessmentStatus {
+  DRAFT = 'DRAFT',
+  ANALYZING = 'ANALYZING',
+  ACTION_REQUIRED = 'ACTION_REQUIRED',
+  COMPLETE = 'COMPLETE',
+}

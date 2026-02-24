@@ -8,6 +8,11 @@ import { AuthModule } from './auth/auth.module';
 import { AdminModule } from './admin/admin.module';
 import { PromptsModule } from './prompts/prompts.module';
 import { JobsModule } from './jobs/jobs.module';
+import { StorageModule } from './storage/storage.module';
+import { AssessmentsModule } from './assessments/assessments.module';
+import { GapDetectionModule } from './gap-detection/gap-detection.module';
+import { RiskAnalysisModule } from './risk-analysis/risk-analysis.module';
+import { ReportModule } from './report/report.module';
 import { CognitoService } from './auth/cognito.service';
 import { JwtAuthGuard, COGNITO_VERIFIER } from './common/guards/jwt-auth.guard';
 
@@ -19,6 +24,11 @@ import { JwtAuthGuard, COGNITO_VERIFIER } from './common/guards/jwt-auth.guard';
     AdminModule,
     PromptsModule,
     JobsModule,
+    StorageModule,
+    AssessmentsModule,
+    GapDetectionModule,
+    RiskAnalysisModule,
+    ReportModule,
   ],
   controllers: [AppController],
   providers: [

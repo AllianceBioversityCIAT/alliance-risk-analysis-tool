@@ -43,41 +43,79 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Custom status colors */
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
 }
 
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
+
+  /* Page & surface */
+  --background: oklch(0.98 0.005 260);     /* #F9FAFB - Athens Gray */
+  --foreground: oklch(0.21 0.02 265);      /* #111827 - Ebony */
+
+  /* Cards */
+  --card: oklch(1 0 0);                    /* #FFFFFF */
+  --card-foreground: oklch(0.21 0.02 265); /* #111827 */
+
+  /* Popovers / Dropdowns */
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
+  --popover-foreground: oklch(0.21 0.02 265);
+
+  /* Primary (Teal) */
+  --primary: oklch(0.62 0.13 195);         /* #009CA6 - Bondi Blue */
+  --primary-foreground: oklch(1 0 0);      /* White */
+
+  /* Secondary (Light Teal Tint) */
+  --secondary: oklch(0.98 0.01 195);       /* #F4F9F9 - Feta */
+  --secondary-foreground: oklch(0.21 0.02 265);
+
+  /* Muted */
+  --muted: oklch(0.97 0 0);               /* #F5F5F5 - Catskill White */
+  --muted-foreground: oklch(0.55 0.03 260); /* #64748B - Slate Gray */
+
+  /* Accent (hover states, subtle highlights) */
+  --accent: oklch(0.98 0.01 195);          /* #F4F9F9 - matches secondary */
+  --accent-foreground: oklch(0.21 0.02 265);
+
+  /* Destructive (Error / Critical Risk) */
+  --destructive: oklch(0.6 0.19 45);       /* #EA580C - Christine */
+
+  /* Borders */
+  --border: oklch(0.93 0.01 260);          /* #E2E8F0 - Mystic */
+  --input: oklch(0.93 0.01 260);           /* Same as border */
+  --ring: oklch(0.62 0.13 195);            /* Matches --primary for focus rings */
+
+  /* Chart colors (matched to design palette) */
+  --chart-1: oklch(0.62 0.13 195);         /* Teal - #009CA6 */
+  --chart-2: oklch(0.55 0.22 265);         /* Blue - #2563EB */
+  --chart-3: oklch(0.6 0.18 145);          /* Green - #16A34A */
+  --chart-4: oklch(0.72 0.17 70);          /* Orange - #F48C06 */
+  --chart-5: oklch(0.6 0.19 45);           /* Red - #EA580C */
+
+  /* Sidebar (Teal) */
+  --sidebar: oklch(0.58 0.12 190);         /* #008F8F - Teal */
+  --sidebar-foreground: oklch(1 0 0);      /* White */
+  --sidebar-primary: oklch(0.62 0.13 195); /* #009CA6 - Bondi Blue */
+  --sidebar-primary-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(1 0 0 / 20%);   /* White 20% - active nav bg */
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.59 0.11 180);  /* #0D9488 - Blue Chill */
+  --sidebar-ring: oklch(0.62 0.13 195);
+
+  /* Status colors */
+  --success: oklch(0.6 0.18 145);          /* #16A34A - Salem */
+  --success-foreground: oklch(1 0 0);
+  --warning: oklch(0.72 0.17 70);          /* #F48C06 - Tangerine */
+  --warning-foreground: oklch(1 0 0);
+  --info: oklch(0.55 0.22 265);            /* #2563EB - Royal Blue */
+  --info-foreground: oklch(1 0 0);
 }
 
 .dark {

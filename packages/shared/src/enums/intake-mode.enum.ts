@@ -1,0 +1,5 @@
+export enum IntakeMode {
+  UPLOAD = 'UPLOAD',
+  GUIDED_INTERVIEW = 'GUIDED_INTERVIEW',
+  MANUAL_ENTRY = 'MANUAL_ENTRY',
+}
