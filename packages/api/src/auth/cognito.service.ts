@@ -52,19 +52,20 @@ export class CognitoService implements OnModuleInit {
 
   onModuleInit(): void {
     const environment = this.configService.get<string>('ENVIRONMENT', 'development');
+    const isDevOrTest = environment === 'development' || environment === 'test';
 
     if (!environment) {
       this.logger.warn('ENVIRONMENT is not set — defaulting to development mode (no JWT verification)');
     }
 
-    if (environment === 'production') {
+    if (!isDevOrTest) {
       if (!this.userPoolId || !this.clientId) {
         throw new Error(
-          'COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID must be set when ENVIRONMENT=production',
+          `COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID must be set when ENVIRONMENT=${environment}`,
         );
       }
 
-      // Initialize JWKS client for production token verification
+      // Initialize JWKS client for production/staging token verification
       const jwksUri = `https://cognito-idp.${this.region}.amazonaws.com/${this.userPoolId}/.well-known/jwks.json`;
       this.jwksClient = new JwksClient({
         jwksUri,
@@ -73,7 +74,7 @@ export class CognitoService implements OnModuleInit {
         cacheMaxAge: 600000, // 10 minutes
       });
 
-      this.logger.log(`Production mode: JWKS verification enabled (pool: ${this.userPoolId})`);
+      this.logger.log(`Secure mode (${environment}): JWKS verification enabled (pool: ${this.userPoolId})`);
     } else {
       this.logger.warn(
         `Running in ${environment} mode — JWT tokens are decoded without signature verification`,
@@ -266,8 +267,9 @@ export class CognitoService implements OnModuleInit {
 
   async verifyToken(token: string): Promise<UserClaims> {
     const environment = this.configService.get<string>('ENVIRONMENT', 'development');
+    const isDevOrTest = environment === 'development' || environment === 'test';
 
-    if (environment === 'production') {
+    if (!isDevOrTest) {
       return this.verifyWithJwks(token);
     }
 

@@ -537,7 +537,7 @@ describe('CognitoService', () => {
 
   // ─── Production mode safety check ────────────────────────────────────────
 
-  describe('onModuleInit() production safety', () => {
+  describe('onModuleInit() secure mode enforcement', () => {
     it('should throw if ENVIRONMENT=production and no Cognito config', async () => {
       const module = await Test.createTestingModule({
         providers: [
@@ -557,6 +557,29 @@ describe('CognitoService', () => {
 
       const prodService = module.get<CognitoService>(CognitoService);
       expect(() => prodService.onModuleInit()).toThrow(
+        'COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID must be set',
+      );
+    });
+
+    it('should throw if ENVIRONMENT=staging (or any non-dev/test) and no Cognito config', async () => {
+      const module = await Test.createTestingModule({
+        providers: [
+          CognitoService,
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string, defaultVal?: unknown) => {
+                if (key === 'ENVIRONMENT') return 'staging';
+                if (key === 'AWS_REGION') return 'us-east-1';
+                return defaultVal ?? '';
+              }),
+            },
+          },
+        ],
+      }).compile();
+
+      const stagingService = module.get<CognitoService>(CognitoService);
+      expect(() => stagingService.onModuleInit()).toThrow(
         'COGNITO_USER_POOL_ID and COGNITO_CLIENT_ID must be set',
       );
     });
@@ -584,6 +607,31 @@ describe('CognitoService', () => {
 
       const prodService = module.get<CognitoService>(CognitoService);
       expect(() => prodService.onModuleInit()).not.toThrow();
+    });
+
+    it('should NOT throw if ENVIRONMENT=staging and Cognito config is provided', async () => {
+      const module = await Test.createTestingModule({
+        providers: [
+          CognitoService,
+          {
+            provide: ConfigService,
+            useValue: {
+              get: jest.fn((key: string, defaultVal?: unknown) => {
+                const config: Record<string, string> = {
+                  ENVIRONMENT: 'staging',
+                  AWS_REGION: 'us-east-1',
+                  COGNITO_USER_POOL_ID: 'us-east-1_stg',
+                  COGNITO_CLIENT_ID: 'stgClientId',
+                };
+                return config[key] ?? defaultVal;
+              }),
+            },
+          },
+        ],
+      }).compile();
+
+      const stagingService = module.get<CognitoService>(CognitoService);
+      expect(() => stagingService.onModuleInit()).not.toThrow();
     });
   });
 });
