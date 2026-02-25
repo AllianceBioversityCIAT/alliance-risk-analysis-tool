@@ -4,7 +4,10 @@ import { AppModule } from './app.module';
 import { configureApp } from './configure-app';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    bodyParser: true,
+    rawBody: false,
+  });
   configureApp(app);
   await app.listen(3001);
   Logger.log('Application is running on: http://localhost:3001/api', 'Bootstrap');
