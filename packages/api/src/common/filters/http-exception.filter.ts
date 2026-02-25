@@ -65,7 +65,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return exception.message;
     }
     if (exception instanceof Error) {
-      return exception.message;
+      // In production, hide internal error details from clients
+      return process.env.ENVIRONMENT === 'production'
+        ? 'An unexpected error occurred'
+        : exception.message;
     }
     return 'Internal server error';
   }

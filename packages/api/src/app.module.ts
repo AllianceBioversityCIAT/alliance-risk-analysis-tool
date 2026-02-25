@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -19,6 +20,10 @@ import { JwtAuthGuard, COGNITO_VERIFIER } from './common/guards/jwt-auth.guard';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{
+      ttl: 60000,  // 1 minute window
+      limit: 30,   // 30 requests per minute per IP
+    }]),
     DatabaseModule,
     AuthModule,
     AdminModule,
@@ -36,6 +41,10 @@ import { JwtAuthGuard, COGNITO_VERIFIER } from './common/guards/jwt-auth.guard';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
     },
     {
       provide: COGNITO_VERIFIER,

@@ -1,8 +1,9 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import { Printer, Download, Link2, Loader2 } from 'lucide-react';
+import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
@@ -20,7 +21,7 @@ function mapStatus(s: string | undefined): BadgeStatus {
   const map: Record<string, BadgeStatus> = {
     DRAFT: 'draft', ANALYZING: 'analyzing', ACTION_REQUIRED: 'action_required', COMPLETE: 'complete',
   };
-  return map[s ?? 'DRAFT'] ?? 'complete';
+  return map[s ?? 'DRAFT'] ?? 'draft';
 }
 
 export default function ReportClient() {
@@ -45,9 +46,17 @@ export default function ReportClient() {
 
   const handleShare = useCallback(() => {
     navigator.clipboard.writeText(window.location.href).then(() => {
-      alert('Link copied to clipboard!');
+      sileo.success({ title: 'Link copied to clipboard!' });
     });
   }, []);
+
+  // Open download URL when job polling completes
+  const pdfDownloadUrl = (jobResult as { downloadUrl?: string } | null)?.downloadUrl;
+  useEffect(() => {
+    if (pdfDownloadUrl) {
+      window.open(pdfDownloadUrl, '_blank');
+    }
+  }, [pdfDownloadUrl]);
 
   // Build TOC items
   const tocItems: TocItem[] = [
@@ -86,12 +95,6 @@ export default function ReportClient() {
 
   const assessment = report.assessment;
   const levelConfig = LEVEL_CONFIG[report.overallLevel];
-
-  // Open download URL when job polling completes
-  const pdfDownloadUrl = (jobResult as { downloadUrl?: string } | null)?.downloadUrl;
-  if (pdfDownloadUrl) {
-    // Trigger in effect — avoid side effect during render
-  }
 
   return (
     <>

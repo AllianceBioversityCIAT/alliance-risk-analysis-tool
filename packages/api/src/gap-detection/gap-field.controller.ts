@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Param, ParseUUIDPipe } from '@nestjs/common';
 import { GapDetectionService } from './gap-detection.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UpdateGapFieldsDto } from './dto';
@@ -15,7 +15,7 @@ export class GapFieldController {
 
   @Get()
   findByAssessment(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.gapDetectionService.findByAssessment(id, user.id);
@@ -23,7 +23,7 @@ export class GapFieldController {
 
   @Put()
   updateBatch(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateGapFieldsDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -32,7 +32,7 @@ export class GapFieldController {
 
   @Post('submit')
   triggerRiskAnalysis(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.gapDetectionService.triggerRiskAnalysis(id, user.id);

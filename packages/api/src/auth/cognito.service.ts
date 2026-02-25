@@ -556,8 +556,15 @@ export class CognitoService implements OnModuleInit {
         Buffer.from(parts[1], 'base64url').toString('utf8'),
       ) as Record<string, unknown>;
 
+      // Always validate expiry, even in dev mode
+      const exp = payload['exp'] as number | undefined;
+      if (exp && Date.now() / 1000 > exp) {
+        throw new CognitoException('Token expired', 'TOKEN_EXPIRED', 401);
+      }
+
       return this.mapPayloadToUser(payload);
-    } catch {
+    } catch (error) {
+      if (error instanceof CognitoException) throw error;
       throw new CognitoException('Invalid token format', 'INVALID_TOKEN', 401);
     }
   }

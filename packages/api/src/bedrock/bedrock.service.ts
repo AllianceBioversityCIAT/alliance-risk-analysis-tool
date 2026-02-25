@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-bedrock-runtime';
 import { ConfigService } from '@nestjs/config';
 import type { PromptPreviewRequest, PromptPreviewResponse } from '@alliance-risk/shared';
+import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
 import { CircuitBreaker } from '../common/utils/circuit-breaker';
 import { withRetry } from '../common/utils/retry';
 
@@ -90,7 +91,7 @@ export class BedrockService {
   }
 
   async preview(req: PromptPreviewRequest): Promise<PromptPreviewResponse> {
-    const modelId = 'anthropic.claude-3-5-sonnet-20241022-v2:0';
+    const modelId = BEDROCK_MODELS[AgentSection.PARSER].modelId;
 
     const userPrompt = Object.entries(req.variables ?? {}).reduce(
       (text, [key, val]) => text.replace(new RegExp(`\\{\\{${key}\\}\\}`, 'g'), val),

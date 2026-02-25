@@ -1,10 +1,12 @@
-import { IsString, IsOptional, IsObject } from 'class-validator';
+import { IsString, IsOptional, IsObject, MaxLength } from 'class-validator';
 
 export class PromptPreviewDto {
   @IsString()
+  @MaxLength(50000)
   systemPrompt!: string;
 
   @IsString()
+  @MaxLength(50000)
   userPromptTemplate!: string;
 
   @IsOptional()

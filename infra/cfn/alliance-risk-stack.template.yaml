@@ -46,12 +46,13 @@ Resources:
             Priority: 1
       Policies:
         PasswordPolicy:
-          MinimumLength: 8
+          MinimumLength: 12
           RequireLowercase: true
           RequireUppercase: true
           RequireNumbers: true
-          RequireSymbols: false
-    DeletionPolicy: Delete
+          RequireSymbols: true
+          TemporaryPasswordValidityDays: 7
+    DeletionPolicy: Retain
 
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -79,6 +80,17 @@ Resources:
       GroupName: admin
       Description: Platform administrators
 
+  # ── Lambda Security Group (for VPC placement) ─────────────────────────────
+  LambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for Lambda functions to access RDS
+      VpcId: !Ref VpcId
+      SecurityGroupEgress:
+        - IpProtocol: "-1"
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+
   # ── RDS PostgreSQL ─────────────────────────────────────────────────────────
   DbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -89,8 +101,8 @@ Resources:
         - IpProtocol: tcp
           FromPort: 5432
           ToPort: 5432
-          CidrIp: 0.0.0.0/0
-          Description: Allow PostgreSQL from anywhere (MVP)
+          SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
+          Description: Allow PostgreSQL from Lambda functions only
 
   DbSubnetGroup:
     Type: AWS::RDS::DBSubnetGroup
@@ -107,7 +119,7 @@ Resources:
         GenerateStringKey: password
         PasswordLength: 30
         ExcludeCharacters: " %+~`#$&*()|[]{}:;<>?!'/@\"\\"
-    DeletionPolicy: Delete
+    DeletionPolicy: Retain
 
   Database:
     Type: AWS::RDS::DBInstance
@@ -123,11 +135,12 @@ Resources:
       DBSubnetGroupName: !Ref DbSubnetGroup
       VPCSecurityGroups:
         - !GetAtt DbSecurityGroup.GroupId
-      PubliclyAccessible: true
+      PubliclyAccessible: false
+      StorageEncrypted: true
       BackupRetentionPeriod: 7
-      DeletionProtection: false
+      DeletionProtection: true
       CopyTagsToSnapshot: true
-    DeletionPolicy: Delete
+    DeletionPolicy: Snapshot
 
   DbSecretAttachment:
     Type: AWS::SecretsManager::SecretTargetAttachment
@@ -165,6 +178,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
       Policies:
         - PolicyName: WorkerPermissions
           PolicyDocument:
@@ -194,12 +208,14 @@ Resources:
                   - bedrock:InvokeModel
                   - bedrock:InvokeModelWithResponseStream
                   - bedrock:Retrieve
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-5-sonnet-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-*"
               - Effect: Allow
                 Action:
                   - textract:StartDocumentAnalysis
                   - textract:GetDocumentAnalysis
-                Resource: "*"
+                Resource: !Sub "arn:${AWS::Partition}:textract:${AWS::Region}:${AWS::AccountId}:*"
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -221,6 +237,10 @@ Resources:
       MemorySize: 1024
       Timeout: 900
       Role: !GetAtt WorkerLambdaRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !GetAtt LambdaSecurityGroup.GroupId
+        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
@@ -244,6 +264,7 @@ Resources:
             Action: sts:AssumeRole
       ManagedPolicyArns:
         - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
       Policies:
         - PolicyName: ApiPermissions
           PolicyDocument:
@@ -273,12 +294,14 @@ Resources:
                   - bedrock:InvokeModel
                   - bedrock:InvokeModelWithResponseStream
                   - bedrock:Retrieve
-                Resource: "*"
+                Resource:
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-5-sonnet-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-*"
               - Effect: Allow
                 Action:
                   - textract:StartDocumentAnalysis
                   - textract:GetDocumentAnalysis
-                Resource: "*"
+                Resource: !Sub "arn:${AWS::Partition}:textract:${AWS::Region}:${AWS::AccountId}:*"
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -303,6 +326,10 @@ Resources:
       MemorySize: 1024
       Timeout: 29
       Role: !GetAtt ApiLambdaRole.Arn
+      VpcConfig:
+        SecurityGroupIds:
+          - !GetAtt LambdaSecurityGroup.GroupId
+        SubnetIds: !Ref SubnetIds
       Environment:
         Variables:
           ENVIRONMENT: !Ref Environment
@@ -327,7 +354,8 @@ Resources:
       CorsConfiguration:
         AllowHeaders: [Content-Type, Authorization]
         AllowMethods: [GET, POST, PUT, DELETE, OPTIONS, PATCH]
-        AllowOrigins: ["*"]
+        AllowOrigins: [!Ref CorsOrigin]
+        AllowCredentials: true
         MaxAge: 86400
 
   HttpApiIntegration:

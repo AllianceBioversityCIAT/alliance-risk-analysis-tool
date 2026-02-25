@@ -4,6 +4,7 @@ import { useParams } from 'next/navigation';
 import { useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { AlertTriangle, Loader2 } from 'lucide-react';
+import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
@@ -48,8 +49,11 @@ export default function GapDetectorClient() {
     try {
       await apiClient.post(`/api/assessments/${id}/trigger-risk-analysis`);
       router.push(`/assessments/${id}/risk-scorecard`);
-    } catch {
-      // Error handling could be added here
+    } catch (err) {
+      sileo.error({
+        title: 'Failed to start risk analysis',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
     }
   }, [id, router]);
 

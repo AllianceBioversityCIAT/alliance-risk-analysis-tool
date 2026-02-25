@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Body, Param } from '@nestjs/common';
+import { Controller, Get, Put, Body, Param, ParseUUIDPipe } from '@nestjs/common';
 import { RiskAnalysisService } from './risk-analysis.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UpdateRecommendationDto } from './dto';
@@ -15,7 +15,7 @@ export class RiskScoreController {
 
   @Get('risk-scores')
   findByAssessment(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.riskAnalysisService.findByAssessment(id, user.id);
@@ -23,7 +23,7 @@ export class RiskScoreController {
 
   @Put('recommendations/:recId')
   editRecommendation(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Param('recId') recId: string,
     @Body() dto: UpdateRecommendationDto,
     @CurrentUser() user: AuthenticatedUser,

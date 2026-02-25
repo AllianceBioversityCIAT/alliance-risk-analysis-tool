@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClipboardList, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
+import { sileo } from 'sileo';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { AssessmentTable } from '@/components/dashboard/assessment-table';
 import {
@@ -71,9 +72,14 @@ export default function DashboardPage() {
 
   const handleDelete = useCallback(
     (id: string) => {
-      if (confirm('Are you sure you want to delete this assessment? This action cannot be undone.')) {
-        deleteAssessment(id);
-      }
+      sileo.action({
+        title: 'Delete assessment?',
+        description: 'This action cannot be undone.',
+        button: {
+          title: 'Confirm Delete',
+          onClick: () => deleteAssessment(id),
+        },
+      });
     },
     [deleteAssessment],
   );

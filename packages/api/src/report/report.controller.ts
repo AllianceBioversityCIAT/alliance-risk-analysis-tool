@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Param } from '@nestjs/common';
+import { Controller, Get, Post, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ReportService } from './report.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
@@ -14,7 +14,7 @@ export class ReportController {
 
   @Get()
   getReport(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.reportService.getReport(id, user.id);
@@ -22,7 +22,7 @@ export class ReportController {
 
   @Post('pdf')
   generatePdf(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.reportService.generatePdf(id, user.id);

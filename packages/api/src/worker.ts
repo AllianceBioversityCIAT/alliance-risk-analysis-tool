@@ -12,8 +12,16 @@ async function bootstrap() {
   return cachedApp;
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export const handler = async (event: { jobId: string }) => {
   const logger = new Logger('WorkerHandler');
+
+  if (!event.jobId || !UUID_REGEX.test(event.jobId)) {
+    logger.error(`Invalid jobId format: ${event.jobId}`);
+    return { success: false, error: 'Invalid jobId format' };
+  }
+
   logger.log(`Processing job: ${event.jobId}`);
 
   const app = await bootstrap();

@@ -136,7 +136,7 @@ export function GuidedInterviewModal({ assessmentId }: GuidedInterviewModalProps
       }));
       await apiClient.post(`/api/assessments/${assessmentId}/interview-answers`, payload);
     } catch {
-      // Non-blocking — allow user to continue even if save fails
+      setError('Failed to save answers. Check your connection and try again.');
     } finally {
       setIsSaving(false);
     }

@@ -9,6 +9,7 @@ import {
   Query,
   HttpCode,
   HttpStatus,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import { AssessmentsService } from './assessments.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -53,7 +54,7 @@ export class AssessmentsController {
 
   @Get(':id')
   findOne(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.assessmentsService.findOne(id, user.id);
@@ -61,7 +62,7 @@ export class AssessmentsController {
 
   @Put(':id')
   update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAssessmentDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -71,7 +72,7 @@ export class AssessmentsController {
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.assessmentsService.delete(id, user.id);
@@ -79,7 +80,7 @@ export class AssessmentsController {
 
   @Post(':id/documents')
   requestUploadUrl(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RequestUploadDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -88,7 +89,7 @@ export class AssessmentsController {
 
   @Post(':id/documents/:documentId/parse')
   triggerParse(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Param('documentId') documentId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -97,7 +98,7 @@ export class AssessmentsController {
 
   @Post(':id/comments')
   addComment(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateAssessmentCommentDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
@@ -106,7 +107,7 @@ export class AssessmentsController {
 
   @Get(':id/comments')
   getComments(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.assessmentsService.getComments(id, user.id);

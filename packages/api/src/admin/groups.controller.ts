@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Controller,
   Delete,
   Get,
@@ -10,6 +11,8 @@ import {
 } from '@nestjs/common';
 import { CognitoService } from '../auth/cognito.service';
 import { AdminGuard } from '../common/guards/admin.guard';
+
+const ALLOWED_GROUPS = ['admin', 'user', 'viewer'];
 
 @Controller('admin')
 @UseGuards(AdminGuard)
@@ -36,6 +39,9 @@ export class GroupsController {
     @Param('username') username: string,
     @Param('groupName') groupName: string,
   ) {
+    if (!ALLOWED_GROUPS.includes(groupName)) {
+      throw new BadRequestException(`Invalid group: ${groupName}. Allowed: ${ALLOWED_GROUPS.join(', ')}`);
+    }
     await this.cognitoService.addUserToGroup(username, groupName);
     return { message: `User added to group '${groupName}' successfully.` };
   }
@@ -50,6 +56,9 @@ export class GroupsController {
     @Param('username') username: string,
     @Param('groupName') groupName: string,
   ) {
+    if (!ALLOWED_GROUPS.includes(groupName)) {
+      throw new BadRequestException(`Invalid group: ${groupName}. Allowed: ${ALLOWED_GROUPS.join(', ')}`);
+    }
     await this.cognitoService.removeUserFromGroup(username, groupName);
     return { message: `User removed from group '${groupName}' successfully.` };
   }
