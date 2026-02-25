@@ -114,7 +114,12 @@ export class CognitoService implements OnModuleInit {
         requiresPasswordChange: false,
       };
     } catch (error) {
-      throw CognitoException.fromCognitoError(error as { name: string; message?: string });
+      const err = error as { name: string; message?: string };
+      if (err.name === 'UserNotFoundException') {
+        // Return generic credential error to prevent user enumeration
+        throw new CognitoException('Invalid credentials', 'NotAuthorizedException', 401);
+      }
+      throw CognitoException.fromCognitoError(err);
     }
   }
 
@@ -163,7 +168,12 @@ export class CognitoService implements OnModuleInit {
 
       await this.client.send(command);
     } catch (error) {
-      throw CognitoException.fromCognitoError(error as { name: string; message?: string });
+      const err = error as { name: string; message?: string };
+      // Silently fail if user not found to prevent enumeration
+      if (err.name === 'UserNotFoundException') {
+        return;
+      }
+      throw CognitoException.fromCognitoError(err);
     }
   }
 
