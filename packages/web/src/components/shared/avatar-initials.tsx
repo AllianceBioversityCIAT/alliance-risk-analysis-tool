@@ -37,7 +37,7 @@ export function AvatarInitials({
         className,
       )}
     >
-      <AvatarFallback className="bg-primary/20 text-primary font-semibold">
+      <AvatarFallback className="bg-primary/60 text-white font-semibold">
         {getInitials(name)}
       </AvatarFallback>
     </Avatar>

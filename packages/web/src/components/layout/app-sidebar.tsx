@@ -70,7 +70,10 @@ export function AppSidebar() {
     >
       {/* Logo area */}
       <SidebarHeader
-        className="h-16 flex items-center px-6"
+        className={cn(
+          'h-16 flex items-center p-0',
+          isCollapsed ? 'justify-center' : 'px-6',
+        )}
         style={{ backgroundColor: 'var(--sidebar)' }}
       >
         {isCollapsed ? (
