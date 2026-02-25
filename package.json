@@ -5,6 +5,7 @@
     "onlyBuiltDependencies": [
       "@nestjs/core",
       "@prisma/engines",
+      "esbuild",
       "prisma",
       "sharp",
       "unrs-resolver"
@@ -16,7 +17,11 @@
     "dev": "pnpm run dev:api & pnpm run dev:web",
     "build": "pnpm -r build",
     "test": "pnpm -r test",
-    "lint": "pnpm -r lint"
+    "lint": "pnpm -r lint",
+    "deploy:api": "bash scripts/deploy-api.sh",
+    "deploy:web": "bash scripts/deploy-web.sh",
+    "deploy:all": "bash scripts/deploy-api.sh && bash scripts/deploy-web.sh",
+    "migrate:deploy": "pnpm --filter @alliance-risk/api exec prisma migrate deploy"
   },
   "dependencies": {
     "@radix-ui/react-visually-hidden": "^1.2.4"

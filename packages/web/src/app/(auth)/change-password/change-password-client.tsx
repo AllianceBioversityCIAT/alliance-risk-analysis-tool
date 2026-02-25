@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ChangePasswordForm } from '@/components/auth/change-password-form';
-import { toast } from 'sonner';
+import { sileo } from 'sileo';
 
 export function ChangePasswordPageClient() {
   const router = useRouter();
@@ -20,7 +20,7 @@ export function ChangePasswordPageClient() {
   }, [session, username, router]);
 
   const handleSuccess = () => {
-    toast.success('Password set successfully. Welcome!');
+    sileo.success({ title: 'Password set successfully', description: 'Welcome!' });
     router.replace('/dashboard');
   };
 

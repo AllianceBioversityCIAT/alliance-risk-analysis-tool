@@ -214,7 +214,7 @@ Resources:
       FunctionName: alliance-risk-worker
       Runtime: nodejs20.x
       Architectures: [arm64]
-      Handler: dist/worker.handler
+      Handler: dist/src/worker.handler
       Code:
         S3Bucket: !Ref ApiCodeS3Bucket
         S3Key: !Ref ApiCodeS3Key
@@ -225,6 +225,11 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          DATABASE_URL: !Sub
+            - "postgresql://${Username}:${Password}@${Host}:5432/alliance_risk"
+            - Username: postgres
+              Password: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+              Host: !GetAtt Database.Endpoint.Address
 
   # ── IAM — API Lambda Role ──────────────────────────────────────────────────
   ApiLambdaRole:
@@ -291,7 +296,7 @@ Resources:
       FunctionName: alliance-risk-api
       Runtime: nodejs20.x
       Architectures: [arm64]
-      Handler: dist/lambda.handler
+      Handler: dist/src/lambda.handler
       Code:
         S3Bucket: !Ref ApiCodeS3Bucket
         S3Key: !Ref ApiCodeS3Key
@@ -307,6 +312,11 @@ Resources:
           AWS_ACCOUNT_ID: !Ref AWS::AccountId
           WORKER_FUNCTION_NAME: !Ref WorkerLambda
           CORS_ORIGIN: !Ref CorsOrigin
+          DATABASE_URL: !Sub
+            - "postgresql://${Username}:${Password}@${Host}:5432/alliance_risk"
+            - Username: postgres
+              Password: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+              Host: !GetAtt Database.Endpoint.Address
 
   # ── API Gateway HTTP API ───────────────────────────────────────────────────
   HttpApi:
@@ -452,6 +462,16 @@ Outputs:
   DatabaseEndpoint:
     Description: RDS PostgreSQL endpoint
     Value: !GetAtt Database.Endpoint.Address
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (for cache invalidation)
+    Value: !Ref WebDistribution
+    Export:
+      Name: AllianceRiskCloudFrontDistributionId
+  DeployBucketName:
+    Description: S3 bucket for Lambda deployment packages
+    Value: !Ref ApiCodeS3Bucket
+    Export:
+      Name: AllianceRiskDeployBucketName
   WorkerLambdaName:
     Description: Worker Lambda function name
     Value: !Ref WorkerLambda

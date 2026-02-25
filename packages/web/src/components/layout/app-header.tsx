@@ -29,8 +29,8 @@ export function AppHeader({ title, onStartAssessment, className }: AppHeaderProp
         className,
       )}
     >
-      {/* Mobile sidebar trigger */}
-      <SidebarTrigger className="md:hidden -ml-2" />
+      {/* Sidebar toggle trigger */}
+      <SidebarTrigger className="-ml-2" />
 
       {/* Left: Title + divider + context selector */}
       <div className="flex items-center gap-3 flex-1">

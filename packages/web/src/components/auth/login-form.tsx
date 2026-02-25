@@ -80,7 +80,7 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
         {serverError && (
           <div
             role="alert"
-            className="rounded-md border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
+            className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive"
           >
             {serverError}
           </div>
@@ -92,7 +92,7 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
           name="email"
           render={({ field }) => (
             <FormItem>
-              <Label htmlFor="email" className="text-sm font-medium text-gray-700">
+              <Label htmlFor="email" className="text-sm font-bold text-foreground">
                 Email Address
               </Label>
               <FormControl>
@@ -104,7 +104,7 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
                   autoComplete="email"
                   autoFocus
                   disabled={isSubmitting}
-                  className="h-10 bg-[#F9FAFB] border-[#D1D5DB]"
+                  className="h-12 rounded-xl bg-card border-border text-foreground placeholder:text-muted-foreground"
                   {...field}
                 />
               </FormControl>
@@ -119,18 +119,9 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
           name="password"
           render={({ field }) => (
             <FormItem>
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
-                  Password
-                </Label>
-                <Link
-                  href="/forgot-password"
-                  className="text-xs font-semibold text-[#00857D] hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
-                  tabIndex={isSubmitting ? -1 : 0}
-                >
-                  Forgot password?
-                </Link>
-              </div>
+              <Label htmlFor="password" className="text-sm font-bold text-foreground">
+                Password
+              </Label>
               <FormControl>
                 <div className="relative">
                   <InputWithIcon
@@ -140,7 +131,7 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
                     placeholder="••••••••"
                     autoComplete="current-password"
                     disabled={isSubmitting}
-                    className="h-10 pr-10 bg-[#F9FAFB] border-[#D1D5DB]"
+                    className="h-12 pr-10 rounded-xl bg-card border-border text-foreground placeholder:text-muted-foreground"
                     {...field}
                   />
                   <button
@@ -164,18 +155,19 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
         />
 
         {/* Remember me + Forgot password row */}
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between pt-1">
           <FormField
             control={form.control}
             name="rememberMe"
             render={({ field }) => (
-              <FormItem className="flex items-center gap-2 space-y-0">
+              <FormItem className="flex items-center gap-2.5 space-y-0">
                 <FormControl>
                   <Checkbox
                     id="rememberMe"
                     checked={field.value}
                     onCheckedChange={field.onChange}
                     disabled={isSubmitting}
+                    className="rounded-full h-5 w-5 border-border"
                   />
                 </FormControl>
                 <Label
@@ -187,12 +179,19 @@ export function LoginForm({ onSuccess, onPasswordChangeRequired }: LoginFormProp
               </FormItem>
             )}
           />
+          <Link
+            href="/forgot-password"
+            className="text-sm font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+            tabIndex={isSubmitting ? -1 : 0}
+          >
+            Forgot password?
+          </Link>
         </div>
 
         {/* Submit */}
         <Button
           type="submit"
-          className="w-full h-10 font-medium bg-[#00857D] hover:bg-[#006B65] text-white rounded-lg"
+          className="w-full h-12 text-base font-semibold bg-primary hover:bg-primary/90 text-primary-foreground rounded-xl shadow-sm mt-2"
           disabled={isSubmitting}
         >
           {isSubmitting ? (

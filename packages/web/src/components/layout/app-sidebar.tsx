@@ -19,6 +19,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from '@/components/ui/sidebar';
 import {
   DropdownMenu,
@@ -54,6 +55,8 @@ const navItems = [
 export function AppSidebar() {
   const pathname = usePathname();
   const { user, isAdmin, logout } = useAuth();
+  const { state } = useSidebar();
+  const isCollapsed = state === 'collapsed';
 
   const visibleItems = navItems.filter(
     (item) => !item.adminOnly || isAdmin,
@@ -61,6 +64,7 @@ export function AppSidebar() {
 
   return (
     <Sidebar
+      collapsible="icon"
       className="border-r-0"
       style={{ '--sidebar-width': '256px' } as React.CSSProperties}
     >
@@ -69,9 +73,13 @@ export function AppSidebar() {
         className="h-16 flex items-center px-6"
         style={{ backgroundColor: 'var(--sidebar)' }}
       >
-        <span className="text-white font-bold text-lg tracking-tight">
-          Alliance Risk
-        </span>
+        {isCollapsed ? (
+          <span className="text-white font-bold text-lg">AR</span>
+        ) : (
+          <span className="text-white font-bold text-lg tracking-tight">
+            Alliance Risk
+          </span>
+        )}
       </SidebarHeader>
 
       {/* Navigation */}
@@ -88,6 +96,7 @@ export function AppSidebar() {
                   <SidebarMenuItem key={item.href}>
                     <SidebarMenuButton
                       asChild
+                      tooltip={item.label}
                       className={cn(
                         'relative h-10 rounded-lg px-3 transition-colors',
                         isActive
@@ -97,7 +106,7 @@ export function AppSidebar() {
                     >
                       <Link href={item.href}>
                         {/* Orange left indicator for active item */}
-                        {isActive && (
+                        {isActive && !isCollapsed && (
                           <span
                             className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
                             style={{ backgroundColor: '#F18E1C' }}
@@ -120,8 +129,8 @@ export function AppSidebar() {
         className="px-3 pb-4"
         style={{ backgroundColor: 'var(--sidebar)' }}
       >
-        {/* User profile card */}
-        {user && (
+        {/* User profile card — hidden when collapsed */}
+        {user && !isCollapsed && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -147,6 +156,36 @@ export function AppSidebar() {
             <DropdownMenuContent
               side="top"
               align="start"
+              className="w-56 mb-1"
+            >
+              <DropdownMenuItem
+                onClick={logout}
+                className="text-destructive focus:text-destructive cursor-pointer"
+              >
+                <LogOut className="mr-2 h-4 w-4" />
+                Log out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+
+        {/* Collapsed: show avatar-only logout button */}
+        {user && isCollapsed && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 mx-auto"
+              >
+                <AvatarInitials
+                  name={user.email ?? user.username ?? 'User'}
+                  withRing
+                  size="sm"
+                />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              side="right"
+              align="end"
               className="w-56 mb-1"
             >
               <DropdownMenuItem

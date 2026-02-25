@@ -118,3 +118,33 @@ QueryClientProvider > AuthProvider > {pages}
 
 - Extends `next/core-web-vitals`
 - Config in `.eslintrc.json`
+
+## Notifications
+
+Use **`sileo`** for all toast notifications. Never use `sonner`, `alert()`, or `confirm()`.
+
+```ts
+import { sileo } from 'sileo';
+
+// Basic variants
+sileo.success({ title: 'Saved', description: 'Your changes were saved.' });
+sileo.error({ title: 'Failed', description: 'Something went wrong.' });
+sileo.warning({ title: 'Warning', description: 'Check your input.' });
+sileo.info({ title: 'Note', description: 'FYI.' });
+
+// Promise (loading → success/error)
+sileo.promise(apiCall(), {
+  loading: { title: 'Saving...' },
+  success: { title: 'Saved!' },
+  error: (err) => ({ title: 'Failed', description: err.message }),
+});
+
+// Action toast with button
+sileo.action({
+  title: 'Deleted',
+  description: 'The item was removed.',
+  button: { title: 'Undo', onClick: () => undoDelete() },
+});
+```
+
+The `<Toaster />` is mounted once in `src/app/layout.tsx` via the wrapper at `src/components/ui/sileo.tsx` (position `top-right`, respects the app theme).

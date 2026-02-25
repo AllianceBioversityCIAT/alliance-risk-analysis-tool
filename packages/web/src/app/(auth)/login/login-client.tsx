@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { LoginForm } from '@/components/auth/login-form';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -29,45 +30,58 @@ export function LoginPageClient() {
   };
 
   if (isLoading) {
-    return null; // Avoid flash before auth check completes
+    return null;
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 px-4 py-12">
-      <div className="w-full max-w-md">
-        {/* Branding header */}
+    <main className="min-h-screen flex flex-col items-center justify-center px-4 py-12 bg-secondary">
+      {/* Card */}
+      <div className="w-full max-w-[480px] bg-card rounded-3xl shadow-[0_8px_40px_rgba(0,0,0,0.08)] px-10 py-10">
+        {/* Logo */}
+        <div className="flex justify-center mb-6">
+          <svg width="130" height="49" viewBox="0 0 130 49" fill="none" xmlns="http://www.w3.org/2000/svg" xmlnsXlink="http://www.w3.org/1999/xlink" aria-label="Alliance Risk Logo">
+            <path d="M0 0H130V49H0V0Z" fill="url(#pattern0_448_4)"/>
+            <defs>
+              <pattern id="pattern0_448_4" patternContentUnits="objectBoundingBox" width="1" height="1">
+                <use xlinkHref="#image0_448_4" transform="matrix(0.000801282 0 0 0.00212585 0 -0.0335884)"/>
+              </pattern>
+              <image id="image0_448_4" width="1248" height="502" preserveAspectRatio="none" xlinkHref="data:image/png;base64,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"/>
+            </defs>
+          </svg>
+        </div>
+
+        {/* Title */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl mb-4" style={{ backgroundColor: '#E6F5F5' }}>
-            {/* Africa map icon */}
-            <svg viewBox="0 0 32 32" fill="none" className="w-8 h-8" aria-hidden="true">
-              <path
-                d="M16 3C9.373 3 4 8.373 4 15c0 4.5 2.3 8.5 5.8 10.9L12 29l1-2 2 1 1-3 3 1 2-2 1 3 2-1.5V24l2-1.5V19l-2-1v-3l1.5-2L24 11l-1-2-2 1-1-2-1 1-1-2-1 1-1-2h-2l-1 2-1-1v3l-2 1v2l1 1v2l-2 1v2l1 2v2l-1 1"
-                stroke="#008F8F"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-gray-900 tracking-tight">
+          <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
             Risk Intelligence Portal
           </h1>
-          <p className="text-gray-500 text-base mt-1">Sign in to access climate risk analytics</p>
+          <p className="text-muted-foreground text-sm mt-1.5">
+            Sign in to access climate risk analytics
+          </p>
         </div>
 
-        {/* Login card */}
-        <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-[0px_10px_36px_rgba(0,0,0,0.04)]">
-          <LoginForm
-            onSuccess={handleSuccess}
-            onPasswordChangeRequired={handlePasswordChangeRequired}
-          />
-        </div>
-
-        {/* Footer */}
-        <p className="text-center text-xs text-gray-400 mt-6">
-          © {new Date().getFullYear()} Alliance of Bioversity International and CIAT
-        </p>
+        {/* Form */}
+        <LoginForm
+          onSuccess={handleSuccess}
+          onPasswordChangeRequired={handlePasswordChangeRequired}
+        />
       </div>
+
+      {/* Footer links */}
+      <div className="flex items-center gap-4 mt-8 text-sm text-muted-foreground">
+        <Link href="#" className="hover:text-foreground transition-colors">
+          Need Help?
+        </Link>
+        <span className="text-border">|</span>
+        <Link href="#" className="hover:text-foreground transition-colors">
+          Privacy Policy
+        </Link>
+      </div>
+
+      {/* Tagline */}
+      <p className="mt-5 text-[11px] font-medium tracking-[0.2em] text-muted-foreground/60 uppercase">
+        Innovating for a Food-Secure Future
+      </p>
     </main>
   );
 }

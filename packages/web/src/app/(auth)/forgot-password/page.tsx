@@ -2,13 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { ForgotPasswordForm } from '@/components/auth/forgot-password-form';
-import { toast } from 'sonner';
+import { sileo } from 'sileo';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
 
   const handleSuccess = () => {
-    toast.success('Password reset successfully. Please sign in with your new password.');
+    sileo.success({ title: 'Password reset successfully', description: 'Please sign in with your new password.' });
     router.push('/login');
   };
 
