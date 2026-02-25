@@ -152,9 +152,18 @@ describe('CognitoService', () => {
       await expect(service.login('test@example.com', 'wrong')).rejects.toThrow(CognitoException);
     });
 
-    it('should throw CognitoException on UserNotFoundException', async () => {
+    it('should throw NotAuthorizedException (401) on UserNotFoundException to prevent enumeration', async () => {
       mockSend.mockRejectedValueOnce({ name: 'UserNotFoundException' });
-      await expect(service.login('notfound@example.com', 'pass')).rejects.toThrow(CognitoException);
+
+      try {
+        await service.login('notfound@example.com', 'pass');
+        fail('Expected CognitoException to be thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(CognitoException);
+        // Expect 401 instead of 404
+        expect((err as CognitoException).getStatus()).toBe(401);
+        expect((err as CognitoException).message).toBe('Invalid credentials');
+      }
     });
   });
 
@@ -204,6 +213,13 @@ describe('CognitoService', () => {
 
       await service.forgotPassword('test@example.com');
       expect(mockSend).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return success (silent failure) on UserNotFoundException', async () => {
+      mockSend.mockResolvedValueOnce({ Users: [{ Username: 'test@example.com' }] });
+      mockSend.mockRejectedValueOnce({ name: 'UserNotFoundException' });
+
+      await expect(service.forgotPassword('test@example.com')).resolves.toBeUndefined();
     });
 
     it('should throw CognitoException on error', async () => {
@@ -514,7 +530,8 @@ describe('CognitoService', () => {
       it(`should map ${name} to HTTP ${expectedStatus}`, async () => {
         mockSend.mockRejectedValueOnce({ name });
         try {
-          await service.login('test@example.com', 'pass');
+          // Use getUser instead of login, as login now has special handling for UserNotFoundException
+          await service.getUser('test@example.com');
           fail('Expected CognitoException to be thrown');
         } catch (err) {
           expect(err).toBeInstanceOf(CognitoException);
@@ -526,7 +543,7 @@ describe('CognitoService', () => {
     it('should map unknown errors to HTTP 500', async () => {
       mockSend.mockRejectedValueOnce({ name: 'SomeUnknownError' });
       try {
-        await service.login('test@example.com', 'pass');
+        await service.getUser('test@example.com');
         fail('Expected CognitoException to be thrown');
       } catch (err) {
         expect(err).toBeInstanceOf(CognitoException);
