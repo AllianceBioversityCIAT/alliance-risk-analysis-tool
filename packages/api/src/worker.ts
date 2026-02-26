@@ -14,7 +14,9 @@ async function bootstrap() {
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export const handler = async (event: { jobId: string }) => {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export const handler = async (event: { jobId: string }, context: any) => {
+  context.callbackWaitsForEmptyEventLoop = false;
   const logger = new Logger('WorkerHandler');
 
   if (!event.jobId || !UUID_REGEX.test(event.jobId)) {
