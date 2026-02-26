@@ -51,7 +51,7 @@ describe('AuthController (e2e) - Throttling', () => {
       expiresIn: 3600,
     });
 
-    const payload = { email: 'test@example.com', password: 'test-password' };
+    const payload = { email: 'test@example.com', password: 'test-password' }; // NOSONAR
 
     // The decorator on login() sets limit to 5
     for (let i = 0; i < 5; i++) {
