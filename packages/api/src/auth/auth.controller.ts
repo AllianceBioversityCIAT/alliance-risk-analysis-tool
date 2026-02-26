@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Post, Request } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { CognitoService } from './cognito.service';
 import { Public } from '../common/decorators/public.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -18,6 +19,7 @@ export class AuthController {
    * POST /api/auth/login
    * Authenticates a user. Returns tokens or a password change challenge.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -29,6 +31,7 @@ export class AuthController {
    * POST /api/auth/refresh-token
    * Exchanges a refresh token for new access tokens.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
@@ -51,6 +54,7 @@ export class AuthController {
    * POST /api/auth/forgot-password
    * Initiates the forgot password flow — sends a verification code to the user's email.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
@@ -63,6 +67,7 @@ export class AuthController {
    * POST /api/auth/reset-password
    * Completes the forgot password flow using the verification code.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
@@ -75,6 +80,7 @@ export class AuthController {
    * POST /api/auth/complete-password-change
    * Completes the NEW_PASSWORD_REQUIRED Cognito challenge on first login.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Public()
   @Post('complete-password-change')
   @HttpCode(HttpStatus.OK)
