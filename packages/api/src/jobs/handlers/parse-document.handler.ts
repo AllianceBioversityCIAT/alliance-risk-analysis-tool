@@ -33,7 +33,7 @@ export class ParseDocumentHandler implements JobHandler {
     });
 
     // Step 2: Run Textract analysis
-    const s3Bucket = this.config.get<string>('S3_BUCKET') ?? '';
+    const s3Bucket = this.config.get<string>('S3_BUCKET_NAME') ?? '';
     const result = await this.textract.analyzeDocument(s3Bucket, s3Key);
 
     // Step 3: Mark document as PARSED

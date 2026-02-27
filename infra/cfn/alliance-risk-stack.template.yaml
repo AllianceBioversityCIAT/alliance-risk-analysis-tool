@@ -118,6 +118,37 @@ Resources:
         - !GetAtt VpcEndpointSecurityGroup.GroupId
       PrivateDnsEnabled: true
 
+  LambdaVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.lambda"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref EndpointSubnetIds
+      SecurityGroupIds:
+        - !GetAtt VpcEndpointSecurityGroup.GroupId
+      PrivateDnsEnabled: true
+
+  TextractVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.textract"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref EndpointSubnetIds
+      SecurityGroupIds:
+        - !GetAtt VpcEndpointSecurityGroup.GroupId
+      PrivateDnsEnabled: true
+
+  S3VpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.s3"
+      VpcEndpointType: Gateway
+      RouteTableIds:
+        - rtb-0560ff26103fa17ff
+
   # ── RDS PostgreSQL ─────────────────────────────────────────────────────────
   DbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -190,6 +221,18 @@ Resources:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
+      CorsConfiguration:
+        CorsRules:
+          - AllowedOrigins:
+              - "*"
+            AllowedMethods:
+              - GET
+              - PUT
+            AllowedHeaders:
+              - "*"
+            ExposedHeaders:
+              - ETag
+            MaxAge: 3600
     DeletionPolicy: Retain
 
   # ── IAM — Worker Lambda Role ───────────────────────────────────────────────
@@ -242,7 +285,7 @@ Resources:
                 Action:
                   - textract:StartDocumentAnalysis
                   - textract:GetDocumentAnalysis
-                Resource: !Sub "arn:${AWS::Partition}:textract:${AWS::Region}:${AWS::AccountId}:*"
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - s3:GetObject
@@ -272,6 +315,7 @@ Resources:
         Variables:
           ENVIRONMENT: !Ref Environment
           AWS_ACCOUNT_ID: !Ref AWS::AccountId
+          S3_BUCKET_NAME: !Ref FileBucket
           DATABASE_URL: !Sub
             - "postgresql://${Username}:${Password}@${Host}:5432/alliance_risk"
             - Username: postgres
@@ -328,7 +372,7 @@ Resources:
                 Action:
                   - textract:StartDocumentAnalysis
                   - textract:GetDocumentAnalysis
-                Resource: !Sub "arn:${AWS::Partition}:textract:${AWS::Region}:${AWS::AccountId}:*"
+                Resource: "*"
               - Effect: Allow
                 Action:
                   - s3:GetObject

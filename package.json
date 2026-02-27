@@ -20,7 +20,7 @@
     "lint": "pnpm -r lint",
     "deploy:api": "bash scripts/deploy-api.sh",
     "deploy:web": "bash scripts/deploy-web.sh",
-    "deploy:all": "bash scripts/deploy-api.sh && bash scripts/deploy-web.sh",
+    "deploy:all": "bash scripts/deploy-api.sh && bash scripts/migrate-remote.sh && bash scripts/deploy-web.sh",
     "migrate:deploy": "pnpm --filter @alliance-risk/api exec prisma migrate deploy",
     "migrate:remote": "bash scripts/migrate-remote.sh"
   },

@@ -109,6 +109,15 @@ export class AllianceRiskStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       versioned: false,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+      cors: [
+        {
+          allowedOrigins: ['*'],
+          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+          allowedHeaders: ['*'],
+          exposedHeaders: ['ETag'],
+          maxAge: 3600,
+        },
+      ],
     });
 
     // ─── Lambda Execution Role ──────────────────────────────────────────────────
@@ -194,6 +203,7 @@ export class AllianceRiskStack extends cdk.Stack {
       environment: {
         ENVIRONMENT: 'production',
         AWS_ACCOUNT_ID: this.account,
+        S3_BUCKET_NAME: fileBucket.bucketName,
       },
     });
 

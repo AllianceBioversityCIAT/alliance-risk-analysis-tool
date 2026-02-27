@@ -1,5 +1,6 @@
 import { Controller, Get, Param, HttpCode, HttpStatus, ParseUUIDPipe } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiParam } from '@nestjs/swagger';
+import { SkipThrottle } from '@nestjs/throttler';
 import { JobsService } from './jobs.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import type { UserInfo } from '@alliance-risk/shared';
@@ -7,6 +8,7 @@ import type { Job } from '@prisma/client';
 
 @ApiTags('Jobs')
 @ApiBearerAuth('cognito-jwt')
+@SkipThrottle()
 @Controller('jobs')
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
