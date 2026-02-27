@@ -44,8 +44,8 @@ export function useJobPolling<T = unknown>(
         throw new Error('Job polling timed out after maximum attempts');
       }
 
-      const res = await apiClient.get<{ data: JobResponse }>(`/api/jobs/${jobId}`);
-      return res.data.data;
+      const res = await apiClient.get<JobResponse>(`/api/jobs/${jobId}`);
+      return res.data;
     },
     enabled: jobId !== null && !timedOut,
     refetchInterval: (query) => {

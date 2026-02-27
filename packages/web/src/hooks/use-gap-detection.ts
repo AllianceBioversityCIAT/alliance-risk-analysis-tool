@@ -27,6 +27,12 @@ export function useGapFields(assessmentId: string) {
     },
     staleTime: 60 * 1000, // 1 minute
     enabled: !!assessmentId,
+    // Poll every 3s until gap fields arrive (handles race with GAP_DETECTION job)
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      if (!data || data.total === 0) return 3000;
+      return false;
+    },
   });
 }
 

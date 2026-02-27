@@ -160,6 +160,23 @@ export class JobsService {
 
       await this.updateStatus(jobId, JobStatus.COMPLETED, result);
       this.logger.log(`Job ${jobId} completed`);
+
+      // Chain: PARSE_DOCUMENT → GAP_DETECTION
+      if (job.type === JobType.PARSE_DOCUMENT) {
+        const input = job.input as { assessmentId?: string };
+        if (input.assessmentId) {
+          this.logger.log(`Chaining GAP_DETECTION for assessment ${input.assessmentId}`);
+          const gapJobId = await this.prisma.job.create({
+            data: {
+              type: 'GAP_DETECTION' as unknown as import('@prisma/client').$Enums.JobType,
+              input: { assessmentId: input.assessmentId } as object,
+              status: 'PENDING' as JobStatusPrisma,
+              createdById: job.createdById,
+            },
+          });
+          await this.processJob(gapJobId.id);
+        }
+      }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Job ${jobId} failed: ${errorMsg}`);

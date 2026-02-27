@@ -235,13 +235,14 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
                 onSelect={() => !isPending && handleModeSelect(IntakeMode.UPLOAD)}
               />
 
-              {/* Guided Interview */}
+              {/* Guided Interview — coming soon */}
               <IntakeModeCard
                 icon={MessageSquare}
                 title="Guided Interview"
                 description="Interactive AI chatbot assistant that guides you through collecting necessary data points."
                 features={
                   <FeatureList
+                    muted
                     items={[
                       'Structured Q&A flow',
                       'Real-time validation',
@@ -250,18 +251,20 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
                   />
                 }
                 buttonLabel="Start Interview"
-                isSelected={selectedMode === IntakeMode.GUIDED_INTERVIEW}
-                isPending={isPending}
-                onSelect={() => !isPending && handleModeSelect(IntakeMode.GUIDED_INTERVIEW)}
+                isSelected={false}
+                isPending={false}
+                isComingSoon
+                onSelect={() => {}}
               />
 
-              {/* Manual Entry */}
+              {/* Manual Entry — coming soon */}
               <IntakeModeCard
                 icon={PenLine}
                 title="Manual Entry"
                 description="Directly input data into the standard comprehensive risk assessment form."
                 features={
                   <FeatureList
+                    muted
                     items={[
                       'Full control over fields',
                       'Bulk data entry',
@@ -270,9 +273,10 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
                   />
                 }
                 buttonLabel="Open Form"
-                isSelected={selectedMode === IntakeMode.MANUAL_ENTRY}
-                isPending={isPending}
-                onSelect={() => !isPending && handleModeSelect(IntakeMode.MANUAL_ENTRY)}
+                isSelected={false}
+                isPending={false}
+                isComingSoon
+                onSelect={() => {}}
               />
             </div>
 
