@@ -15,6 +15,15 @@ export class AllianceRiskStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // ─── Environment Parameter ───────────────────────────────────────────────────
+    const environmentParam = new cdk.CfnParameter(this, 'Environment', {
+      type: 'String',
+      default: 'dev',
+      allowedValues: ['dev', 'staging', 'production'],
+      description: 'Deployment environment (dev | staging | production)',
+    });
+    const environment = environmentParam.valueAsString;
+
     // ─── Cognito User Pool ──────────────────────────────────────────────────────
 
     const userPool = new cognito.UserPool(this, 'UserPool', {
@@ -324,6 +333,37 @@ export class AllianceRiskStack extends cdk.Stack {
     );
     webBucket.grantRead(originAccessIdentity);
 
+    // CloudFront Function: rewrite extensionless URLs to .html, block direct .txt access
+    const urlRewriteFunction = new cloudfront.Function(
+      this,
+      'UrlRewriteFunction',
+      {
+        functionName: `alliance-risk-url-rewrite-${environment}`,
+        code: cloudfront.FunctionCode.fromInline(`
+function handler(event) {
+  var request = event.request;
+  var uri = request.uri;
+  if (uri.endsWith('.txt')) {
+    var rscHeader = request.headers['rsc'];
+    if (!rscHeader || rscHeader.value !== '1') {
+      request.uri = uri.slice(0, -4) + '.html';
+    }
+    return request;
+  }
+  if (uri.endsWith('/') && uri !== '/') {
+    request.uri = uri.slice(0, -1) + '.html';
+    return request;
+  }
+  if (uri.includes('.')) {
+    return request;
+  }
+  request.uri = uri + '.html';
+  return request;
+}
+`),
+      },
+    );
+
     const webDistribution = new cloudfront.Distribution(
       this,
       'WebDistribution',
@@ -333,6 +373,12 @@ export class AllianceRiskStack extends cdk.Stack {
             originAccessIdentity,
           }),
           viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          functionAssociations: [
+            {
+              function: urlRewriteFunction,
+              eventType: cloudfront.FunctionEventType.VIEWER_REQUEST,
+            },
+          ],
         },
         errorResponses: [
           {

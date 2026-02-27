@@ -20,6 +20,7 @@
     "@aws-sdk/client-cognito-identity-provider": "^3.996.0",
     "@aws-sdk/client-lambda": "^3.996.0",
     "@aws-sdk/client-s3": "^3.996.0",
+    "@aws-sdk/client-textract": "^3.999.0",
     "@aws-sdk/s3-request-presigner": "^3.996.0",
     "@codegenie/serverless-express": "^4.17.1",
     "@nestjs/common": "^10.0.0",

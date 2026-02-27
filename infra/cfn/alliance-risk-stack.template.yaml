@@ -465,12 +465,23 @@ Resources:
         function handler(event) {
           var request = event.request;
           var uri = request.uri;
-          // If URI has an extension or ends with /, leave it alone
-          if (uri.includes('.') || uri.endsWith('/')) {
-            // Handle trailing slash: /login/ → /login.html
-            if (uri.endsWith('/') && uri !== '/') {
-              request.uri = uri.slice(0, -1) + '.html';
+          // Block direct browser navigation to .txt (RSC payload) files.
+          // Next.js client-side navigation sends RSC: 1 header with these requests.
+          // If a .txt is requested WITHOUT that header, serve .html instead.
+          if (uri.endsWith('.txt')) {
+            var rscHeader = request.headers['rsc'];
+            if (!rscHeader || rscHeader.value !== '1') {
+              request.uri = uri.slice(0, -4) + '.html';
             }
+            return request;
+          }
+          // Handle trailing slash: /login/ → /login.html
+          if (uri.endsWith('/') && uri !== '/') {
+            request.uri = uri.slice(0, -1) + '.html';
+            return request;
+          }
+          // Skip files with extensions (.js, .css, .png, etc.)
+          if (uri.includes('.')) {
             return request;
           }
           // Rewrite extensionless paths: /login → /login.html

@@ -22,6 +22,19 @@ const mockAssessment = {
   updatedAt: new Date(),
 };
 
+const mockDocument = {
+  id: 'doc-1',
+  assessmentId: 'assess-1',
+  fileName: 'plan.pdf',
+  s3Key: 'assessments/assess-1/documents/doc-1/plan.pdf',
+  mimeType: 'application/pdf',
+  fileSize: 1024,
+  status: 'PENDING_UPLOAD',
+  parseJobId: null,
+  errorMessage: null,
+  uploadedAt: new Date(),
+};
+
 const mockPrisma = {
   assessment: {
     create: jest.fn().mockResolvedValue(mockAssessment),
@@ -32,9 +45,10 @@ const mockPrisma = {
     count: jest.fn().mockResolvedValue(1),
   },
   assessmentDocument: {
-    create: jest.fn().mockResolvedValue({ id: 'doc-1', s3Key: '' }),
-    update: jest.fn().mockResolvedValue({}),
+    create: jest.fn().mockResolvedValue(mockDocument),
+    update: jest.fn().mockResolvedValue(mockDocument),
     findMany: jest.fn().mockResolvedValue([]),
+    findUnique: jest.fn().mockResolvedValue(mockDocument),
   },
   assessmentComment: {
     create: jest.fn().mockResolvedValue({ id: 'comment-1', content: 'Test' }),
@@ -119,6 +133,20 @@ describe('AssessmentsService', () => {
       expect(result.documentId).toBe('doc-1');
     });
 
+    it('should reject DOCX mime types (PDF-only)', async () => {
+      await expect(
+        service.requestUploadUrl(
+          'assess-1',
+          {
+            fileName: 'plan.docx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            fileSize: 1024,
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow('Only PDF files are allowed');
+    });
+
     it('should reject invalid mime types', async () => {
       await expect(
         service.requestUploadUrl(
@@ -127,6 +155,58 @@ describe('AssessmentsService', () => {
           'user-1',
         ),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('triggerParseDocument', () => {
+    beforeEach(() => {
+      mockPrisma.assessmentDocument.findUnique.mockResolvedValue(mockDocument);
+      mockPrisma.assessmentDocument.update.mockResolvedValue({ ...mockDocument, status: 'UPLOADED' });
+      mockJobs.create.mockResolvedValue('job-1');
+    });
+
+    it('should set document status to UPLOADED before creating job', async () => {
+      await service.triggerParseDocument('assess-1', 'doc-1', 'user-1');
+      const firstUpdate = mockPrisma.assessmentDocument.update.mock.calls[0][0];
+      expect(firstUpdate.data.status).toBe('UPLOADED');
+    });
+
+    it('should create job with assessmentId, documentId and s3Key', async () => {
+      await service.triggerParseDocument('assess-1', 'doc-1', 'user-1');
+      expect(mockJobs.create).toHaveBeenCalledWith(
+        'PARSE_DOCUMENT',
+        expect.objectContaining({
+          assessmentId: 'assess-1',
+          documentId: 'doc-1',
+          s3Key: mockDocument.s3Key,
+        }),
+        'user-1',
+      );
+    });
+
+    it('should link parseJobId on the document', async () => {
+      await service.triggerParseDocument('assess-1', 'doc-1', 'user-1');
+      const linkUpdate = mockPrisma.assessmentDocument.update.mock.calls[1][0];
+      expect(linkUpdate.data.parseJobId).toBe('job-1');
+    });
+
+    it('should update assessment status to ANALYZING', async () => {
+      await service.triggerParseDocument('assess-1', 'doc-1', 'user-1');
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith(
+        expect.objectContaining({ data: expect.objectContaining({ status: 'ANALYZING' }) }),
+      );
+    });
+
+    it('should return the job id', async () => {
+      const result = await service.triggerParseDocument('assess-1', 'doc-1', 'user-1');
+      expect(result).toBe('job-1');
+    });
+
+    it('should throw NotFoundException when document does not exist', async () => {
+      mockPrisma.assessmentDocument.findUnique.mockResolvedValue(null);
+      await expect(
+        service.triggerParseDocument('assess-1', 'bad-doc', 'user-1'),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 });

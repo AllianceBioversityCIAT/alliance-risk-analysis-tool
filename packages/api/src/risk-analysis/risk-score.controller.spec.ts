@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { RiskScoreController } from './risk-score.controller';
 import { RiskAnalysisService } from './risk-analysis.service';
 
-const mockUser = { id: 'user-1', email: 'test@example.com', isAdmin: false };
+const mockUser = { userId: 'user-1', cognitoId: 'cognito-1', email: 'test@example.com', username: 'testuser', isAdmin: false };
 
 const mockRiskScore = {
   id: 'score-1',

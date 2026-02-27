@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { GapFieldController } from './gap-field.controller';
 import { GapDetectionService } from './gap-detection.service';
 
-const mockUser = { id: 'user-1', email: 'test@example.com', isAdmin: false };
+const mockUser = { userId: 'user-1', cognitoId: 'cognito-1', email: 'test@example.com', username: 'testuser', isAdmin: false };
 
 const mockGapField = {
   id: 'gap-1',

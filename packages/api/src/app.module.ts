@@ -14,6 +14,7 @@ import { AssessmentsModule } from './assessments/assessments.module';
 import { GapDetectionModule } from './gap-detection/gap-detection.module';
 import { RiskAnalysisModule } from './risk-analysis/risk-analysis.module';
 import { ReportModule } from './report/report.module';
+import { TextractModule } from './textract/textract.module';
 import { CognitoService } from './auth/cognito.service';
 import { JwtAuthGuard, COGNITO_VERIFIER } from './common/guards/jwt-auth.guard';
 
@@ -34,6 +35,7 @@ import { JwtAuthGuard, COGNITO_VERIFIER } from './common/guards/jwt-auth.guard';
     GapDetectionModule,
     RiskAnalysisModule,
     ReportModule,
+    TextractModule,
   ],
   controllers: [AppController],
   providers: [

@@ -3,7 +3,7 @@ import { AssessmentsController } from './assessments.controller';
 import { AssessmentsService } from './assessments.service';
 import { IntakeMode, AssessmentStatus } from '@alliance-risk/shared';
 
-const mockUser = { id: 'user-1', email: 'test@example.com', isAdmin: false };
+const mockUser = { userId: 'user-1', cognitoId: 'cognito-1', email: 'test@example.com', username: 'testuser', isAdmin: false };
 
 const mockAssessment = {
   id: 'assess-1',
@@ -55,7 +55,7 @@ describe('AssessmentsController', () => {
       const dto = { name: 'Test', companyName: 'Test Co', intakeMode: IntakeMode.UPLOAD };
       const result = await controller.create(dto, mockUser);
       expect(result).toEqual(mockAssessment);
-      expect(mockService.create).toHaveBeenCalledWith(dto, mockUser.id);
+      expect(mockService.create).toHaveBeenCalledWith(dto, mockUser.userId);
     });
   });
 

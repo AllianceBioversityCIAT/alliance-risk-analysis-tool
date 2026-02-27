@@ -2,12 +2,7 @@ import { Controller, Get, Put, Post, Body, Param, ParseUUIDPipe } from '@nestjs/
 import { GapDetectionService } from './gap-detection.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UpdateGapFieldsDto } from './dto';
-
-interface AuthenticatedUser {
-  id: string;
-  email: string;
-  isAdmin: boolean;
-}
+import type { UserClaims } from '../common/guards/jwt-auth.guard';
 
 @Controller('assessments/:id/gap-fields')
 export class GapFieldController {
@@ -16,25 +11,25 @@ export class GapFieldController {
   @Get()
   findByAssessment(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.gapDetectionService.findByAssessment(id, user.id);
+    return this.gapDetectionService.findByAssessment(id, user.userId);
   }
 
   @Put()
   updateBatch(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateGapFieldsDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.gapDetectionService.updateBatch(id, dto, user.id);
+    return this.gapDetectionService.updateBatch(id, dto, user.userId);
   }
 
   @Post('submit')
   triggerRiskAnalysis(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.gapDetectionService.triggerRiskAnalysis(id, user.id);
+    return this.gapDetectionService.triggerRiskAnalysis(id, user.userId);
   }
 }

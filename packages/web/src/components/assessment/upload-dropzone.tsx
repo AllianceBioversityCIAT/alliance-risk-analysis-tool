@@ -4,9 +4,9 @@ import { useRef, useState, useCallback } from 'react';
 import { UploadCloud, FileText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { sileo } from 'sileo';
 
-const ACCEPTED_TYPES = ['application/pdf', 'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const ACCEPTED_TYPES = ['application/pdf'];
 const MAX_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
 
 export interface SelectedFile {
@@ -30,17 +30,21 @@ function formatBytes(bytes: number): string {
 export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const validateAndEmit = useCallback(
     (file: File) => {
-      setError(null);
       if (!ACCEPTED_TYPES.includes(file.type)) {
-        setError('Only PDF and Word documents (.pdf, .doc, .docx) are accepted.');
+        sileo.error({
+          title: 'Invalid file type',
+          description: 'Only PDF files (.pdf) are accepted.',
+        });
         return;
       }
       if (file.size > MAX_SIZE_BYTES) {
-        setError(`File is too large. Maximum size is 25 MB (your file: ${formatBytes(file.size)}).`);
+        sileo.error({
+          title: 'File too large',
+          description: `Maximum size is 25 MB. Your file is ${formatBytes(file.size)}.`,
+        });
         return;
       }
       onFileSelected({ file, name: file.name, size: file.size, mimeType: file.type });
@@ -66,57 +70,64 @@ export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropz
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) validateAndEmit(file);
-    // reset input so same file can be re-selected
+    // reset so same file can be re-selected
     e.target.value = '';
   };
 
   return (
-    <div className="space-y-2">
-      <div
-        role="button"
-        tabIndex={disabled ? -1 : 0}
-        aria-label="Upload file drop zone"
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        onClick={() => !disabled && inputRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && !disabled && inputRef.current?.click()}
-        className={cn(
-          'relative flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed p-8 cursor-pointer transition-colors',
-          isDragging
-            ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/50 hover:bg-muted/30',
-          disabled && 'cursor-not-allowed opacity-60 pointer-events-none',
-        )}
-      >
-        <UploadCloud className={cn('h-8 w-8', isDragging ? 'text-primary' : 'text-muted-foreground')} />
-        <div className="text-center">
-          <p className="text-sm font-medium text-foreground">
-            Drag &amp; drop your file here
-          </p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            or{' '}
-            <span className="text-primary underline underline-offset-2">browse files</span>
-          </p>
-        </div>
-        <p className="text-xs text-muted-foreground">PDF or Word document · Max 25 MB</p>
-
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,.doc,.docx"
-          className="sr-only"
-          onChange={handleInputChange}
-          disabled={disabled}
-        />
+    <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-label="Upload file drop zone"
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      onClick={() => !disabled && inputRef.current?.click()}
+      onKeyDown={(e) => e.key === 'Enter' && !disabled && inputRef.current?.click()}
+      className={cn(
+        'relative flex flex-col items-center justify-center gap-4 rounded-xl border-2 border-dashed p-10 cursor-pointer transition-colors',
+        isDragging
+          ? 'border-[#4CAF50] bg-[rgba(76,175,80,0.1)]'
+          : 'border-[rgba(76,175,80,0.3)] bg-[rgba(76,175,80,0.05)] hover:border-[#4CAF50] hover:bg-[rgba(76,175,80,0.08)]',
+        disabled && 'cursor-not-allowed opacity-60 pointer-events-none',
+      )}
+    >
+      {/* Cloud icon in white circle */}
+      <div className="flex items-center justify-center h-14 w-14 rounded-full bg-white shadow-md">
+        <UploadCloud className={cn('h-7 w-7', isDragging ? 'text-[#4CAF50]' : 'text-[#4CAF50]')} />
       </div>
 
-      {error && (
-        <div className="flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
-          <X className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
+      <div className="text-center space-y-1">
+        <p className="text-sm font-medium text-foreground">
+          Drag &amp; drop your PDF here
+        </p>
+        <p className="text-xs text-muted-foreground">
+          PDF only. Maximum file size 25MB.
+        </p>
+      </div>
+
+      {/* Browse button */}
+      <Button
+        type="button"
+        size="sm"
+        className="bg-[#4CAF50] hover:bg-[#43A047] text-white rounded-lg px-5"
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!disabled) inputRef.current?.click();
+        }}
+        disabled={disabled}
+      >
+        Browse Files
+      </Button>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".pdf"
+        className="sr-only"
+        onChange={handleInputChange}
+        disabled={disabled}
+      />
     </div>
   );
 }
@@ -133,8 +144,8 @@ export function FilePreview({ file, progress, onRemove }: FilePreviewProps) {
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
-      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <FileText className="h-4 w-4 text-primary" />
+      <div className="h-9 w-9 rounded-lg bg-[#F4F9F9] border border-[#FEE2E2] flex items-center justify-center shrink-0">
+        <FileText className="h-4 w-4 text-[#4CAF50]" />
       </div>
 
       <div className="flex-1 min-w-0">
@@ -147,7 +158,7 @@ export function FilePreview({ file, progress, onRemove }: FilePreviewProps) {
             <div
               className={cn(
                 'h-full rounded-full transition-all duration-300',
-                isDone ? 'bg-green-500' : 'bg-primary',
+                isDone ? 'bg-[#4CAF50]' : 'bg-[#E87722]',
               )}
               style={{ width: `${progress}%` }}
             />
@@ -157,7 +168,7 @@ export function FilePreview({ file, progress, onRemove }: FilePreviewProps) {
           <p className="text-xs text-muted-foreground mt-0.5">{progress}% uploaded...</p>
         )}
         {isDone && (
-          <p className="text-xs text-green-600 mt-0.5">Upload complete</p>
+          <p className="text-xs text-[#16A34A] mt-0.5">Upload complete</p>
         )}
       </div>
 

@@ -1,87 +1,62 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../database/prisma.service';
+import { TextractService } from '../../textract/textract.service';
 import type { JobHandler } from '../job-handler.interface';
+import type { ExtractionResult } from '@alliance-risk/shared';
 
 interface ParseDocumentInput {
   assessmentId: string;
   documentId: string;
+  s3Key: string;
 }
 
-interface ParseDocumentResult {
-  assessmentId: string;
-  documentId: string;
-  gapFieldsCreated: number;
-}
-
-/**
- * STUB handler for PARSE_DOCUMENT jobs.
- * Creates mock GapField records for all 7 risk categories.
- * Replace with actual Bedrock agent call when implementing the agent pipeline.
- */
 @Injectable()
 export class ParseDocumentHandler implements JobHandler {
   private readonly logger = new Logger(ParseDocumentHandler.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly textract: TextractService,
+    private readonly config: ConfigService,
+  ) {}
 
-  async execute(input: ParseDocumentInput): Promise<ParseDocumentResult> {
-    this.logger.log(`[STUB] Parsing document for assessment: ${input.assessmentId}`);
+  async execute(input: ParseDocumentInput): Promise<ExtractionResult> {
+    const { documentId, s3Key } = input;
 
-    const categories = [
-      'FINANCIAL',
-      'CLIMATE_ENVIRONMENTAL',
-      'BEHAVIORAL',
-      'OPERATIONAL',
-      'MARKET',
-      'GOVERNANCE_LEGAL',
-      'TECHNOLOGY_DATA',
-    ] as const;
+    this.logger.log(`Parsing document ${documentId} from s3Key: ${s3Key}`);
 
-    const stubFields = [
-      { field: 'annual_revenue', label: 'Annual Revenue', isMandatory: true },
-      { field: 'funding_stage', label: 'Funding Stage', isMandatory: true },
-      { field: 'debt_ratio', label: 'Debt-to-Equity Ratio', isMandatory: false },
-      { field: 'cash_runway', label: 'Cash Runway (months)', isMandatory: false },
-      { field: 'profit_margin', label: 'Profit Margin (%)', isMandatory: false },
-    ];
-
-    let totalCreated = 0;
-
-    for (const category of categories) {
-      for (let i = 0; i < stubFields.length; i++) {
-        const field = stubFields[i];
-        try {
-          await this.prisma.gapField.create({
-            data: {
-              assessmentId: input.assessmentId,
-              category,
-              field: `${category.toLowerCase()}_${field.field}`,
-              label: field.label,
-              extractedValue: Math.random() > 0.4 ? `Mock extracted value for ${field.label}` : null,
-              status: Math.random() > 0.4 ? 'PARTIAL' : 'MISSING',
-              isMandatory: field.isMandatory && category === 'FINANCIAL',
-              order: i,
-            },
-          });
-          totalCreated++;
-        } catch {
-          // Field may already exist (idempotency)
-        }
-      }
-    }
-
-    // Update assessment status to ACTION_REQUIRED (gaps need review)
-    await this.prisma.assessment.update({
-      where: { id: input.assessmentId },
-      data: { status: 'ACTION_REQUIRED', progress: 30 },
+    // Step 1: Mark document as PARSING
+    await this.prisma.assessmentDocument.update({
+      where: { id: documentId },
+      data: { status: 'PARSING' },
     });
 
-    this.logger.log(`[STUB] Created ${totalCreated} gap fields for assessment ${input.assessmentId}`);
+    // Step 2: Run Textract analysis
+    const s3Bucket = this.config.get<string>('S3_BUCKET') ?? '';
+    const result = await this.textract.analyzeDocument(s3Bucket, s3Key);
 
-    return {
-      assessmentId: input.assessmentId,
-      documentId: input.documentId,
-      gapFieldsCreated: totalCreated,
-    };
+    // Step 3: Mark document as PARSED
+    await this.prisma.assessmentDocument.update({
+      where: { id: documentId },
+      data: { status: 'PARSED', errorMessage: null },
+    });
+
+    this.logger.log(
+      `Document ${documentId} parsed successfully. Pages: ${result.pages}, text length: ${result.textContent.length}`,
+    );
+
+    return result;
+  }
+
+  async onFailure(documentId: string, error: Error): Promise<void> {
+    this.logger.error(`Document ${documentId} parse failed: ${error.message}`);
+    await this.prisma.assessmentDocument.update({
+      where: { id: documentId },
+      data: {
+        status: 'FAILED',
+        errorMessage: error.message,
+      },
+    });
   }
 }

@@ -171,6 +171,15 @@ export class JobsService {
 
       if (attempts >= maxAttempts) {
         await this.updateStatus(jobId, JobStatus.FAILED, undefined, errorMsg);
+
+        // Notify handler of permanent failure (e.g. update document status)
+        if (job.type === JobType.PARSE_DOCUMENT && 'onFailure' in this.parseDocumentHandler) {
+          const input = job.input as { documentId?: string };
+          if (input.documentId) {
+            await (this.parseDocumentHandler as unknown as { onFailure(id: string, err: Error): Promise<void> })
+              .onFailure(input.documentId, err instanceof Error ? err : new Error(errorMsg));
+          }
+        }
       } else {
         // Reset to PENDING for retry
         await this.updateStatus(jobId, JobStatus.PENDING);

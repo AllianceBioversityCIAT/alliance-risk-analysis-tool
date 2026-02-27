@@ -1,6 +1,7 @@
 // Enums
 export { AgentSection, AGENT_SECTION_LABELS } from './enums/agent-section.enum';
 export { AssessmentStatus } from './enums/assessment-status.enum';
+export { DocumentStatus } from './enums/document-status.enum';
 export { IntakeMode } from './enums/intake-mode.enum';
 export { RiskLevel } from './enums/risk-level.enum';
 export { GapFieldStatus } from './enums/gap-field-status.enum';
@@ -32,6 +33,12 @@ export type {
   AssessmentCommentResponse,
 } from './types/risk-score.types';
 export type { ReportResponse } from './types/report.types';
+export type {
+  DocumentInfo,
+  UploadUrlResponse,
+  ExtractionResult,
+  ExtractedTable,
+} from './types/document.types';
 
 // Constants
 export { BEDROCK_MODELS } from './constants/bedrock.config';

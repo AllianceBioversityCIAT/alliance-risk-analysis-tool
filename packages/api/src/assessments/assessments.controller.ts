@@ -21,11 +21,7 @@ import {
   CreateAssessmentCommentDto,
 } from './dto';
 
-interface AuthenticatedUser {
-  id: string;
-  email: string;
-  isAdmin: boolean;
-}
+import type { UserClaims } from '../common/guards/jwt-auth.guard';
 
 @Controller('assessments')
 export class AssessmentsController {
@@ -34,82 +30,82 @@ export class AssessmentsController {
   @Post()
   create(
     @Body() dto: CreateAssessmentDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.create(dto, user.id);
+    return this.assessmentsService.create(dto, user.userId);
   }
 
   @Get()
   findAll(
     @Query() query: ListAssessmentsQueryDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.findAll(user.id, query);
+    return this.assessmentsService.findAll(user.userId, query);
   }
 
   @Get('stats')
-  getStats(@CurrentUser() user: AuthenticatedUser) {
-    return this.assessmentsService.getStats(user.id);
+  getStats(@CurrentUser() user: UserClaims) {
+    return this.assessmentsService.getStats(user.userId);
   }
 
   @Get(':id')
   findOne(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.findOne(id, user.id);
+    return this.assessmentsService.findOne(id, user.userId);
   }
 
   @Put(':id')
   update(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: UpdateAssessmentDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.update(id, dto, user.id);
+    return this.assessmentsService.update(id, dto, user.userId);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
   delete(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.delete(id, user.id);
+    return this.assessmentsService.delete(id, user.userId);
   }
 
   @Post(':id/documents')
   requestUploadUrl(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: RequestUploadDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.requestUploadUrl(id, dto, user.id);
+    return this.assessmentsService.requestUploadUrl(id, dto, user.userId);
   }
 
   @Post(':id/documents/:documentId/parse')
   triggerParse(
     @Param('id', ParseUUIDPipe) id: string,
     @Param('documentId') documentId: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.triggerParseDocument(id, documentId, user.id);
+    return this.assessmentsService.triggerParseDocument(id, documentId, user.userId);
   }
 
   @Post(':id/comments')
   addComment(
     @Param('id', ParseUUIDPipe) id: string,
     @Body() dto: CreateAssessmentCommentDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.addComment(id, dto, user.id);
+    return this.assessmentsService.addComment(id, dto, user.userId);
   }
 
   @Get(':id/comments')
   getComments(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.assessmentsService.getComments(id, user.id);
+    return this.assessmentsService.getComments(id, user.userId);
   }
 }

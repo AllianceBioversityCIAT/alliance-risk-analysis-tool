@@ -41,6 +41,14 @@ enum PromptChangeType {
   DEACTIVATE
 }
 
+enum DocumentStatus {
+  PENDING_UPLOAD
+  UPLOADED
+  PARSING
+  PARSED
+  FAILED
+}
+
 // ─── Models ─────────────────────────────────────────────
 
 /// Lightweight sync of Cognito user for FK references.
@@ -193,6 +201,9 @@ model Job {
   completedAt DateTime? @map("completed_at")
   updatedAt   DateTime  @updatedAt @map("updated_at")
 
+  // Reverse relation — set when job is created for document parsing
+  document AssessmentDocument?
+
   @@index([status, createdAt])
   @@map("jobs")
 }
@@ -273,16 +284,20 @@ model Assessment {
 }
 
 model AssessmentDocument {
-  id           String   @id @default(uuid())
-  assessmentId String   @map("assessment_id")
-  fileName     String   @map("file_name") @db.VarChar(255)
-  s3Key        String   @map("s3_key") @db.VarChar(500)
-  mimeType     String   @map("mime_type") @db.VarChar(50)
-  fileSize     Int      @map("file_size")
-  uploadedAt   DateTime @default(now()) @map("uploaded_at")
+  id           String         @id @default(uuid())
+  assessmentId String         @map("assessment_id")
+  fileName     String         @map("file_name") @db.VarChar(255)
+  s3Key        String         @map("s3_key") @db.VarChar(500)
+  mimeType     String         @map("mime_type") @db.VarChar(50)
+  fileSize     Int            @map("file_size")
+  status       DocumentStatus @default(PENDING_UPLOAD)
+  parseJobId   String?        @unique @map("parse_job_id")
+  errorMessage String?        @map("error_message") @db.Text
+  uploadedAt   DateTime       @default(now()) @map("uploaded_at")
 
   // Relations
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  parseJob   Job?       @relation(fields: [parseJobId], references: [id])
 
   @@index([assessmentId])
   @@map("assessment_documents")

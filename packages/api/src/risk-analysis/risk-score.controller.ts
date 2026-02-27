@@ -2,12 +2,7 @@ import { Controller, Get, Put, Body, Param, ParseUUIDPipe } from '@nestjs/common
 import { RiskAnalysisService } from './risk-analysis.service';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { UpdateRecommendationDto } from './dto';
-
-interface AuthenticatedUser {
-  id: string;
-  email: string;
-  isAdmin: boolean;
-}
+import type { UserClaims } from '../common/guards/jwt-auth.guard';
 
 @Controller('assessments/:id')
 export class RiskScoreController {
@@ -16,9 +11,9 @@ export class RiskScoreController {
   @Get('risk-scores')
   findByAssessment(
     @Param('id', ParseUUIDPipe) id: string,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.riskAnalysisService.findByAssessment(id, user.id);
+    return this.riskAnalysisService.findByAssessment(id, user.userId);
   }
 
   @Put('recommendations/:recId')
@@ -26,8 +21,8 @@ export class RiskScoreController {
     @Param('id', ParseUUIDPipe) id: string,
     @Param('recId') recId: string,
     @Body() dto: UpdateRecommendationDto,
-    @CurrentUser() user: AuthenticatedUser,
+    @CurrentUser() user: UserClaims,
   ) {
-    return this.riskAnalysisService.editRecommendation(id, recId, dto, user.id);
+    return this.riskAnalysisService.editRecommendation(id, recId, dto, user.userId);
   }
 }

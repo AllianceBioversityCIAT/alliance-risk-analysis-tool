@@ -9,9 +9,10 @@ import { ReportGenerationHandler } from './handlers/report-generation.handler';
 import { BedrockModule } from '../bedrock/bedrock.module';
 import { DatabaseModule } from '../database/database.module';
 import { StorageModule } from '../storage/storage.module';
+import { TextractModule } from '../textract/textract.module';
 
 @Module({
-  imports: [DatabaseModule, BedrockModule, StorageModule],
+  imports: [DatabaseModule, BedrockModule, StorageModule, TextractModule],
   providers: [
     JobsService,
     AiPreviewHandler,

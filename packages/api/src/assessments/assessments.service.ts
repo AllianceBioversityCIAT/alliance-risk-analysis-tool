@@ -17,7 +17,7 @@ import {
 } from './dto';
 import type { Assessment, AssessmentDocument, AssessmentComment } from '@prisma/client';
 
-const ALLOWED_MIME_TYPES = ['application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+const ALLOWED_MIME_TYPES = ['application/pdf'];
 
 @Injectable()
 export class AssessmentsService {
@@ -122,7 +122,7 @@ export class AssessmentsService {
     await this.findOne(id, userId); // Ownership check
 
     if (!ALLOWED_MIME_TYPES.includes(dto.mimeType)) {
-      throw new BadRequestException('Only PDF and DOCX files are allowed');
+      throw new BadRequestException('Only PDF files are allowed');
     }
 
     // Create the document record first to get an ID for the S3 key
@@ -162,16 +162,40 @@ export class AssessmentsService {
 
   async triggerParseDocument(id: string, documentId: string, userId: string): Promise<string> {
     await this.findOne(id, userId);
+
+    // Fetch the document to get the s3Key
+    const document = await this.prisma.assessmentDocument.findUnique({
+      where: { id: documentId },
+    });
+    if (!document) {
+      throw new NotFoundException('Document not found');
+    }
+
+    // Mark document as UPLOADED before creating the job
+    await this.prisma.assessmentDocument.update({
+      where: { id: documentId },
+      data: { status: 'UPLOADED' },
+    });
+
+    // Create the job with assessmentId, documentId, and s3Key in input
     const jobId = await this.jobsService.create(
       JobType.PARSE_DOCUMENT,
-      { assessmentId: id, documentId },
+      { assessmentId: id, documentId, s3Key: document.s3Key },
       userId,
     );
+
+    // Link the job back to the document
+    await this.prisma.assessmentDocument.update({
+      where: { id: documentId },
+      data: { parseJobId: jobId },
+    });
+
     // Update assessment status to ANALYZING
     await this.prisma.assessment.update({
       where: { id },
       data: { status: 'ANALYZING' },
     });
+
     return jobId;
   }
 
