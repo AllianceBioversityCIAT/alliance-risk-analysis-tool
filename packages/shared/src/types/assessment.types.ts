@@ -9,6 +9,7 @@ export interface AssessmentSummary {
   status: AssessmentStatus;
   intakeMode: IntakeMode;
   progress: number;
+  version: number;
   overallRiskScore: number | null;
   overallRiskLevel: RiskLevel | null;
   updatedAt: string;

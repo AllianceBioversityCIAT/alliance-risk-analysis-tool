@@ -263,6 +263,7 @@ model Assessment {
   status           AssessmentStatus @default(DRAFT)
   intakeMode       IntakeMode       @map("intake_mode")
   progress         Int              @default(0)
+  version          Int              @default(1)
   overallRiskScore Float?           @map("overall_risk_score")
   overallRiskLevel RiskLevel?       @map("overall_risk_level")
   userId           String           @map("user_id")

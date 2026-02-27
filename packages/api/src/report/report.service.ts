@@ -47,6 +47,7 @@ export class ReportService {
         status: assessment.status as unknown as import('@alliance-risk/shared').AssessmentStatus,
         intakeMode: assessment.intakeMode as unknown as import('@alliance-risk/shared').IntakeMode,
         progress: assessment.progress,
+        version: assessment.version,
         overallRiskScore: assessment.overallRiskScore,
         overallRiskLevel: assessment.overallRiskLevel as unknown as import('@alliance-risk/shared').RiskLevel | null,
         updatedAt: assessment.updatedAt.toISOString(),

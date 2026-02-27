@@ -18,6 +18,7 @@ export interface AssessmentRowData {
   id: string;
   name: string;
   companyName: string;
+  companyType?: string;
   status: string;
   progress: number;
   updatedAt: string;
@@ -28,6 +29,7 @@ interface AssessmentTableRowProps {
   onView?: (id: string) => void;
   onEdit?: (id: string) => void;
   onDelete?: (id: string) => void;
+  onResume?: (assessment: AssessmentRowData) => void;
 }
 
 function formatDate(dateStr: string): string {
@@ -43,6 +45,7 @@ export function AssessmentTableRow({
   onView,
   onEdit,
   onDelete,
+  onResume,
 }: AssessmentTableRowProps) {
   const statusKey = assessment.status.toLowerCase().replace(/ /g, '_') as AssessmentStatus;
 
@@ -94,6 +97,11 @@ export function AssessmentTableRow({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            {assessment.status === 'DRAFT' && onResume && (
+              <DropdownMenuItem onClick={() => onResume(assessment)}>
+                Resume
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onClick={() => onView?.(assessment.id)}>
               View
             </DropdownMenuItem>

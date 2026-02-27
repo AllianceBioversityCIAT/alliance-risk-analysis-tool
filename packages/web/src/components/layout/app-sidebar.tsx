@@ -8,6 +8,7 @@ import {
   Shield,
   LogOut,
   ChevronUp,
+  ShieldCheck,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -68,24 +69,45 @@ export function AppSidebar() {
       className="border-r-0"
       style={{ '--sidebar-width': '256px' } as React.CSSProperties}
     >
-      {/* Logo area */}
+      {/* ── Brand / Logo ─────────────────────────────────────────────────────── */}
       <SidebarHeader
-        className={cn(
-          'h-16 flex items-center p-0',
-          isCollapsed ? 'justify-center' : 'px-6',
-        )}
+        className="p-0 flex-shrink-0"
         style={{ backgroundColor: 'var(--sidebar)' }}
       >
         {isCollapsed ? (
-          <span className="text-white font-bold text-lg">AR</span>
+          /* Collapsed: centred icon monogram */
+          <div className="flex items-center justify-center h-14 w-full">
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-white/15">
+              <ShieldCheck className="h-4 w-4 text-white" strokeWidth={2} />
+            </div>
+          </div>
         ) : (
-          <span className="text-white font-bold text-lg tracking-tight">
-            Alliance Risk
-          </span>
+          /* Expanded: full brand lockup flush to top */
+          <div className="flex items-center gap-2.5 px-5 pt-5 pb-4">
+            {/* Shield icon as logomark */}
+            <div className="flex items-center justify-center h-8 w-8 rounded-lg bg-white/15 shrink-0">
+              <ShieldCheck className="h-4 w-4 text-white" strokeWidth={2} />
+            </div>
+            {/* Wordmark */}
+            <div className="flex flex-col leading-none">
+              <span className="text-white font-bold text-[15px] tracking-tight">
+                Alliance Risk
+              </span>
+              <span className="text-[10px] font-medium tracking-widest uppercase text-white/50 mt-0.5">
+                Intelligence
+              </span>
+            </div>
+          </div>
         )}
+
+        {/* Separator between brand and nav */}
+        <div
+          className="mx-3 mb-1"
+          style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.10)' }}
+        />
       </SidebarHeader>
 
-      {/* Navigation */}
+      {/* ── Navigation ───────────────────────────────────────────────────────── */}
       <SidebarContent style={{ backgroundColor: 'var(--sidebar)' }}>
         <SidebarGroup className="px-3 py-2">
           <SidebarGroupContent>
@@ -108,7 +130,7 @@ export function AppSidebar() {
                       )}
                     >
                       <Link href={item.href}>
-                        {/* Orange left indicator for active item */}
+                        {/* Orange active indicator */}
                         {isActive && !isCollapsed && (
                           <span
                             className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
@@ -127,12 +149,11 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      {/* Bottom: User profile */}
+      {/* ── Footer: user profile ─────────────────────────────────────────────── */}
       <SidebarFooter
         className="px-3 pb-4"
         style={{ backgroundColor: 'var(--sidebar)' }}
       >
-        {/* User profile card — hidden when collapsed */}
         {user && !isCollapsed && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -156,11 +177,7 @@ export function AppSidebar() {
                 <ChevronUp className="h-4 w-4 text-[#CCFBF1] shrink-0" />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="top"
-              align="start"
-              className="w-56 mb-1"
-            >
+            <DropdownMenuContent side="top" align="start" className="w-56 mb-1">
               <DropdownMenuItem
                 onClick={logout}
                 className="text-destructive focus:text-destructive cursor-pointer"
@@ -172,13 +189,10 @@ export function AppSidebar() {
           </DropdownMenu>
         )}
 
-        {/* Collapsed: show avatar-only logout button */}
         {user && isCollapsed && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button
-                className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 mx-auto"
-              >
+              <button className="flex items-center justify-center w-8 h-8 rounded-lg transition-colors hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/40 mx-auto">
                 <AvatarInitials
                   name={user.email ?? user.username ?? 'User'}
                   withRing
@@ -186,11 +200,7 @@ export function AppSidebar() {
                 />
               </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent
-              side="right"
-              align="end"
-              className="w-56 mb-1"
-            >
+            <DropdownMenuContent side="right" align="end" className="w-56 mb-1">
               <DropdownMenuItem
                 onClick={logout}
                 className="text-destructive focus:text-destructive cursor-pointer"

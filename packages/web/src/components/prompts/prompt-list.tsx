@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { Plus, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Plus, ChevronLeft, ChevronRight, Download, Upload } from 'lucide-react';
 import type { PromptSummary } from '@alliance-risk/shared';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -13,10 +13,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { usePrompts, useToggleActive, useDeletePrompt } from '@/hooks/use-prompts';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { usePrompts, useToggleActive, useDeletePrompt, useExportPrompts } from '@/hooks/use-prompts';
 import type { PromptFilters } from '@/hooks/use-prompts';
 import { PromptFiltersBar } from './prompt-filters';
 import { PromptCard } from './prompt-card';
+import { PromptImportDialog } from './prompt-import-dialog';
 
 const PAGE_SIZE = 12;
 
@@ -25,10 +32,12 @@ export function PromptList() {
   const [filters, setFilters] = useState<PromptFilters>({});
   const [page, setPage] = useState(1);
   const [deleteTarget, setDeleteTarget] = useState<PromptSummary | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   const { data, isLoading, isError } = usePrompts(filters, page, PAGE_SIZE);
   const toggleActive = useToggleActive();
   const deletePrompt = useDeletePrompt();
+  const exportPrompts = useExportPrompts();
 
   const totalPages = data ? Math.ceil(data.total / PAGE_SIZE) : 0;
 
@@ -67,10 +76,32 @@ export function PromptList() {
             Manage AI prompts for each agent section
           </p>
         </div>
-        <Button onClick={() => router.push('/admin/prompt-manager/create')}>
-          <Plus className="mr-2 h-4 w-4" />
-          Create New Prompt
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setImportOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            Import
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => exportPrompts.mutate('json')}>
+                Export JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => exportPrompts.mutate('csv')}>
+                Export CSV
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button onClick={() => router.push('/admin/prompt-manager/create')}>
+            <Plus className="mr-2 h-4 w-4" />
+            Create New Prompt
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -167,6 +198,9 @@ export function PromptList() {
           )}
         </>
       )}
+
+      {/* Import Dialog */}
+      <PromptImportDialog open={importOpen} onOpenChange={setImportOpen} />
 
       {/* Delete Confirmation */}
       <Dialog open={!!deleteTarget} onOpenChange={(open) => { if (!open) setDeleteTarget(null); }}>

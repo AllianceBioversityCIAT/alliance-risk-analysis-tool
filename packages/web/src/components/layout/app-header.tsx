@@ -1,6 +1,6 @@
 'use client';
 
-import { Bell, ChevronDown, Plus, Search } from 'lucide-react';
+import { Bell, ChevronDown, Plus, Search, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -16,12 +16,24 @@ interface AppHeaderProps {
   title: string;
   onStartAssessment?: () => void;
   className?: string;
+  /** Controlled search value — when provided, the search bar is functional */
+  searchQuery?: string;
+  /** Called on every keystroke — parent is responsible for debouncing */
+  onSearch?: (value: string) => void;
 }
 
 // MVP: Kenya only
 const CONTEXT_OPTIONS = [{ label: 'Kenya', flag: '🇰🇪' }];
 
-export function AppHeader({ title, onStartAssessment, className }: AppHeaderProps) {
+export function AppHeader({
+  title,
+  onStartAssessment,
+  className,
+  searchQuery = '',
+  onSearch,
+}: AppHeaderProps) {
+  const hasSearch = onSearch !== undefined;
+
   return (
     <header
       className={cn(
@@ -29,7 +41,7 @@ export function AppHeader({ title, onStartAssessment, className }: AppHeaderProp
         className,
       )}
     >
-      {/* Sidebar toggle trigger */}
+      {/* Sidebar toggle */}
       <SidebarTrigger className="-ml-2" />
 
       {/* Left: Title + divider + context selector */}
@@ -72,13 +84,33 @@ export function AppHeader({ title, onStartAssessment, className }: AppHeaderProp
 
         <span className="w-px h-6 bg-border shrink-0" />
 
-        {/* Search input */}
+        {/* Search input — functional when onSearch is provided, decorative otherwise */}
         <div className="relative hidden sm:block">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
-            placeholder="Search..."
-            className="h-9 w-64 pl-8 bg-[#F9FAFB] border-border rounded-lg text-sm"
+            placeholder="Search assessments..."
+            value={searchQuery}
+            onChange={hasSearch ? (e) => onSearch(e.target.value) : undefined}
+            readOnly={!hasSearch}
+            aria-label="Search assessments"
+            className={cn(
+              'h-9 pl-8 bg-[#F9FAFB] border-border rounded-lg text-sm transition-all',
+              // Widen slightly when active to fit the clear button
+              searchQuery ? 'w-72 pr-8' : 'w-64',
+              !hasSearch && 'cursor-default',
+            )}
           />
+          {/* Clear button — only shown when there is a query */}
+          {hasSearch && searchQuery && (
+            <button
+              type="button"
+              aria-label="Clear search"
+              onClick={() => onSearch('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center h-5 w-5 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          )}
         </div>
 
         {/* Notification bell */}

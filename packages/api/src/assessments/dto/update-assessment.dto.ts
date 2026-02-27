@@ -26,4 +26,9 @@ export class UpdateAssessmentDto {
   @Min(0)
   @Max(100)
   progress?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  version?: number;
 }

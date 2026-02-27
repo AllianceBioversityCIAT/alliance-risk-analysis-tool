@@ -7,11 +7,13 @@ import {
   Param,
   Body,
   Query,
+  Res,
   UseGuards,
   HttpCode,
   HttpStatus,
   BadRequestException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import {
   ApiTags,
   ApiOperation,
@@ -33,6 +35,7 @@ import { CreatePromptDto } from './dto/create-prompt.dto';
 import { UpdatePromptDto } from './dto/update-prompt.dto';
 import { ListPromptsQueryDto } from './dto/list-prompts-query.dto';
 import { PromptPreviewDto } from './dto/prompt-preview.dto';
+import { BulkImportDto } from './dto/bulk-import.dto';
 
 @ApiTags('Prompts (Admin)')
 @ApiBearerAuth('cognito-jwt')
@@ -69,6 +72,55 @@ export class PromptsController {
   async create(@Body() dto: CreatePromptDto, @CurrentUser() user: UserInfo) {
     const prompt = await this.promptsService.create(dto, user.userId);
     return { data: prompt };
+  }
+
+  // GET /api/admin/prompts/export
+  @Get('export')
+  @ApiOperation({ summary: 'Export all prompts', description: 'Exports all prompts as JSON or CSV file attachment.' })
+  @ApiQuery({ name: 'format', required: false, enum: ['json', 'csv'], description: 'Export format (default: json)' })
+  @ApiResponse({ status: 200, description: 'File download' })
+  async exportAll(
+    @Query('format') format: string = 'json',
+    @Res() res: Response,
+  ) {
+    const prompts = await this.promptsService.exportAll();
+    const timestamp = new Date().toISOString().split('T')[0];
+
+    if (format === 'csv') {
+      const headers = ['id', 'name', 'section', 'subSection', 'route', 'categories', 'tags', 'version', 'isActive', 'systemPrompt', 'userPromptTemplate', 'tone', 'outputFormat', 'createdAt', 'updatedAt'];
+      const csvRows = [headers.join(',')];
+      for (const p of prompts) {
+        const row = headers.map((h) => {
+          const val = (p as Record<string, unknown>)[h];
+          if (val === null || val === undefined) return '';
+          if (Array.isArray(val)) return `"${val.join(';')}"`;
+          const str = String(val);
+          return str.includes(',') || str.includes('"') || str.includes('\n')
+            ? `"${str.replace(/"/g, '""')}"`
+            : str;
+        });
+        csvRows.push(row.join(','));
+      }
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', `attachment; filename="prompts-${timestamp}.csv"`);
+      return res.send(csvRows.join('\n'));
+    }
+
+    // Default: JSON
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="prompts-${timestamp}.json"`);
+    return res.json({ data: prompts });
+  }
+
+  // POST /api/admin/prompts/import
+  @Post('import')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Bulk import prompts', description: 'Imports prompts from a JSON payload. Supports create_new (skip existing) and upsert (update matching) modes.' })
+  @ApiBody({ type: BulkImportDto })
+  @ApiResponse({ status: 200, description: 'Import results with created/updated/error counts' })
+  async importBulk(@Body() dto: BulkImportDto, @CurrentUser() user: UserInfo) {
+    const result = await this.promptsService.importBulk(dto, user.userId);
+    return { data: result };
   }
 
   // POST /api/admin/prompts/preview — async via JobsService

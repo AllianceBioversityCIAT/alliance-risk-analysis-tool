@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   BadRequestException,
+  ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../database/prisma.service';
 import { StorageService } from '../storage/storage.service';
@@ -87,15 +88,43 @@ export class AssessmentsService {
 
   async update(id: string, dto: UpdateAssessmentDto, userId: string): Promise<Assessment> {
     await this.findOne(id, userId); // Ownership check
+
+    const updateData = {
+      ...(dto.name && { name: dto.name }),
+      ...(dto.companyName && { companyName: dto.companyName }),
+      ...(dto.companyType !== undefined && { companyType: dto.companyType }),
+      ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
+      ...(dto.progress !== undefined && { progress: dto.progress }),
+      version: { increment: 1 },
+    };
+
+    // Optimistic locking: if version is provided, verify it matches
+    if (dto.version !== undefined) {
+      const result = await this.prisma.assessment.updateMany({
+        where: { id, version: dto.version },
+        data: {
+          ...(dto.name && { name: dto.name }),
+          ...(dto.companyName && { companyName: dto.companyName }),
+          ...(dto.companyType !== undefined && { companyType: dto.companyType }),
+          ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
+          ...(dto.progress !== undefined && { progress: dto.progress }),
+          version: dto.version + 1,
+        },
+      });
+
+      if (result.count === 0) {
+        throw new ConflictException(
+          'Assessment was modified by another user. Please refresh and try again.',
+        );
+      }
+
+      return this.prisma.assessment.findUniqueOrThrow({ where: { id } });
+    }
+
+    // No version provided — backward compatible, skip conflict check
     return this.prisma.assessment.update({
       where: { id },
-      data: {
-        ...(dto.name && { name: dto.name }),
-        ...(dto.companyName && { companyName: dto.companyName }),
-        ...(dto.companyType !== undefined && { companyType: dto.companyType }),
-        ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
-        ...(dto.progress !== undefined && { progress: dto.progress }),
-      },
+      data: updateData,
     });
   }
 

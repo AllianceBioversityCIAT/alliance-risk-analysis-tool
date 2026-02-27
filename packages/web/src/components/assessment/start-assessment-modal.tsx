@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -30,9 +30,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { IntakeModeCard, FormatBadges, FeatureList } from './intake-mode-card';
-import { useCreateAssessment } from '@/hooks/use-assessments';
+import { useCreateAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { IntakeMode } from '@alliance-risk/shared';
 import { cn } from '@/lib/utils';
+import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
 
 const COMPANY_TYPES = [
   'Startup',
@@ -55,30 +56,70 @@ type BusinessInfoFormValues = z.infer<typeof businessInfoSchema>;
 interface StartAssessmentModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  draftAssessment?: AssessmentRowData | null;
 }
 
 type Step = 'business-info' | 'intake-mode';
 
-export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModalProps) {
+export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: StartAssessmentModalProps) {
   const router = useRouter();
   const [step, setStep] = useState<Step>('business-info');
   const [selectedMode, setSelectedMode] = useState<IntakeMode | null>(null);
   const [formValues, setFormValues] = useState<BusinessInfoFormValues | null>(null);
 
-  const { mutateAsync: createAssessment, isPending } = useCreateAssessment();
+  const { mutateAsync: createAssessment, isPending: isCreating } = useCreateAssessment();
+  const { mutateAsync: updateAssessment, isPending: isUpdating } = useUpdateAssessment();
+  const isPending = isCreating || isUpdating;
+
+  const isResumingDraft = !!draftAssessment;
 
   const form = useForm<BusinessInfoFormValues>({
     resolver: zodResolver(businessInfoSchema),
-    defaultValues: { name: '', companyName: '', companyType: '' },
+    defaultValues: draftAssessment
+      ? {
+          name: draftAssessment.name,
+          companyName: draftAssessment.companyName,
+          companyType: draftAssessment.companyType ?? '',
+        }
+      : { name: '', companyName: '', companyType: '' },
   });
 
-  function handleClose() {
+  // Reset form values when draftAssessment changes
+  useEffect(() => {
+    if (draftAssessment) {
+      form.reset({
+        name: draftAssessment.name,
+        companyName: draftAssessment.companyName,
+        companyType: draftAssessment.companyType ?? '',
+      });
+    }
+  }, [draftAssessment, form]);
+
+  async function handleClose() {
+    // If form has valid data and not resuming an existing draft, save as new draft
+    const currentValues = form.getValues();
+    const hasData = currentValues.name.length >= 2 && currentValues.companyName.length >= 2;
+
+    if (hasData && !isResumingDraft) {
+      try {
+        await createAssessment({
+          name: currentValues.name,
+          companyName: currentValues.companyName,
+          companyType: currentValues.companyType || undefined,
+          country: 'Kenya',
+          intakeMode: IntakeMode.UPLOAD, // Default mode for drafts
+        });
+      } catch {
+        // Silent fail — don't block close
+      }
+    }
+
     onOpenChange(false);
     setTimeout(() => {
       setStep('business-info');
       setSelectedMode(null);
       setFormValues(null);
-      form.reset();
+      form.reset({ name: '', companyName: '', companyType: '' });
     }, 300);
   }
 
@@ -92,25 +133,49 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
     if (!formValues) return;
 
     try {
-      const assessment = await createAssessment({
-        name: formValues.name,
-        companyName: formValues.companyName,
-        companyType: formValues.companyType,
-        country: 'Kenya',
-        intakeMode: mode,
-      });
+      let assessmentId: string;
 
-      handleClose();
+      if (isResumingDraft && draftAssessment) {
+        // Update existing draft
+        await updateAssessment({
+          id: draftAssessment.id,
+          data: {
+            name: formValues.name,
+            companyName: formValues.companyName,
+            companyType: formValues.companyType,
+          },
+        });
+        assessmentId = draftAssessment.id;
+      } else {
+        // Create new assessment
+        const assessment = await createAssessment({
+          name: formValues.name,
+          companyName: formValues.companyName,
+          companyType: formValues.companyType,
+          country: 'Kenya',
+          intakeMode: mode,
+        });
+        assessmentId = assessment.id;
+      }
+
+      // Close without saving draft again
+      onOpenChange(false);
+      setTimeout(() => {
+        setStep('business-info');
+        setSelectedMode(null);
+        setFormValues(null);
+        form.reset({ name: '', companyName: '', companyType: '' });
+      }, 300);
 
       switch (mode) {
         case IntakeMode.UPLOAD:
-          router.push(`/assessments/upload?id=${assessment.id}`);
+          router.push(`/assessments/upload?id=${assessmentId}`);
           break;
         case IntakeMode.GUIDED_INTERVIEW:
-          router.push(`/assessments/interview?id=${assessment.id}`);
+          router.push(`/assessments/interview?id=${assessmentId}`);
           break;
         case IntakeMode.MANUAL_ENTRY:
-          router.push(`/assessments/manual-entry?id=${assessment.id}`);
+          router.push(`/assessments/manual-entry?id=${assessmentId}`);
           break;
       }
     } catch {
@@ -131,7 +196,7 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
           <>
             <DialogHeader>
               <DialogTitle className="text-lg font-semibold">
-                Start New Assessment
+                {isResumingDraft ? 'Resume Draft Assessment' : 'Start New Assessment'}
               </DialogTitle>
             </DialogHeader>
             <Form {...form}>
@@ -170,7 +235,7 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel>Company Type</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select onValueChange={field.onChange} value={field.value}>
                         <FormControl>
                           <SelectTrigger>
                             <SelectValue placeholder="Select type..." />

@@ -5,6 +5,7 @@ import { PrismaService } from '../database/prisma.service';
 import { CreatePromptDto } from './dto/create-prompt.dto';
 import { UpdatePromptDto } from './dto/update-prompt.dto';
 import { ListPromptsQueryDto } from './dto/list-prompts-query.dto';
+import { BulkImportDto, ImportPromptItem } from './dto/bulk-import.dto';
 
 // Full prompt include spec (latest version from Prompt table)
 const PROMPT_INCLUDE = {
@@ -342,6 +343,102 @@ export class PromptsService {
 
       return updated;
     });
+  }
+
+  // ─── Export ─────────────────────────────────────────────────────────────────
+
+  async exportAll() {
+    return this.prisma.prompt.findMany({
+      orderBy: { updatedAt: 'desc' },
+      include: PROMPT_INCLUDE,
+    });
+  }
+
+  // ─── Import ─────────────────────────────────────────────────────────────────
+
+  async importBulk(
+    dto: BulkImportDto,
+    userId: string,
+  ): Promise<{ created: number; updated: number; errors: Array<{ index: number; name: string; error: string }> }> {
+    let created = 0;
+    let updated = 0;
+    const errors: Array<{ index: number; name: string; error: string }> = [];
+
+    await this.prisma.$transaction(async (tx) => {
+      for (let i = 0; i < dto.prompts.length; i++) {
+        const item = dto.prompts[i];
+        try {
+          if (dto.mode === 'upsert') {
+            // Try to find existing prompt by name + section
+            const existing = await tx.prompt.findFirst({
+              where: { name: item.name, section: item.section },
+            });
+
+            if (existing) {
+              await tx.prompt.update({
+                where: { id: existing.id },
+                data: {
+                  subSection: item.subSection ?? existing.subSection,
+                  route: item.route ?? existing.route,
+                  categories: item.categories ?? existing.categories,
+                  tags: item.tags ?? existing.tags,
+                  systemPrompt: item.systemPrompt,
+                  userPromptTemplate: item.userPromptTemplate,
+                  tone: item.tone ?? existing.tone,
+                  outputFormat: item.outputFormat ?? existing.outputFormat,
+                  fewShot: item.fewShot
+                    ? (item.fewShot as unknown as Prisma.InputJsonValue)
+                    : existing.fewShot ?? undefined,
+                  context: item.context
+                    ? (item.context as unknown as Prisma.InputJsonValue)
+                    : existing.context ?? undefined,
+                  isActive: item.isActive ?? existing.isActive,
+                  version: existing.version + 1,
+                  updatedById: userId,
+                },
+              });
+              updated++;
+              continue;
+            }
+          }
+
+          // Create new
+          await tx.prompt.create({
+            data: {
+              name: item.name,
+              section: item.section,
+              subSection: item.subSection,
+              route: item.route,
+              categories: item.categories ?? [],
+              tags: item.tags ?? [],
+              version: 1,
+              isActive: item.isActive ?? false,
+              systemPrompt: item.systemPrompt,
+              userPromptTemplate: item.userPromptTemplate,
+              tone: item.tone ?? 'Professional and informative',
+              outputFormat: item.outputFormat ?? 'Clear and structured response',
+              fewShot: item.fewShot
+                ? (item.fewShot as unknown as Prisma.InputJsonValue)
+                : undefined,
+              context: item.context
+                ? (item.context as unknown as Prisma.InputJsonValue)
+                : undefined,
+              createdById: userId,
+              updatedById: userId,
+            },
+          });
+          created++;
+        } catch (err) {
+          errors.push({
+            index: i,
+            name: item.name,
+            error: err instanceof Error ? err.message : 'Unknown error',
+          });
+        }
+      }
+    });
+
+    return { created, updated, errors };
   }
 
   // ─── Conflict Detection ──────────────────────────────────────────────────────

@@ -1,26 +1,52 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { ClipboardList, CheckCircle, AlertTriangle, Clock } from 'lucide-react';
 import { sileo } from 'sileo';
 import { StatCard } from '@/components/dashboard/stat-card';
 import { AssessmentTable } from '@/components/dashboard/assessment-table';
+import { StartAssessmentModal } from '@/components/assessment/start-assessment-modal';
 import {
   useAssessments,
   useAssessmentStats,
   useDeleteAssessment,
   type AssessmentFilters,
 } from '@/hooks/use-assessments';
+import { useSearch } from '@/providers/search-provider';
 import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
 
 const PAGE_SIZE = 10;
+const DEBOUNCE_MS = 300;
 
 export default function DashboardPage() {
   const router = useRouter();
+  const { searchQuery } = useSearch();
   const [currentPage, setCurrentPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filters, setFilters] = useState<AssessmentFilters>({ limit: PAGE_SIZE });
+  const [draftToResume, setDraftToResume] = useState<AssessmentRowData | null>(null);
+  const [resumeModalOpen, setResumeModalOpen] = useState(false);
+
+  // Debounce the search query from context
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+      // Reset pagination when search changes
+      setCurrentPage(1);
+      setCursors([undefined]);
+    }, DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Sync debounced search into filters
+  useEffect(() => {
+    setFilters((prev) => ({
+      ...prev,
+      search: debouncedSearch || undefined,
+    }));
+  }, [debouncedSearch]);
 
   const { data: stats, isLoading: statsLoading } = useAssessmentStats();
   const { data: assessmentsData, isLoading: assessmentsLoading } = useAssessments({
@@ -34,6 +60,7 @@ export default function DashboardPage() {
     id: a.id,
     name: a.name,
     companyName: a.companyName,
+    companyType: (a as unknown as Record<string, unknown>).companyType as string | undefined,
     status: a.status,
     progress: a.progress,
     updatedAt: a.updatedAt,
@@ -68,6 +95,14 @@ export default function DashboardPage() {
       router.push(`/assessments/risk-scorecard?id=${id}`);
     },
     [router],
+  );
+
+  const handleResume = useCallback(
+    (assessment: AssessmentRowData) => {
+      setDraftToResume(assessment);
+      setResumeModalOpen(true);
+    },
+    [],
   );
 
   const handleDelete = useCallback(
@@ -139,11 +174,23 @@ export default function DashboardPage() {
         hasNextPage={hasNextPage}
         hasPrevPage={hasPrevPage}
         isLoading={assessmentsLoading}
+        searchQuery={debouncedSearch}
         onNextPage={handleNextPage}
         onPrevPage={handlePrevPage}
         onView={handleView}
         onEdit={handleEdit}
         onDelete={handleDelete}
+        onResume={handleResume}
+      />
+
+      {/* Resume Draft Modal */}
+      <StartAssessmentModal
+        open={resumeModalOpen}
+        onOpenChange={(open) => {
+          setResumeModalOpen(open);
+          if (!open) setDraftToResume(null);
+        }}
+        draftAssessment={draftToResume}
       />
     </div>
   );

@@ -8,19 +8,28 @@ interface AppLayoutProps {
   children: React.ReactNode;
   title?: string;
   onStartAssessment?: () => void;
+  searchQuery?: string;
+  onSearch?: (value: string) => void;
 }
 
 export function AppLayout({
   children,
   title = 'Dashboard',
   onStartAssessment,
+  searchQuery,
+  onSearch,
 }: AppLayoutProps) {
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC]">
         <AppSidebar />
         <SidebarInset className="flex flex-col flex-1 min-w-0">
-          <AppHeader title={title} onStartAssessment={onStartAssessment} />
+          <AppHeader
+            title={title}
+            onStartAssessment={onStartAssessment}
+            searchQuery={searchQuery}
+            onSearch={onSearch}
+          />
           <main className="flex-1 overflow-y-auto p-6">
             {children}
           </main>

@@ -238,3 +238,53 @@ export function usePromptHistory(promptId: string) {
     staleTime: 60_000,
   });
 }
+
+// ─── Export / Import ────────────────────────────────────────────────────────
+
+export function useExportPrompts() {
+  return useMutation({
+    mutationFn: async (format: 'json' | 'csv') => {
+      const res = await apiClient.get(`/api/admin/prompts/export?format=${format}`, {
+        responseType: 'blob',
+      });
+
+      const contentDisposition = res.headers['content-disposition'] as string | undefined;
+      const filenameMatch = contentDisposition?.match(/filename="?([^"]+)"?/);
+      const filename = filenameMatch?.[1] ?? `prompts-export.${format}`;
+
+      const url = window.URL.createObjectURL(new Blob([res.data as BlobPart]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    },
+  });
+}
+
+export interface ImportResult {
+  created: number;
+  updated: number;
+  errors: Array<{ index: number; name: string; error: string }>;
+}
+
+export function useImportPrompts() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      prompts: CreatePromptPayload[];
+      mode: 'create_new' | 'upsert';
+    }) => {
+      const res = await apiClient.post<{ data: ImportResult }>(
+        '/api/admin/prompts/import',
+        payload,
+      );
+      return res.data.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['prompts'] });
+    },
+  });
+}

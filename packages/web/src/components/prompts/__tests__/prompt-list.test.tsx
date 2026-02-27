@@ -17,6 +17,21 @@ jest.mock('@/hooks/use-prompts', () => ({
   usePrompts: (...args: unknown[]) => mockUsePrompts(...args),
   useToggleActive: () => mockUseToggleActive(),
   useDeletePrompt: () => mockUseDeletePrompt(),
+  useExportPrompts: () => ({ mutate: jest.fn(), isPending: false }),
+}));
+
+jest.mock('../prompt-import-dialog', () => ({
+  PromptImportDialog: () => null,
+}));
+
+// Mock dropdown-menu used by the Export button
+jest.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+  DropdownMenuItem: ({ children, onClick }: { children: React.ReactNode; onClick?: () => void }) => (
+    <button onClick={onClick}>{children}</button>
+  ),
 }));
 
 import { PromptList } from '../prompt-list';

@@ -4,6 +4,8 @@ import {
   useQueryClient,
   keepPreviousData,
 } from '@tanstack/react-query';
+import { sileo } from 'sileo';
+import { AxiosError } from 'axios';
 import apiClient from '@/lib/api-client';
 import type {
   AssessmentSummary,
@@ -36,6 +38,7 @@ export interface UpdateAssessmentData {
   companyType?: string;
   status?: AssessmentStatus;
   progress?: number;
+  version?: number;
 }
 
 export interface AssessmentListResponse {
@@ -105,6 +108,15 @@ export function useUpdateAssessment() {
     onSuccess: (_, variables) => {
       queryClient.invalidateQueries({ queryKey: ['assessments'] });
       queryClient.invalidateQueries({ queryKey: ['assessment', variables.id] });
+    },
+    onError: (error, variables) => {
+      if (error instanceof AxiosError && error.response?.status === 409) {
+        sileo.error({
+          title: 'Conflict',
+          description: 'This assessment was modified by another user. Please refresh and try again.',
+        });
+        queryClient.invalidateQueries({ queryKey: ['assessment', variables.id] });
+      }
     },
   });
 }
