@@ -83,6 +83,45 @@ Long-running AI operations use a fire-and-forget pattern:
 2. Worker Lambda processes the job (Bedrock calls) and updates Job status
 3. Frontend polls `GET /api/jobs/:id` until COMPLETED or FAILED
 
+## Deployment
+
+```bash
+# Full deployment (API + Web)
+pnpm deploy:all
+
+# Individual deployments
+pnpm deploy:api          # Build + upload Lambda bundle to S3 + update Lambdas
+pnpm deploy:web          # Build static export + sync to S3 + CloudFront invalidation
+
+# Database migrations (via Worker Lambda — RDS is in a private VPC)
+pnpm migrate:remote      # Runs pending migrations on RDS through Lambda
+```
+
+### Deployment Order (when infrastructure or schema changes)
+
+```
+1. Deploy infrastructure:   pnpm --filter @alliance-risk/infra cfn:deploy dev
+2. Run DB migrations:       pnpm migrate:remote
+3. Deploy API:              pnpm deploy:api
+4. Deploy Web:              pnpm deploy:web
+```
+
+Steps 1-2 only needed when infrastructure or Prisma schema changes. For code-only changes, `pnpm deploy:all` is sufficient.
+
+### Local Development Setup
+
+Local dev uses a **local PostgreSQL database** (not the remote RDS, which is in a private VPC and unreachable from outside). Set in `packages/api/.env`:
+
+```
+DATABASE_URL=postgresql://<your-user>@localhost:5432/alliance_risk
+```
+
+After setting up the local database:
+```bash
+pnpm --filter @alliance-risk/api exec prisma migrate deploy  # Apply migrations
+npx --prefix packages/api tsx prisma/seed.ts                  # Seed sample data
+```
+
 ## Rules
 
 - **Frontend NEVER talks directly to Bedrock** — always through the API
@@ -90,6 +129,7 @@ Long-running AI operations use a fire-and-forget pattern:
 - Tests required for all routing and scoring logic
 - All API responses use `ApiResponse<T>` or `PaginatedResponse<T>` from shared types
 - DB credentials go through Secrets Manager, never hardcoded or in `.env` committed to git
+- **No dynamic `[id]` routes in Next.js** — use query params (`?id=xxx`) because `output: 'export'` requires all paths at build time
 
 ## Key Constraints
 
@@ -98,3 +138,4 @@ Long-running AI operations use a fire-and-forget pattern:
 - Web test script includes `--passWithNoTests` since test files may not always exist
 - Prisma schema lives in `packages/api/prisma/schema.prisma`
 - Shared package must be built (`pnpm --filter @alliance-risk/shared build`) before API or Web can import from it
+- RDS is in a private VPC — migrations and seeds must run through the Worker Lambda `run-sql` action, not directly from local machines

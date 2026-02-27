@@ -3,6 +3,7 @@ import {
   ExecutionContext,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
@@ -32,6 +33,8 @@ export const COGNITO_VERIFIER = 'COGNITO_VERIFIER';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
+  private readonly logger = new Logger(JwtAuthGuard.name);
+
   constructor(
     private reflector: Reflector,
     @Inject(COGNITO_VERIFIER) private cognitoVerifier: CognitoVerifier,
@@ -73,7 +76,11 @@ export class JwtAuthGuard implements CanActivate {
         isAdmin: claims.isAdmin,
       };
       return true;
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        `Auth guard failed: ${error instanceof Error ? error.message : String(error)}`,
+        error instanceof Error ? error.stack : undefined,
+      );
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

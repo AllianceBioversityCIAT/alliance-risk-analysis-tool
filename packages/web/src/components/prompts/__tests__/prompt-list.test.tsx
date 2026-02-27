@@ -127,7 +127,7 @@ describe('PromptList', () => {
 
     await user.click(screen.getByRole('button', { name: /edit parser prompt/i }));
 
-    expect(mockPush).toHaveBeenCalledWith('/admin/prompt-manager/edit/prompt-1');
+    expect(mockPush).toHaveBeenCalledWith('/admin/prompt-manager/edit?id=prompt-1');
   });
 
   it('should open delete confirmation when delete button is clicked', async () => {

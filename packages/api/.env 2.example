@@ -1,0 +1,21 @@
+# Environment
+NODE_ENV=development
+ENVIRONMENT=development
+PORT=3001
+
+# Database (replace with your local or dev connection string)
+DATABASE_URL=postgresql://postgres:your_password@localhost:5432/alliance_risk_dev
+
+# AWS Cognito
+COGNITO_USER_POOL_ID=your-user-pool-id
+COGNITO_CLIENT_ID=your-client-id
+AWS_REGION=us-east-1
+
+# CORS (comma-separated for multiple origins)
+CORS_ORIGIN=http://localhost:3000
+
+# S3
+S3_BUCKET_NAME=your-bucket-name
+
+# Worker Lambda
+WORKER_FUNCTION_NAME=alliance-risk-worker

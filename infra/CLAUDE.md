@@ -117,12 +117,34 @@ DATABASE_URL: !Sub
 
 ```
 1. Deploy infrastructure:   pnpm --filter @alliance-risk/infra cfn:deploy dev
-2. Run database migrations:  pnpm migrate:deploy
+2. Run database migrations:  pnpm migrate:remote   (via Worker Lambda — NOT migrate:deploy)
 3. Deploy API:               pnpm deploy:api
 4. Deploy frontend:          pnpm deploy:web
 ```
 
-Steps 1-2 are only needed when infrastructure or schema changes.
+Steps 1-2 are only needed when infrastructure or schema changes. For code-only changes, run `pnpm deploy:all` (steps 3+4).
+
+**IMPORTANT:** `pnpm migrate:deploy` (direct Prisma) only works against local PostgreSQL. For the deployed RDS, always use `pnpm migrate:remote`, which sends SQL through the Worker Lambda's `run-sql` action.
+
+## VPC Networking
+
+The RDS database resides in a **private VPC** with no public access. Lambdas are deployed inside the same VPC to reach the database.
+
+**Consequence:** Lambdas in the VPC cannot reach public AWS services (Cognito, Bedrock, S3) without either VPC Endpoints or a NAT Gateway.
+
+**Current VPC Endpoints:**
+
+| Service | Type | Purpose |
+|---------|------|---------|
+| Cognito IDP | Interface | Token verification, user management |
+
+**`EndpointSubnetIds` parameter:** Cognito interface endpoints only support specific AZs (us-east-1a/b/c). The `EndpointSubnetIds` parameter in `parameters.json` specifies which private subnets to attach the endpoint to. If you add new VPC endpoints, verify the service supports your chosen AZs.
+
+**Adding a new VPC Endpoint:**
+1. Check which AZs the service supports in the target region
+2. Add the endpoint resource to `lib/alliance-risk-stack.ts`
+3. Run `pnpm cfn:synth` to regenerate the CloudFormation template
+4. Deploy with `pnpm cfn:deploy dev`
 
 ### Troubleshooting Lambda Crashes
 

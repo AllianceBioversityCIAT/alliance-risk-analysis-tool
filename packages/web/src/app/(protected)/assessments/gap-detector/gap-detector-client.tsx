@@ -1,8 +1,7 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect, useCallback } from 'react';
 import { AlertTriangle, Loader2 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
@@ -31,12 +30,19 @@ function groupByCategory(fields: GapFieldResponse[]) {
 }
 
 export default function GapDetectorClient() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
+  const id = searchParams.get('id');
 
-  const { data: assessment, isLoading: assessmentLoading } = useAssessment(id);
-  const { data: gapData, isLoading: gapLoading } = useGapFields(id);
-  const { mutateAsync: updateFields } = useUpdateGapFields(id);
+  useEffect(() => {
+    if (!id) {
+      router.replace('/dashboard');
+    }
+  }, [id, router]);
+
+  const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '');
+  const { data: gapData, isLoading: gapLoading } = useGapFields(id ?? '');
+  const { mutateAsync: updateFields } = useUpdateGapFields(id ?? '');
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string) => {
@@ -46,9 +52,10 @@ export default function GapDetectorClient() {
   );
 
   const handleSubmitAll = useCallback(async () => {
+    if (!id) return;
     try {
       await apiClient.post(`/api/assessments/${id}/trigger-risk-analysis`);
-      router.push(`/assessments/${id}/risk-scorecard`);
+      router.push(`/assessments/risk-scorecard?id=${id}`);
     } catch (err) {
       sileo.error({
         title: 'Failed to start risk analysis',
@@ -56,6 +63,8 @@ export default function GapDetectorClient() {
       });
     }
   }, [id, router]);
+
+  if (!id) return null;
 
   const isLoading = assessmentLoading || gapLoading;
   const fields = gapData?.data ?? [];

@@ -34,7 +34,7 @@ src/
         prompt-manager/
           page.tsx              # Prompt list with filters
           create/page.tsx       # Prompt editor (create mode)
-          edit/[id]/page.tsx    # Prompt editor (edit mode)
+          edit/page.tsx          # Prompt editor (edit mode, uses ?id= query param)
 
   components/
     ui/                         # shadcn/ui components (15 components)
@@ -113,6 +113,30 @@ QueryClientProvider > AuthProvider > {pages}
 
 - `output: 'export'` in `next.config.ts` — static HTML/JS for S3 hosting
 - `images: { unoptimized: true }` — required for static export
+
+## Routing Constraint (Static Export)
+
+**No dynamic `[id]` route segments.** With `output: 'export'`, Next.js requires all paths at build time via `generateStaticParams()`. Since assessment and prompt IDs are UUIDs created at runtime, dynamic segments cannot be pre-generated.
+
+**Use query parameters instead:**
+
+```tsx
+// ✅ Correct — static-export compatible
+// Route: /assessments/upload?id=<uuid>
+import { useSearchParams } from 'next/navigation';
+const id = useSearchParams().get('id');
+
+// ❌ Wrong — breaks static export
+// Route: /assessments/[id]/upload
+import { useParams } from 'next/navigation';
+const { id } = useParams();
+```
+
+**Navigation pattern:**
+```tsx
+router.push(`/admin/prompt-manager/edit?id=${prompt.id}`);
+// NOT: router.push(`/admin/prompt-manager/edit/${prompt.id}`);
+```
 
 ## ESLint
 

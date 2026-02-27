@@ -1,23 +1,24 @@
 'use client';
 
-import { useParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { PromptEditorForm } from '@/components/prompts/prompt-editor-form';
 import { usePrompt } from '@/hooks/use-prompts';
 import { useEffect } from 'react';
 
 export default function EditPromptPage() {
-  const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const id = searchParams.get('id');
   const router = useRouter();
-  const { data: prompt, isLoading, isError } = usePrompt(params.id);
+  const { data: prompt, isLoading, isError } = usePrompt(id ?? '');
 
   useEffect(() => {
-    if (isError) {
+    if (!id || isError) {
       router.push('/admin/prompt-manager');
     }
-  }, [isError, router]);
+  }, [id, isError, router]);
 
-  if (isLoading) {
+  if (!id || isLoading) {
     return (
       <div className="flex h-64 items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />

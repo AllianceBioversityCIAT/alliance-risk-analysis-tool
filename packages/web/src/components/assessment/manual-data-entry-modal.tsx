@@ -192,7 +192,7 @@ export function ManualDataEntryModal({ assessmentId }: ManualDataEntryModalProps
       // Trigger gap detection
       await apiClient.post(`/api/assessments/${assessmentId}/trigger-gap-detection`);
 
-      router.push(`/assessments/${assessmentId}/gap-detector`);
+      router.push(`/assessments/gap-detector?id=${assessmentId}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
       setIsSubmitting(false);

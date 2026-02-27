@@ -1,8 +1,7 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect, useState, useCallback } from 'react';
 import { MessageSquare, FileText, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
@@ -31,16 +30,23 @@ function mapStatus(s: string | undefined): BadgeStatus {
 }
 
 export default function RiskScorecardClient() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const router = useRouter();
+  const id = searchParams.get('id');
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
 
-  const { data: assessment, isLoading: assessmentLoading } = useAssessment(id);
-  const { data: riskData, isLoading: riskLoading } = useRiskScores(id);
-  const { mutateAsync: editRec } = useEditRecommendation(id);
-  const { data: comments = [], isLoading: commentsLoading } = useAssessmentComments(id);
-  const { mutateAsync: addComment, isPending: addingComment } = useAddComment(id);
+  useEffect(() => {
+    if (!id) {
+      router.replace('/dashboard');
+    }
+  }, [id, router]);
+
+  const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '');
+  const { data: riskData, isLoading: riskLoading } = useRiskScores(id ?? '');
+  const { mutateAsync: editRec } = useEditRecommendation(id ?? '');
+  const { data: comments = [], isLoading: commentsLoading } = useAssessmentComments(id ?? '');
+  const { mutateAsync: addComment, isPending: addingComment } = useAddComment(id ?? '');
 
   const handleEditRecommendation = useCallback(
     async (recId: string, text: string) => {
@@ -50,14 +56,17 @@ export default function RiskScorecardClient() {
   );
 
   const handleGenerateReport = useCallback(async () => {
+    if (!id) return;
     setIsGeneratingReport(true);
     try {
       await apiClient.post(`/api/assessments/${id}/report/pdf`);
-      router.push(`/assessments/${id}/report`);
+      router.push(`/assessments/report?id=${id}`);
     } catch {
       setIsGeneratingReport(false);
     }
   }, [id, router]);
+
+  if (!id) return null;
 
   const isLoading = assessmentLoading || riskLoading;
   const scores = riskData?.data ?? [];
@@ -66,6 +75,9 @@ export default function RiskScorecardClient() {
   // Derive overall score/level
   const overallScore = riskData?.overallScore ?? 0;
   const overallLevel = (riskData?.overallLevel as RiskLevel) ?? RiskLevel.LOW;
+
+  // Suppress unused variable warning for commentsLoading
+  void commentsLoading;
 
   return (
     <div className="flex flex-col min-h-full">

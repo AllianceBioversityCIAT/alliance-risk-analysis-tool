@@ -39,7 +39,7 @@ export function PromptList() {
 
   const handleEdit = useCallback(
     (prompt: PromptSummary) => {
-      router.push(`/admin/prompt-manager/edit/${prompt.id}`);
+      router.push(`/admin/prompt-manager/edit?id=${prompt.id}`);
     },
     [router],
   );

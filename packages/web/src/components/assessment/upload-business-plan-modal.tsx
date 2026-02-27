@@ -66,7 +66,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
 
       // Navigate to gap detector after a short delay
       setTimeout(() => {
-        router.push(`/assessments/${assessmentId}/gap-detector`);
+        router.push(`/assessments/gap-detector?id=${assessmentId}`);
       }, 1200);
     } catch (err) {
       setUploadState('error');

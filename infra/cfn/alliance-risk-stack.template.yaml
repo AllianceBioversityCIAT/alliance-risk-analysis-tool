@@ -21,6 +21,9 @@ Parameters:
   ApiCodeS3Key:
     Type: String
     Description: S3 key for the API/Worker Lambda zip
+  EndpointSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Description: Subnets for VPC Interface Endpoints (must be in AZs that support cognito-idp — us-east-1a/b/c)
   CorsOrigin:
     Type: String
     Default: "*"
@@ -90,6 +93,30 @@ Resources:
         - IpProtocol: "-1"
           CidrIp: 0.0.0.0/0
           Description: Allow all outbound traffic
+
+  # ── VPC Endpoints (Lambda in VPC needs these to reach AWS services) ───────
+  VpcEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow HTTPS from Lambda functions to VPC Interface Endpoints
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourceSecurityGroupId: !GetAtt LambdaSecurityGroup.GroupId
+          Description: Allow HTTPS from Lambda functions
+
+  CognitoVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.cognito-idp"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref EndpointSubnetIds
+      SecurityGroupIds:
+        - !GetAtt VpcEndpointSecurityGroup.GroupId
+      PrivateDnsEnabled: true
 
   # ── RDS PostgreSQL ─────────────────────────────────────────────────────────
   DbSecurityGroup:
@@ -352,10 +379,9 @@ Resources:
       Name: alliance-risk-api
       ProtocolType: HTTP
       CorsConfiguration:
-        AllowHeaders: [Content-Type, Authorization]
+        AllowHeaders: ["*"]
         AllowMethods: [GET, POST, PUT, DELETE, OPTIONS, PATCH]
-        AllowOrigins: [!Ref CorsOrigin]
-        AllowCredentials: true
+        AllowOrigins: ["*"]
         MaxAge: 86400
 
   HttpApiIntegration:
@@ -424,6 +450,34 @@ Resources:
             Action: s3:GetObject
             Resource: !Sub "${WebBucket.Arn}/*"
 
+  # CloudFront Function: rewrite extensionless URLs to .html files
+  # Next.js static export generates /login.html, /dashboard.html, etc.
+  # This function rewrites /login → /login.html so S3 serves the correct file.
+  UrlRewriteFunction:
+    Type: AWS::CloudFront::Function
+    Properties:
+      Name: !Sub "alliance-risk-url-rewrite-${Environment}"
+      AutoPublish: true
+      FunctionConfig:
+        Comment: "Rewrite extensionless URLs to .html for Next.js static export"
+        Runtime: cloudfront-js-2.0
+      FunctionCode: |
+        function handler(event) {
+          var request = event.request;
+          var uri = request.uri;
+          // If URI has an extension or ends with /, leave it alone
+          if (uri.includes('.') || uri.endsWith('/')) {
+            // Handle trailing slash: /login/ → /login.html
+            if (uri.endsWith('/') && uri !== '/') {
+              request.uri = uri.slice(0, -1) + '.html';
+            }
+            return request;
+          }
+          // Rewrite extensionless paths: /login → /login.html
+          request.uri = uri + '.html';
+          return request;
+        }
+
   WebDistribution:
     Type: AWS::CloudFront::Distribution
     Properties:
@@ -443,6 +497,9 @@ Resources:
           ViewerProtocolPolicy: redirect-to-https
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6 # CachingOptimized
           Compress: true
+          FunctionAssociations:
+            - EventType: viewer-request
+              FunctionARN: !GetAtt UrlRewriteFunction.FunctionARN
         CustomErrorResponses:
           - ErrorCode: 403
             ResponseCode: 200

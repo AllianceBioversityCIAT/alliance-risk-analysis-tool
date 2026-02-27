@@ -58,14 +58,14 @@ export default function DashboardPage() {
 
   const handleView = useCallback(
     (id: string) => {
-      router.push(`/assessments/${id}/gap-detector`);
+      router.push(`/assessments/gap-detector?id=${id}`);
     },
     [router],
   );
 
   const handleEdit = useCallback(
     (id: string) => {
-      router.push(`/assessments/${id}/risk-scorecard`);
+      router.push(`/assessments/risk-scorecard?id=${id}`);
     },
     [router],
   );

@@ -134,6 +134,7 @@ EXTERNALS=(
   "pg-cloudflare"
   "@nestjs/microservices"
   "@nestjs/websockets"
+  "class-transformer/storage"
 )
 
 # Build esbuild --external flags

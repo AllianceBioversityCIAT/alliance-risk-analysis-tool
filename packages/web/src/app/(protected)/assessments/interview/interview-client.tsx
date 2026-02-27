@@ -1,12 +1,23 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { MessageSquare } from 'lucide-react';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
 import { GuidedInterviewModal } from '@/components/assessment/guided-interview-modal';
 
 export default function InterviewClient() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const id = searchParams.get('id');
+
+  useEffect(() => {
+    if (!id) {
+      router.replace('/dashboard');
+    }
+  }, [id, router]);
+
+  if (!id) return null;
 
   return (
     <div className="max-w-2xl mx-auto py-8 px-4 space-y-6">

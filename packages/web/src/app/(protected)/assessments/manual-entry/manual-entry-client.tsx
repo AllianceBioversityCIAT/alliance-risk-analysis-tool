@@ -1,12 +1,23 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import { ClipboardList } from 'lucide-react';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
 import { ManualDataEntryModal } from '@/components/assessment/manual-data-entry-modal';
 
 export default function ManualEntryClient() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const id = searchParams.get('id');
+
+  useEffect(() => {
+    if (!id) {
+      router.replace('/dashboard');
+    }
+  }, [id, router]);
+
+  if (!id) return null;
 
   return (
     <div className="max-w-4xl mx-auto py-8 px-4 space-y-6">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useCallback, useEffect } from 'react';
 import { Printer, Download, Link2, Loader2 } from 'lucide-react';
 import { sileo } from 'sileo';
@@ -25,10 +25,18 @@ function mapStatus(s: string | undefined): BadgeStatus {
 }
 
 export default function ReportClient() {
-  const { id } = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const id = searchParams.get('id');
 
-  const { data: report, isLoading } = useReport(id);
-  const { mutateAsync: generatePdf, isPending: generatingPdf } = useGeneratePdf(id);
+  useEffect(() => {
+    if (!id) {
+      router.replace('/dashboard');
+    }
+  }, [id, router]);
+
+  const { data: report, isLoading } = useReport(id ?? '');
+  const { mutateAsync: generatePdf, isPending: generatingPdf } = useGeneratePdf(id ?? '');
   const { startPolling, result: jobResult, isProcessing: pdfProcessing } = useJobPolling();
 
   const handlePrint = useCallback(() => {
@@ -57,6 +65,8 @@ export default function ReportClient() {
       window.open(pdfDownloadUrl, '_blank');
     }
   }, [pdfDownloadUrl]);
+
+  if (!id) return null;
 
   // Build TOC items
   const tocItems: TocItem[] = [

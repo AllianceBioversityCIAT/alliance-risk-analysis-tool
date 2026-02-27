@@ -119,6 +119,36 @@ prisma/
 - `emitDecoratorMetadata` + `experimentalDecorators` required for NestJS DI
 - CommonJS module system (`"module": "commonjs"`)
 
+## Worker Lambda — `run-sql` Action
+
+The Worker Lambda (`worker.ts`) includes a `run-sql` action for executing raw SQL on the private-VPC RDS instance. This is necessary because the database is unreachable from local machines.
+
+```bash
+# Run migrations remotely (from project root)
+pnpm migrate:remote
+```
+
+The script `scripts/migrate-remote.sh` discovers Prisma migration files, sends each SQL payload to the Worker Lambda, and updates the `_prisma_migrations` tracking table.
+
+**Direct invocation (for ad-hoc SQL):**
+```bash
+aws lambda invoke --function-name alliance-risk-worker \
+  --payload '{"action":"run-sql","sql":"SELECT count(*) FROM users"}' \
+  /tmp/result.json
+```
+
+## Lambda Best Practices
+
+- **`context.callbackWaitsForEmptyEventLoop = false`** — Required in both `lambda.ts` and `worker.ts`. Without it, Prisma's connection pool keeps the event loop alive and the Lambda times out after processing.
+- **Prisma errors in esbuild bundles** — `PrismaClientKnownRequestError.message` is often empty after bundling. Always log `.code` and `.meta` instead:
+  ```ts
+  catch (error) {
+    if (error && typeof error === 'object' && 'code' in error) {
+      logger.error(`Prisma error code=${(error as any).code} meta=${JSON.stringify((error as any).meta)}`);
+    }
+  }
+  ```
+
 ## ESLint
 
 - `@typescript-eslint/recommended` rules

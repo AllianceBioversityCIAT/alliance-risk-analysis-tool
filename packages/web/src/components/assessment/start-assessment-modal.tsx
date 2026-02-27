@@ -104,13 +104,13 @@ export function StartAssessmentModal({ open, onOpenChange }: StartAssessmentModa
 
       switch (mode) {
         case IntakeMode.UPLOAD:
-          router.push(`/assessments/${assessment.id}/upload`);
+          router.push(`/assessments/upload?id=${assessment.id}`);
           break;
         case IntakeMode.GUIDED_INTERVIEW:
-          router.push(`/assessments/${assessment.id}/interview`);
+          router.push(`/assessments/interview?id=${assessment.id}`);
           break;
         case IntakeMode.MANUAL_ENTRY:
-          router.push(`/assessments/${assessment.id}/manual-entry`);
+          router.push(`/assessments/manual-entry?id=${assessment.id}`);
           break;
       }
     } catch {

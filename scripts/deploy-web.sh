@@ -78,14 +78,16 @@ log "Syncing static assets (JS, CSS, images) with immutable cache..."
 aws s3 sync "${OUT_DIR}" "s3://${WEB_BUCKET}" \
   --exclude "*.html" \
   --exclude "*.json" \
+  --exclude "*.txt" \
   --cache-control "public, max-age=31536000, immutable" \
   --delete
 
-log "Syncing HTML and JSON files with no-cache..."
+log "Syncing HTML, JSON, and RSC payload files with no-cache..."
 aws s3 sync "${OUT_DIR}" "s3://${WEB_BUCKET}" \
   --exclude "*" \
   --include "*.html" \
   --include "*.json" \
+  --include "*.txt" \
   --cache-control "public, max-age=0, must-revalidate" \
   --delete
 
