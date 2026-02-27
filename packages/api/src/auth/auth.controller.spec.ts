@@ -255,6 +255,16 @@ describe('AuthController', () => {
       ).rejects.toBeDefined();
     });
 
+    it('should reject login with password longer than 128 chars', async () => {
+      const longPassword = 'a'.repeat(129);
+      await expect(
+        pipeValidated.transform({ email: 'test@example.com', password: longPassword }, {
+          type: 'body',
+          metatype: LoginDto,
+        } as any),
+      ).rejects.toBeDefined();
+    });
+
     it('should normalize email to lowercase', async () => {
       const result = await pipeValidated.transform(
         { email: 'TEST@EXAMPLE.COM', password: 'Password1!' },
