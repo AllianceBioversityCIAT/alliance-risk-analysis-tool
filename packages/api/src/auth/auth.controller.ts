@@ -131,10 +131,11 @@ export class AuthController {
    * POST /api/auth/change-password
    * Changes a user's own password while authenticated.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('cognito-jwt')
-  @ApiOperation({ summary: 'Change own password', description: 'Changes the authenticated user\'s password. Requires a valid Bearer token. The previous password must be provided for verification.' })
+  @ApiOperation({ summary: 'Change own password', description: 'Changes the authenticated user\'s password. Requires a valid Bearer token. The previous password must be provided for verification. Rate-limited to 5 requests per minute.' })
   @ApiBody({ type: ChangePasswordDto })
   @ApiResponse({ status: 200, description: 'Password changed successfully', schema: { example: { message: 'Password changed successfully.' } } })
   @ApiResponse({ status: 400, description: 'New password does not meet Cognito policy requirements' })
