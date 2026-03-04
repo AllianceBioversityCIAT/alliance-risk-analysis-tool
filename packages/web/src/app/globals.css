@@ -161,10 +161,9 @@
   }
 }
 
-/* PDF viewer search highlight overrides */
-.rpv-search__highlight {
-  background-color: rgba(0, 156, 166, 0.3) !important;
-}
-.rpv-search__highlight--current {
-  background-color: rgba(0, 156, 166, 0.6) !important;
+/* PDF text highlight for gap field click-to-find */
+.pdf-text-highlight {
+  background-color: rgba(0, 156, 166, 0.4);
+  border-radius: 2px;
+  padding: 1px 0;
 }
