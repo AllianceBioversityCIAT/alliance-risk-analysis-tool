@@ -17,9 +17,21 @@ const mockGapField = {
   order: 1,
 };
 
+const mockFieldsResponse = {
+  data: [mockGapField],
+  total: 1,
+  verifiedCount: 0,
+  missingCount: 0,
+  allMandatoryComplete: false,
+};
+
 const mockService = {
-  findByAssessment: jest.fn().mockResolvedValue([mockGapField]),
-  updateBatch: jest.fn().mockResolvedValue([{ ...mockGapField, status: 'VERIFIED', correctedValue: '1200000' }]),
+  findByAssessment: jest.fn().mockResolvedValue(mockFieldsResponse),
+  updateBatch: jest.fn().mockResolvedValue({
+    ...mockFieldsResponse,
+    data: [{ ...mockGapField, status: 'VERIFIED', correctedValue: '1200000' }],
+    verifiedCount: 1,
+  }),
   triggerRiskAnalysis: jest.fn().mockResolvedValue('job-1'),
 };
 
@@ -40,9 +52,10 @@ describe('GapFieldController', () => {
   });
 
   describe('findByAssessment', () => {
-    it('should return gap fields for an assessment', async () => {
+    it('should return gap fields response for an assessment', async () => {
       const result = await controller.findByAssessment('assess-1', mockUser);
-      expect(result).toHaveLength(1);
+      expect(result.data).toHaveLength(1);
+      expect(result.total).toBe(1);
     });
   });
 
@@ -50,7 +63,7 @@ describe('GapFieldController', () => {
     it('should batch update gap fields', async () => {
       const dto = { updates: [{ id: 'gap-1', correctedValue: '1200000' }] };
       const result = await controller.updateBatch('assess-1', dto, mockUser);
-      expect(result[0].status).toBe('VERIFIED');
+      expect(result.data[0].status).toBe('VERIFIED');
     });
   });
 

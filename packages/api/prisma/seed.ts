@@ -41,10 +41,55 @@ async function main() {
     {
       section: AgentSection.gap_detector,
       name: 'Gap Detector - Default',
-      systemPrompt:
-        'You are an expert at identifying missing or insufficient information in agricultural business plans.',
-      userPromptTemplate:
-        'Review the following extracted business plan data and identify any gaps or insufficiencies:\n\n{{extracted_data}}',
+      // System prompt: defines the Core 10 schema, classification rules, and expected JSON output format.
+      // This prompt instructs the AI to classify—not generate—data from the extracted document text.
+      systemPrompt: `You are an agricultural business plan analyzer. Your task is to extract and classify 10 mandatory business fields from the provided document text.
+
+## Core 10 Fields
+
+1. business_model_summary — How the enterprise creates and delivers value
+2. enterprise_type — Legal structure, size, cooperatives, SME classification
+3. country_of_operation — Primary country/region of business operations
+4. product_service_description — What products or services the enterprise offers
+5. revenue_model — How the enterprise generates income
+6. cost_drivers — Major cost components and expense categories
+7. supply_chain_overview — Input sourcing, processing, distribution channels
+8. workforce_summary — Number of employees, roles, seasonal patterns
+9. customer_base — Target customers, market segments, buyer relationships
+10. key_challenges — Primary risks, obstacles, and constraints facing the enterprise
+
+## Classification Rules
+
+- **VERIFIED**: The document contains clear, substantial information addressing this field. Confidence should be >= 0.7.
+- **PARTIAL**: The document contains some relevant information but it is incomplete, vague, or only indirectly addresses the field. Confidence should be 0.3–0.7.
+- **MISSING**: The document contains no relevant information for this field. Confidence should be >= 0.8 (high confidence that the data is absent).
+
+## Output Format
+
+Return a JSON object with this exact structure:
+{
+  "fields": [
+    {
+      "field": "<field_key>",
+      "status": "VERIFIED" | "PARTIAL" | "MISSING",
+      "extractedValue": "<relevant text from document or null>",
+      "confidence": <0.0-1.0>,
+      "reasoning": "<1-2 sentence explanation of classification>"
+    }
+  ]
+}
+
+You MUST return exactly 10 field entries, one for each Core 10 field.
+Return ONLY the JSON object, no additional text.`,
+      // User prompt template: the {{extracted_data}} placeholder is replaced at runtime
+      // with the truncated text extracted from the business plan PDF via AWS Textract.
+      userPromptTemplate: `Analyze the following extracted business plan text and classify each of the 10 Core 10 mandatory fields.
+
+## Extracted Document Text
+
+{{extracted_data}}
+
+Provide your analysis as the specified JSON format.`,
     },
     {
       section: AgentSection.risk_analysis,
@@ -78,6 +123,19 @@ async function main() {
         },
       });
       console.log(`Created sample prompt: ${promptData.name}`);
+    } else if (promptData.section === AgentSection.gap_detector) {
+      // For the gap_detector prompt, always update to ensure the latest
+      // system prompt and user prompt template are applied (idempotent upsert).
+      await prisma.prompt.update({
+        where: { id: existing.id },
+        data: {
+          systemPrompt: promptData.systemPrompt,
+          userPromptTemplate: promptData.userPromptTemplate,
+          isActive: true,
+          updatedById: adminUser.id,
+        },
+      });
+      console.log(`Updated gap_detector prompt: ${promptData.name}`);
     } else {
       console.log(`Prompt already exists: ${promptData.name}`);
     }

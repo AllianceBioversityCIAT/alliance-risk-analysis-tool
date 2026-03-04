@@ -3,7 +3,7 @@ import { PrismaService } from '../database/prisma.service';
 import { JobsService } from '../jobs/jobs.service';
 import { JobType } from '@alliance-risk/shared';
 import { UpdateGapFieldsDto } from './dto';
-import type { GapField } from '@prisma/client';
+
 
 @Injectable()
 export class GapDetectionService {
@@ -20,19 +20,31 @@ export class GapDetectionService {
     if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
   }
 
-  async findByAssessment(assessmentId: string, userId: string): Promise<GapField[]> {
+  async findByAssessment(assessmentId: string, userId: string) {
     await this.validateOwnership(assessmentId, userId);
-    return this.prisma.gapField.findMany({
+    const fields = await this.prisma.gapField.findMany({
       where: { assessmentId },
       orderBy: [{ category: 'asc' }, { order: 'asc' }],
     });
+
+    const total = fields.length;
+    const verifiedCount = fields.filter((f) => f.status === 'VERIFIED').length;
+    const missingCount = fields.filter((f) => f.status === 'MISSING').length;
+    const mandatoryFields = fields.filter((f) => f.isMandatory);
+    const allMandatoryComplete =
+      mandatoryFields.length > 0 &&
+      mandatoryFields.every(
+        (f) => f.status === 'VERIFIED' || f.correctedValue || f.extractedValue,
+      );
+
+    return { data: fields, total, verifiedCount, missingCount, allMandatoryComplete };
   }
 
   async updateBatch(
     assessmentId: string,
     dto: UpdateGapFieldsDto,
     userId: string,
-  ): Promise<GapField[]> {
+  ) {
     await this.validateOwnership(assessmentId, userId);
 
     // Batch update using transactions

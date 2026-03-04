@@ -140,6 +140,17 @@ Resources:
         - !GetAtt VpcEndpointSecurityGroup.GroupId
       PrivateDnsEnabled: true
 
+  BedrockRuntimeVpcEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.bedrock-runtime"
+      VpcEndpointType: Interface
+      SubnetIds: !Ref EndpointSubnetIds
+      SecurityGroupIds:
+        - !GetAtt VpcEndpointSecurityGroup.GroupId
+      PrivateDnsEnabled: true
+
   S3VpcEndpoint:
     Type: AWS::EC2::VPCEndpoint
     Properties:
@@ -279,8 +290,8 @@ Resources:
                   - bedrock:InvokeModelWithResponseStream
                   - bedrock:Retrieve
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-5-sonnet-*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-*"
               - Effect: Allow
                 Action:
                   - textract:StartDocumentAnalysis
@@ -366,8 +377,8 @@ Resources:
                   - bedrock:InvokeModelWithResponseStream
                   - bedrock:Retrieve
                 Resource:
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-5-sonnet-*"
-                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}::foundation-model/anthropic.claude-3-haiku-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-*"
               - Effect: Allow
                 Action:
                   - textract:StartDocumentAnalysis

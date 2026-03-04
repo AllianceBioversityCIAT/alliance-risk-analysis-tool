@@ -160,3 +160,11 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* PDF viewer search highlight overrides */
+.rpv-search__highlight {
+  background-color: rgba(0, 156, 166, 0.3) !important;
+}
+.rpv-search__highlight--current {
+  background-color: rgba(0, 156, 166, 0.6) !important;
+}

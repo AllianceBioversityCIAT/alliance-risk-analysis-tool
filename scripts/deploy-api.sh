@@ -236,9 +236,9 @@ if ! copy_pkg "@prisma/debug" "${API_DIR}" "${NM}" 2>/dev/null; then
       cp -R "${DEBUG_PARENT}/@prisma/debug/"* "${NM}/@prisma/debug/"
     fi
   fi
-  # Fallback: search in pnpm store
+  # Fallback: search in pnpm store (maxdepth 4 to avoid slow full traversal)
   if [[ ! -d "${NM}/@prisma/debug/dist" ]]; then
-    DEBUG_PATH=$(find "${ROOT_DIR}/node_modules/.pnpm" -type d -name "debug" \
+    DEBUG_PATH=$(find "${ROOT_DIR}/node_modules/.pnpm" -maxdepth 4 -type d -name "debug" \
       -path "*/@prisma/debug" 2>/dev/null | head -1)
     if [[ -n "${DEBUG_PATH}" ]]; then
       mkdir -p "${NM}/@prisma/debug"
@@ -250,8 +250,8 @@ fi
 # --- @prisma/client-runtime-utils ---
 log "  @prisma/client-runtime-utils..."
 if ! copy_pkg "@prisma/client-runtime-utils" "${API_DIR}" "${NM}" 2>/dev/null; then
-  # Search in pnpm store
-  CRU_PATH=$(find "${ROOT_DIR}/node_modules/.pnpm" -type d -name "client-runtime-utils" \
+  # Search in pnpm store (maxdepth 4 to avoid slow full traversal)
+  CRU_PATH=$(find "${ROOT_DIR}/node_modules/.pnpm" -maxdepth 4 -type d -name "client-runtime-utils" \
     -path "*/@prisma/client-runtime-utils" 2>/dev/null | head -1)
   if [[ -n "${CRU_PATH}" ]]; then
     mkdir -p "${NM}/@prisma/client-runtime-utils"

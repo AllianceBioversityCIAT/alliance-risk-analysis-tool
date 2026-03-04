@@ -1,32 +1,58 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useCallback } from 'react';
-import { AlertTriangle, Loader2 } from 'lucide-react';
+import { useEffect, useCallback, useState, useRef } from 'react';
+import {
+  Loader2,
+  FileText,
+  BarChart3,
+  Pencil,
+  Save,
+  Check,
+  X,
+} from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
-import { AssessmentSubHeader } from '@/components/layout/assessment-sub-header';
-import { GapLayout, GapSummaryBar } from '@/components/gap-detector/gap-layout';
+import dynamic from 'next/dynamic';
+import { GapLayout } from '@/components/gap-detector/gap-layout';
 import { GapCategoryGroup } from '@/components/gap-detector/gap-field-card';
-import { PdfViewer } from '@/components/gap-detector/pdf-viewer';
+
+const PdfViewer = dynamic(
+  () => import('@/components/gap-detector/pdf-viewer').then((mod) => mod.PdfViewer),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center justify-center h-full">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  },
+);
 import { useGapFields, useUpdateGapFields } from '@/hooks/use-gap-detection';
-import { useAssessment } from '@/hooks/use-assessments';
+import { useAssessment, useAssessmentDocuments, useUpdateAssessment } from '@/hooks/use-assessments';
 import { GapFieldStatus } from '@alliance-risk/shared';
 import type { GapFieldResponse } from '@alliance-risk/shared';
-import type { AssessmentStatus as BadgeStatus } from '@/components/shared/status-badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import apiClient from '@/lib/api-client';
 
-// Group gap fields by category
+// Group gap fields by category preserving insertion order
 function groupByCategory(fields: GapFieldResponse[]) {
   const map = new Map<string, GapFieldResponse[]>();
   for (const field of fields) {
     if (!map.has(field.category)) map.set(field.category, []);
     map.get(field.category)!.push(field);
   }
-  return Array.from(map.entries()).map(([category, fields]) => ({ category, fields }));
+  return Array.from(map.entries()).map(([category, catFields]) => ({
+    category,
+    fields: catFields,
+  }));
 }
 
 export default function GapDetectorClient() {
@@ -35,14 +61,14 @@ export default function GapDetectorClient() {
   const id = searchParams.get('id');
 
   useEffect(() => {
-    if (!id) {
-      router.replace('/dashboard');
-    }
+    if (!id) router.replace('/dashboard');
   }, [id, router]);
 
   const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '');
   const { data: gapData, isLoading: gapLoading } = useGapFields(id ?? '');
   const { mutateAsync: updateFields } = useUpdateGapFields(id ?? '');
+  const { data: documents } = useAssessmentDocuments(id);
+  const { mutateAsync: updateAssessment, isPending: isSavingDraft } = useUpdateAssessment();
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string) => {
@@ -51,7 +77,20 @@ export default function GapDetectorClient() {
     [updateFields],
   );
 
-  const handleSubmitAll = useCallback(async () => {
+  const handleSaveDraft = useCallback(async () => {
+    if (!id) return;
+    try {
+      await updateAssessment({ id, data: { status: 'DRAFT' as never } });
+      sileo.success({ title: 'Draft saved' });
+    } catch (err) {
+      sileo.error({
+        title: 'Failed to save draft',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
+  }, [id, updateAssessment]);
+
+  const handleAnalyzeRisks = useCallback(async () => {
     if (!id) return;
     try {
       await apiClient.post(`/api/assessments/${id}/trigger-risk-analysis`);
@@ -64,55 +103,191 @@ export default function GapDetectorClient() {
     }
   }, [id, router]);
 
+  // ─── PDF highlight on field click ───────────────────────────────────────────
+  const [highlightKeyword, setHighlightKeyword] = useState<string | null>(null);
+
+  const handleFieldFocus = useCallback((value: string | null) => {
+    setHighlightKeyword(value);
+  }, []);
+
+  // ─── Inline name editing ──────────────────────────────────────────────────────
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editName, setEditName] = useState('');
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  const startEditingName = useCallback(() => {
+    setEditName(assessment?.name ?? '');
+    setIsEditingName(true);
+    setTimeout(() => nameInputRef.current?.focus(), 0);
+  }, [assessment?.name]);
+
+  const cancelEditingName = useCallback(() => {
+    setIsEditingName(false);
+    setEditName('');
+  }, []);
+
+  const saveNameEdit = useCallback(async () => {
+    if (!id || !editName.trim() || editName.trim() === assessment?.name) {
+      cancelEditingName();
+      return;
+    }
+    try {
+      await updateAssessment({ id, data: { name: editName.trim() } });
+      sileo.success({ title: 'Name updated' });
+    } catch (err) {
+      sileo.error({
+        title: 'Failed to update name',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
+    setIsEditingName(false);
+  }, [id, editName, assessment?.name, updateAssessment, cancelEditingName]);
+
   if (!id) return null;
 
+  // ─── Derived state ────────────────────────────────────────────────────────────
   const isLoading = assessmentLoading || gapLoading;
   const fields = gapData?.data ?? [];
   const total = gapData?.total ?? 0;
   const verified = gapData?.verifiedCount ?? 0;
-  const missing = gapData?.missingCount ?? 0;
   const allMandatoryComplete = gapData?.allMandatoryComplete ?? false;
   const groups = groupByCategory(fields);
 
-  // Check if assessment has a document (UPLOAD mode)
   const hasDocument = assessment?.intakeMode === 'UPLOAD';
+  const documentUrl = documents?.[0]?.presignedUrl ?? null;
+  const documentName = documents?.[0]?.fileName ?? null;
 
-  // Map shared enum status to local badge status
-  const badgeStatus: BadgeStatus = (() => {
-    const s = assessment?.status ?? 'DRAFT';
-    const map: Record<string, BadgeStatus> = {
-      DRAFT: 'draft',
-      ANALYZING: 'analyzing',
-      ACTION_REQUIRED: 'action_required',
-      COMPLETE: 'complete',
-    };
-    return map[s] ?? 'draft';
-  })();
+  // Data completeness
+  const completeness = total > 0 ? Math.round((verified / total) * 100) : 0;
+  const requiredRemaining = total - verified;
 
   return (
     <div className="flex flex-col h-full">
-      {/* Breadcrumb */}
+      {/* ─── Breadcrumb ──────────────────────────────────────────────────────────── */}
       <div className="px-6 pt-4 pb-2">
         <BreadcrumbTrail
           items={[
             { label: 'Dashboard', href: '/dashboard' },
-            { label: assessment?.name ?? 'Assessment', href: '#' },
+            {
+              label: hasDocument ? 'Upload Business Plan' : (assessment?.name ?? 'Assessment'),
+            },
             { label: 'Gap Detector' },
           ]}
         />
       </div>
 
-      {/* Sub-header */}
+      {/* ─── Teal Sub-Header ─────────────────────────────────────────────────────── */}
       {assessment && (
-        <AssessmentSubHeader
-          businessName={assessment.companyName}
-          businessType={assessment.intakeMode}
-          date={assessment.updatedAt}
-          status={badgeStatus}
-        />
+        <div className="px-6 py-4 text-white" style={{ backgroundColor: '#008F8F' }}>
+          <div className="flex items-start justify-between gap-4">
+            {/* Left: Assessment info */}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                {isEditingName ? (
+                  <>
+                    <input
+                      ref={nameInputRef}
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveNameEdit();
+                        if (e.key === 'Escape') cancelEditingName();
+                      }}
+                      className="text-base font-semibold text-white bg-white/15 border border-white/30 rounded px-2 py-0.5 outline-none focus:border-white/60 min-w-[200px]"
+                      aria-label="Edit assessment name"
+                    />
+                    <button
+                      onClick={saveNameEdit}
+                      className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
+                      aria-label="Save name"
+                    >
+                      <Check className="h-3.5 w-3.5 text-emerald-300" />
+                    </button>
+                    <button
+                      onClick={cancelEditingName}
+                      className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
+                      aria-label="Cancel editing"
+                    >
+                      <X className="h-3.5 w-3.5 text-white/60" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h1 className="text-base font-semibold text-white truncate">
+                      {assessment.name}
+                    </h1>
+                    <button
+                      onClick={startEditingName}
+                      className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
+                      aria-label="Edit assessment name"
+                    >
+                      <Pencil className="h-3.5 w-3.5 text-white/60 hover:text-white/80" />
+                    </button>
+                  </>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-xs text-white/70">
+                <span>ID: {assessment.id.substring(0, 12).toUpperCase()}</span>
+                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                <span>Gap Review In Progress</span>
+              </div>
+            </div>
+
+            {/* Middle: Save Draft button */}
+            <Button
+              variant="outline"
+              size="sm"
+              className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:text-white shrink-0"
+              onClick={handleSaveDraft}
+              disabled={isSavingDraft}
+            >
+              <Save className="h-3.5 w-3.5 mr-1.5" />
+              {isSavingDraft ? 'Saving...' : 'Save Draft'}
+            </Button>
+
+            {/* Right: Data Completeness */}
+            <div className="text-right shrink-0 min-w-[140px]">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 mb-0.5">
+                Data Completeness
+              </p>
+              <p className="text-3xl font-bold text-white leading-none">{completeness}%</p>
+              <div className="h-1.5 w-full rounded-full bg-white/20 mt-1.5 overflow-hidden">
+                <div
+                  className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                  style={{ width: `${completeness}%` }}
+                />
+              </div>
+              {requiredRemaining > 0 && (
+                <p className="text-[10px] text-white/60 mt-1">
+                  {requiredRemaining} required field{requiredRemaining !== 1 ? 's' : ''} remaining
+                </p>
+              )}
+            </div>
+          </div>
+
+          {/* Document info bar — compact, not full-width */}
+          {hasDocument && documentName && (
+            <div className="inline-flex items-center gap-3 mt-3 px-3 py-2 rounded-lg bg-white/10">
+              <FileText className="h-5 w-5 text-white/80 shrink-0" />
+              <span className="text-sm font-medium text-white truncate max-w-[220px]">
+                {documentName}
+              </span>
+              <span className="text-xs text-white/50">{assessment.companyName}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white text-[#008F8F] border-0 hover:bg-white/90 text-xs h-7 px-3 shrink-0"
+                onClick={() => router.push(`/assessments/upload?id=${id}`)}
+              >
+                Change Document
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Main content */}
+      {/* ─── Main Content (Split Pane) ───────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {isLoading ? (
           <div className="p-6 space-y-3">
@@ -123,56 +298,71 @@ export default function GapDetectorClient() {
         ) : (
           <GapLayout
             hasDocument={hasDocument}
-            summaryBar={
-              <GapSummaryBar total={total} verified={verified} missing={missing} />
+            documentPanel={
+              <PdfViewer presignedUrl={documentUrl} fileName={documentName} highlightKeyword={highlightKeyword} />
             }
-            leftPanel={
-              <div className="space-y-3">
-                {groups.map(({ category, fields }) => (
-                  <GapCategoryGroup
-                    key={category}
-                    category={category}
-                    fields={fields.map((f) => ({
-                      id: f.id,
-                      label: f.label,
-                      currentValue: f.correctedValue ?? f.extractedValue,
-                      status: f.status as GapFieldStatus,
-                      isMandatory: f.isMandatory,
-                      onUpdate: handleUpdateField,
-                    }))}
-                  />
-                ))}
+            fieldsPanel={
+              <div className="p-5">
+                {/* Panel heading */}
+                <div className="mb-5">
+                  <h2 className="text-xl font-bold text-foreground">Gap Detector</h2>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Please review detected gaps and complete missing information.
+                  </p>
+                </div>
 
+                {/* Category groups */}
+                <div className="space-y-4">
+                  {groups.map(({ category, fields: catFields }) => (
+                    <GapCategoryGroup
+                      key={category}
+                      category={category}
+                      fields={catFields.map((f) => ({
+                        id: f.id,
+                        label: f.label,
+                        currentValue: f.correctedValue ?? f.extractedValue,
+                        status: f.status as GapFieldStatus,
+                        isMandatory: f.isMandatory,
+                        confidence: f.confidence,
+                        aiReasoning: f.aiReasoning,
+                        onUpdate: handleUpdateField,
+                        onFieldFocus: handleFieldFocus,
+                      }))}
+                    />
+                  ))}
+                </div>
+
+                {/* Empty state — polling for gap detection results */}
                 {fields.length === 0 && (
                   <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
                     <Loader2 className="h-8 w-8 animate-spin mb-3" />
                     <p className="text-sm font-medium">Analyzing document...</p>
-                    <p className="text-xs mt-1">Gap fields will appear here once extraction completes.</p>
+                    <p className="text-xs mt-1">
+                      Gap fields will appear here once extraction completes.
+                    </p>
                   </div>
                 )}
 
-                {/* Submit button */}
+                {/* Analyze Risks button */}
                 {fields.length > 0 && (
-                  <div className="pt-4 border-t border-border">
+                  <div className="mt-6 pt-4">
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <span className="block w-full">
                             <Button
-                              className="w-full"
+                              className="w-full h-11"
                               disabled={!allMandatoryComplete}
-                              onClick={handleSubmitAll}
+                              onClick={handleAnalyzeRisks}
                             >
-                              {!allMandatoryComplete && (
-                                <AlertTriangle className="mr-2 h-4 w-4" />
-                              )}
-                              Submit &amp; Run Risk Analysis
+                              <BarChart3 className="mr-2 h-4 w-4" />
+                              Analyze Risks
                             </Button>
                           </span>
                         </TooltipTrigger>
                         {!allMandatoryComplete && (
                           <TooltipContent>
-                            <p>Fill all mandatory (*) fields to submit.</p>
+                            <p>Fill all mandatory fields to continue.</p>
                           </TooltipContent>
                         )}
                       </Tooltip>
@@ -181,7 +371,6 @@ export default function GapDetectorClient() {
                 )}
               </div>
             }
-            rightPanel={<PdfViewer presignedUrl={null} />}
           />
         )}
       </div>

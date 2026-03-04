@@ -5,7 +5,7 @@ import { PrismaService } from '../database/prisma.service';
 import { CreatePromptDto } from './dto/create-prompt.dto';
 import { UpdatePromptDto } from './dto/update-prompt.dto';
 import { ListPromptsQueryDto } from './dto/list-prompts-query.dto';
-import { BulkImportDto, ImportPromptItem } from './dto/bulk-import.dto';
+import { BulkImportDto } from './dto/bulk-import.dto';
 
 // Full prompt include spec (latest version from Prompt table)
 const PROMPT_INCLUDE = {

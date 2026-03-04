@@ -13,6 +13,10 @@ export interface InvokeModelParams {
   modelId: string;
   systemPrompt: string;
   userPrompt: string;
+  temperature?: number;
+  maxTokens?: number;
+  topP?: number;
+  topK?: number;
 }
 
 @Injectable()
@@ -41,11 +45,14 @@ export class BedrockService {
 
     const body = JSON.stringify({
       anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: 4096,
+      max_tokens: params.maxTokens ?? 4096,
       system: params.systemPrompt,
       messages: [
         { role: 'user', content: params.userPrompt },
       ],
+      ...(params.temperature !== undefined && { temperature: params.temperature }),
+      ...(params.topP !== undefined && { top_p: params.topP }),
+      ...(params.topK !== undefined && { top_k: params.topK }),
     });
 
     const response = await this.circuitBreaker.execute(() =>

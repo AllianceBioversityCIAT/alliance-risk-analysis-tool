@@ -74,6 +74,14 @@ export class AssessmentsController {
     return this.assessmentsService.delete(id, user.userId);
   }
 
+  @Get(':id/documents')
+  getDocuments(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UserClaims,
+  ) {
+    return this.assessmentsService.getDocuments(id, user.userId);
+  }
+
   @Post(':id/documents')
   requestUploadUrl(
     @Param('id', ParseUUIDPipe) id: string,

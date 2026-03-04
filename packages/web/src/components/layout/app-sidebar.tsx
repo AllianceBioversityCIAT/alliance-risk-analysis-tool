@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import {
   LayoutDashboard,
   FileText,
@@ -9,6 +9,10 @@ import {
   LogOut,
   ChevronUp,
   ShieldCheck,
+  Search,
+  BarChart3,
+  FileBarChart,
+  ArrowLeft,
 } from 'lucide-react';
 import {
   Sidebar,
@@ -53,8 +57,15 @@ const navItems = [
   },
 ];
 
+const assessmentWorkflowItems = [
+  { label: 'Gap Detector', path: '/assessments/gap-detector', icon: Search },
+  { label: 'Risk Scorecard', path: '/assessments/risk-scorecard', icon: BarChart3 },
+  { label: 'Full Report', path: '/assessments/report', icon: FileBarChart },
+];
+
 export function AppSidebar() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { user, isAdmin, logout } = useAuth();
   const { state } = useSidebar();
   const isCollapsed = state === 'collapsed';
@@ -62,6 +73,10 @@ export function AppSidebar() {
   const visibleItems = navItems.filter(
     (item) => !item.adminOnly || isAdmin,
   );
+
+  // Show assessment workflow when inside an assessment page with an id
+  const assessmentId = searchParams.get('id');
+  const isInAssessment = pathname.startsWith('/assessments/') && !!assessmentId;
 
   return (
     <Sidebar
@@ -147,6 +162,90 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {/* ── Assessment Workflow (contextual) ──────────────────────────────────── */}
+        {isInAssessment && (
+          <SidebarGroup className="px-3 py-2">
+            {/* Separator */}
+            <div
+              className="mx-0 mb-2"
+              style={{ height: '1px', backgroundColor: 'rgba(255,255,255,0.10)' }}
+            />
+            {!isCollapsed && (
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-white/40 px-3 mb-2">
+                Assessment
+              </p>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {/* Back to Dashboard */}
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    asChild
+                    tooltip="Back to Dashboard"
+                    className="h-9 rounded-lg px-3 text-[#CCFBF1] hover:bg-white/10 hover:text-white transition-colors"
+                  >
+                    <Link href="/dashboard">
+                      <ArrowLeft className="h-4 w-4 shrink-0" />
+                      <span className="ml-3 text-xs font-medium">Back to Dashboard</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+
+                {/* Workflow steps */}
+                {assessmentWorkflowItems.map((step, index) => {
+                  const stepHref = `${step.path}?id=${assessmentId}`;
+                  const isStepActive = pathname === step.path;
+                  const currentStepIndex = assessmentWorkflowItems.findIndex(
+                    (s) => pathname === s.path,
+                  );
+                  const isCompleted = currentStepIndex > index;
+
+                  return (
+                    <SidebarMenuItem key={step.path}>
+                      <SidebarMenuButton
+                        asChild
+                        tooltip={step.label}
+                        className={cn(
+                          'relative h-10 rounded-lg px-3 transition-colors',
+                          isStepActive
+                            ? 'bg-white/20 text-white'
+                            : isCompleted
+                              ? 'text-white/80 hover:bg-white/10 hover:text-white'
+                              : 'text-white/40 hover:bg-white/10 hover:text-white/60',
+                        )}
+                      >
+                        <Link href={stepHref}>
+                          {/* Orange active indicator */}
+                          {isStepActive && !isCollapsed && (
+                            <span
+                              className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
+                              style={{ backgroundColor: '#F18E1C' }}
+                            />
+                          )}
+                          {/* Step number or icon */}
+                          <div
+                            className={cn(
+                              'h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                              isStepActive
+                                ? 'bg-white text-[#008F8F]'
+                                : isCompleted
+                                  ? 'bg-emerald-400 text-white'
+                                  : 'bg-white/20 text-white/60',
+                            )}
+                          >
+                            {index + 1}
+                          </div>
+                          <span className="ml-3 text-sm font-medium">{step.label}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
 
       {/* ── Footer: user profile ─────────────────────────────────────────────── */}

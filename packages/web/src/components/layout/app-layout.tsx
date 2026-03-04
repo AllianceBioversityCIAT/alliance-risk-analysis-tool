@@ -1,6 +1,10 @@
 'use client';
 
+import { Suspense } from 'react';
+import { usePathname } from 'next/navigation';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { cn } from '@/lib/utils';
 import { AppSidebar } from './app-sidebar';
 import { AppHeader } from './app-header';
 
@@ -19,18 +23,40 @@ export function AppLayout({
   searchQuery,
   onSearch,
 }: AppLayoutProps) {
+  const pathname = usePathname();
+  // Assessment flow pages use their own teal sub-header instead of the standard AppHeader
+  const isAssessmentFlow =
+    pathname?.startsWith('/assessments/') &&
+    pathname !== '/assessments';
+
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC]">
-        <AppSidebar />
+        <Suspense>
+          <AppSidebar />
+        </Suspense>
         <SidebarInset className="flex flex-col flex-1 min-w-0">
-          <AppHeader
-            title={title}
-            onStartAssessment={onStartAssessment}
-            searchQuery={searchQuery}
-            onSearch={onSearch}
-          />
-          <main className="flex-1 overflow-y-auto p-6">
+          {isAssessmentFlow ? (
+            /* Minimal bar with just the sidebar trigger for mobile */
+            <div className="flex items-center h-10 px-2 shrink-0 md:hidden">
+              <SidebarTrigger />
+            </div>
+          ) : (
+            <AppHeader
+              title={title}
+              onStartAssessment={onStartAssessment}
+              searchQuery={searchQuery}
+              onSearch={onSearch}
+            />
+          )}
+          <main
+            className={cn(
+              'flex-1 min-h-0',
+              isAssessmentFlow
+                ? 'flex flex-col overflow-hidden'
+                : 'overflow-y-auto p-6',
+            )}
+          >
             {children}
           </main>
         </SidebarInset>

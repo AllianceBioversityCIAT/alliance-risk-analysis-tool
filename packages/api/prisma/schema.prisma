@@ -315,6 +315,8 @@ model GapField {
   status         GapFieldStatus @default(MISSING)
   isMandatory    Boolean        @default(false) @map("is_mandatory")
   order          Int            @default(0)
+  confidence     Float?         @default(0)
+  aiReasoning    String?        @map("ai_reasoning") @db.Text
 
   // Relations
   assessment Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)

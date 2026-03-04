@@ -134,6 +134,30 @@ export function useDeleteAssessment() {
   });
 }
 
+interface AssessmentDocument {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  fileSize: number;
+  status: string;
+  uploadedAt: string;
+  presignedUrl: string | null;
+}
+
+export function useAssessmentDocuments(assessmentId: string | null) {
+  return useQuery<AssessmentDocument[]>({
+    queryKey: ['assessment-documents', assessmentId],
+    queryFn: async () => {
+      const response = await apiClient.get<AssessmentDocument[]>(
+        `/api/assessments/${assessmentId}/documents`,
+      );
+      return response.data;
+    },
+    enabled: !!assessmentId,
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
 export function useRequestUploadUrl() {
   return useMutation({
     mutationFn: async ({

@@ -10,4 +10,6 @@ export interface GapFieldResponse {
   status: GapFieldStatus;
   isMandatory: boolean;
   order: number;
+  confidence: number | null;
+  aiReasoning: string | null;
 }

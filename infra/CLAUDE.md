@@ -136,7 +136,11 @@ The RDS database resides in a **private VPC** with no public access. Lambdas are
 
 | Service | Type | Purpose |
 |---------|------|---------|
+| S3 | Gateway | File storage access |
 | Cognito IDP | Interface | Token verification, user management |
+| Lambda | Interface | Worker Lambda invocation from API Lambda |
+| Textract | Interface | Document parsing (OCR) |
+| Bedrock Runtime | Interface | AI model invocation (gap detection, risk analysis) |
 
 **`EndpointSubnetIds` parameter:** Cognito interface endpoints only support specific AZs (us-east-1a/b/c). The `EndpointSubnetIds` parameter in `parameters.json` specifies which private subnets to attach the endpoint to. If you add new VPC endpoints, verify the service supports your chosen AZs.
 

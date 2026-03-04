@@ -181,12 +181,26 @@ export class AssessmentsService {
     return { presignedUrl, documentId: document.id };
   }
 
-  async getDocuments(id: string, userId: string): Promise<AssessmentDocument[]> {
+  async getDocuments(id: string, userId: string) {
     await this.findOne(id, userId);
-    return this.prisma.assessmentDocument.findMany({
+    const documents = await this.prisma.assessmentDocument.findMany({
       where: { assessmentId: id },
       orderBy: { uploadedAt: 'desc' },
     });
+
+    return Promise.all(
+      documents.map(async (doc) => ({
+        id: doc.id,
+        fileName: doc.fileName,
+        mimeType: doc.mimeType,
+        fileSize: doc.fileSize,
+        status: doc.status,
+        uploadedAt: doc.uploadedAt,
+        presignedUrl: doc.s3Key
+          ? await this.storageService.generatePresignedDownloadUrl(doc.s3Key)
+          : null,
+      })),
+    );
   }
 
   async triggerParseDocument(id: string, documentId: string, userId: string): Promise<string> {
