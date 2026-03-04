@@ -36,12 +36,7 @@ export function AppLayout({
           <AppSidebar />
         </Suspense>
         <SidebarInset className="flex flex-col flex-1 min-w-0">
-          {isAssessmentFlow ? (
-            /* Minimal bar with just the sidebar trigger for mobile */
-            <div className="flex items-center h-10 px-2 shrink-0 md:hidden">
-              <SidebarTrigger />
-            </div>
-          ) : (
+          {isAssessmentFlow ? null : (
             <AppHeader
               title={title}
               onStartAssessment={onStartAssessment}

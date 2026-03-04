@@ -163,7 +163,6 @@
 
 /* PDF text highlight for gap field click-to-find */
 .pdf-text-highlight {
-  background-color: rgba(0, 156, 166, 0.4);
+  background-color: rgba(0, 156, 166, 0.35) !important;
   border-radius: 2px;
-  padding: 1px 0;
 }

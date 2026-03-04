@@ -41,6 +41,7 @@ interface GapFieldCardProps {
   id: string;
   label: string;
   currentValue?: string | null;
+  extractedValue?: string | null;
   status: GapFieldStatus;
   isMandatory?: boolean;
   confidence?: number | null;
@@ -53,6 +54,7 @@ const GapFieldCard = memo(function GapFieldCard({
   id,
   label,
   currentValue,
+  extractedValue,
   status,
   isMandatory = false,
   confidence,
@@ -110,7 +112,7 @@ const GapFieldCard = memo(function GapFieldCard({
         borderLeftColor,
         isMissing && !isEditing && 'bg-red-50/40',
       )}
-      onClick={() => onFieldFocus?.(currentValue ?? null)}
+      onClick={() => onFieldFocus?.(extractedValue ?? currentValue ?? label)}
     >
       {/* Label + Status badge */}
       <div className="flex items-center gap-2 mb-3">

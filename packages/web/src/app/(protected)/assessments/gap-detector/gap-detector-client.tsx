@@ -20,6 +20,7 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 import dynamic from 'next/dynamic';
 import { GapLayout } from '@/components/gap-detector/gap-layout';
 import { GapCategoryGroup } from '@/components/gap-detector/gap-field-card';
@@ -164,7 +165,8 @@ export default function GapDetectorClient() {
   return (
     <div className="flex flex-col h-full">
       {/* ─── Breadcrumb ──────────────────────────────────────────────────────────── */}
-      <div className="px-6 pt-4 pb-2">
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2">
+        <SidebarTrigger className="shrink-0" />
         <BreadcrumbTrail
           items={[
             { label: 'Dashboard', href: '/dashboard' },
@@ -178,7 +180,7 @@ export default function GapDetectorClient() {
 
       {/* ─── Teal Sub-Header ─────────────────────────────────────────────────────── */}
       {assessment && (
-        <div className="px-6 py-4 text-white" style={{ backgroundColor: '#008F8F' }}>
+        <div className="px-6 py-4 text-white" style={{ backgroundColor: '#1A3C40' }}>
           <div className="flex items-start justify-between gap-4">
             {/* Left: Assessment info */}
             <div className="min-w-0 flex-1">
@@ -277,7 +279,7 @@ export default function GapDetectorClient() {
               <Button
                 variant="outline"
                 size="sm"
-                className="bg-white text-[#008F8F] border-0 hover:bg-white/90 text-xs h-7 px-3 shrink-0"
+                className="bg-white text-[#1A3C40] border-0 hover:bg-white/90 text-xs h-7 px-3 shrink-0"
                 onClick={() => router.push(`/assessments/upload?id=${id}`)}
               >
                 Change Document
@@ -321,6 +323,7 @@ export default function GapDetectorClient() {
                         id: f.id,
                         label: f.label,
                         currentValue: f.correctedValue ?? f.extractedValue,
+                        extractedValue: f.extractedValue,
                         status: f.status as GapFieldStatus,
                         isMandatory: f.isMandatory,
                         confidence: f.confidence,

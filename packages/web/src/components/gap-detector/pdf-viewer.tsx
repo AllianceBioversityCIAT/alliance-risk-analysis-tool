@@ -45,53 +45,80 @@ export function PdfViewer({ presignedUrl, fileName, highlightKeyword, className 
   useEffect(() => {
     if (!highlightKeyword || !scrollRef.current) return;
 
-    // Small delay to let text layers render
+    // Small delay to let text layers render after page changes
     const timer = setTimeout(() => {
       const container = scrollRef.current;
       if (!container) return;
 
       // Remove previous highlights
       container.querySelectorAll('.pdf-text-highlight').forEach((el) => {
-        const parent = el.parentNode;
-        if (parent) {
-          parent.replaceChild(document.createTextNode(el.textContent ?? ''), el);
-          parent.normalize();
-        }
+        el.classList.remove('pdf-text-highlight');
       });
 
-      // Find matching text spans in the text layer
-      const textSpans = container.querySelectorAll('.react-pdf__Page__textContent span');
-      const keyword = highlightKeyword.toLowerCase();
-      let scrollTarget: Element | undefined;
+      // Common English stop words that match too many spans
+      const STOP_WORDS = new Set([
+        'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'had',
+        'her', 'was', 'one', 'our', 'out', 'has', 'have', 'been', 'will',
+        'with', 'this', 'that', 'from', 'they', 'said', 'each', 'also',
+        'which', 'their', 'about', 'would', 'there', 'could', 'other',
+        'into', 'more', 'some', 'than', 'them', 'very', 'when', 'what',
+        'your', 'through', 'its', 'just', 'over', 'such', 'being',
+        'after', 'most', 'only', 'then', 'these', 'does', 'how',
+      ]);
 
-      for (const span of Array.from(textSpans)) {
-        const text = span.textContent ?? '';
-        const lowerText = text.toLowerCase();
-        const idx = lowerText.indexOf(keyword);
+      // Extract significant words: ≥4 chars and not a stop word
+      const words = highlightKeyword
+        .toLowerCase()
+        .split(/\s+/)
+        .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
 
-        if (idx === -1) continue;
+      if (words.length === 0) return;
 
-        const textNode = span.firstChild;
-        if (!textNode || textNode.nodeType !== Node.TEXT_NODE) continue;
+      // Score each span by number of keyword matches
+      const textSpans = Array.from(
+        container.querySelectorAll('.react-pdf__Page__textContent span'),
+      );
+      if (textSpans.length === 0) return;
 
-        try {
-          const range = document.createRange();
-          range.setStart(textNode, idx);
-          range.setEnd(textNode, Math.min(idx + highlightKeyword.length, text.length));
+      const scores = textSpans.map((span) => {
+        const text = (span.textContent ?? '').toLowerCase();
+        if (!text.trim()) return 0;
+        return words.filter((word) => text.includes(word)).length;
+      });
 
-          const mark = document.createElement('mark');
-          mark.className = 'pdf-text-highlight';
-          range.surroundContents(mark);
+      // Find the best cluster using a sliding window approach
+      // Only highlight the document region with the highest density of matches
+      const WINDOW = Math.min(30, textSpans.length);
+      let bestStart = 0;
+      let bestScore = 0;
+      let windowScore = 0;
 
-          if (!scrollTarget) scrollTarget = mark;
-        } catch {
-          // Range manipulation can fail for complex text nodes — skip
+      for (let i = 0; i < WINDOW; i++) windowScore += scores[i];
+      bestScore = windowScore;
+
+      for (let i = 1; i <= textSpans.length - WINDOW; i++) {
+        windowScore -= scores[i - 1];
+        windowScore += scores[i + WINDOW - 1];
+        if (windowScore > bestScore) {
+          bestScore = windowScore;
+          bestStart = i;
         }
       }
 
-      // Scroll to first match
+      if (bestScore === 0) return;
+
+      // Highlight only matching spans within the best cluster
+      let scrollTarget: Element | undefined;
+      const end = Math.min(bestStart + WINDOW, textSpans.length);
+      for (let i = bestStart; i < end; i++) {
+        if (scores[i] > 0) {
+          textSpans[i].classList.add('pdf-text-highlight');
+          if (!scrollTarget) scrollTarget = textSpans[i];
+        }
+      }
+
       scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 300);
+    }, 400);
 
     return () => clearTimeout(timer);
   }, [highlightKeyword, numPages]);
