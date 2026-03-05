@@ -185,68 +185,95 @@ export default function GapDetectorClient() {
 
       {/* ─── Teal Sub-Header ─────────────────────────────────────────────────────── */}
       {assessment && (
-        <div className="px-6 py-4 text-white" style={{ backgroundColor: '#1A3C40' }}>
-          <div className="flex items-start justify-between gap-4">
-            {/* Left: Assessment info */}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                {isEditingName ? (
-                  <>
-                    <input
-                      ref={nameInputRef}
-                      type="text"
-                      value={editName}
-                      onChange={(e) => setEditName(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveNameEdit();
-                        if (e.key === 'Escape') cancelEditingName();
-                      }}
-                      className="text-base font-semibold text-white bg-white/15 border border-white/30 rounded px-2 py-0.5 outline-none focus:border-white/60 min-w-[200px]"
-                      aria-label="Edit assessment name"
-                    />
-                    <button
-                      onClick={saveNameEdit}
-                      className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
-                      aria-label="Save name"
-                    >
-                      <Check className="h-3.5 w-3.5 text-emerald-300" />
-                    </button>
-                    <button
-                      onClick={cancelEditingName}
-                      className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
-                      aria-label="Cancel editing"
-                    >
-                      <X className="h-3.5 w-3.5 text-white/60" />
-                    </button>
-                  </>
-                ) : (
-                  <>
-                    <h1 className="text-base font-semibold text-white truncate">
-                      {assessment.name}
-                    </h1>
-                    <button
-                      onClick={startEditingName}
-                      className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
-                      aria-label="Edit assessment name"
-                    >
-                      <Pencil className="h-3.5 w-3.5 text-white/60 hover:text-white/80" />
-                    </button>
-                  </>
-                )}
+        <div className="px-6 py-5 text-white" style={{ backgroundColor: '#1A3C40' }}>
+          <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
+            
+            {/* Left Column: Assessment info & Document bar */}
+            <div className="flex flex-col gap-4 min-w-0 flex-1">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  {isEditingName ? (
+                    <>
+                      <input
+                        ref={nameInputRef}
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveNameEdit();
+                          if (e.key === 'Escape') cancelEditingName();
+                        }}
+                        className="text-base font-semibold text-white bg-white/15 border border-white/30 rounded px-2 py-0.5 outline-none focus:border-white/60 min-w-[200px]"
+                        aria-label="Edit assessment name"
+                      />
+                      <button
+                        onClick={saveNameEdit}
+                        className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
+                        aria-label="Save name"
+                      >
+                        <Check className="h-3.5 w-3.5 text-emerald-300" />
+                      </button>
+                      <button
+                        onClick={cancelEditingName}
+                        className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
+                        aria-label="Cancel editing"
+                      >
+                        <X className="h-3.5 w-3.5 text-white/60" />
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <h1 className="text-xl font-bold text-white truncate">
+                        {assessment.name}
+                      </h1>
+                      <button
+                        onClick={startEditingName}
+                        className="shrink-0 p-1 rounded hover:bg-white/20 transition-colors"
+                        aria-label="Edit assessment name"
+                      >
+                        <Pencil className="h-3.5 w-3.5 text-white/60 hover:text-white/80" />
+                      </button>
+                    </>
+                  )}
+                </div>
+                <div className="flex items-center gap-2 text-xs text-white/70">
+                  <span className="font-mono">ID: {assessment.id.substring(0, 12).toUpperCase()}</span>
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
+                  <span>Gap Review In Progress</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-xs text-white/70">
-                <span>ID: {assessment.id.substring(0, 12).toUpperCase()}</span>
-                <span className="h-1.5 w-1.5 rounded-full bg-amber-400" />
-                <span>Gap Review In Progress</span>
-              </div>
+
+              {/* Document info bar — compact, integrated into left column */}
+              {hasDocument && documentName && (
+                <div className="inline-flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10 w-fit">
+                  <FileText className="h-4 w-4 text-white/60 shrink-0" />
+                  <span className="text-sm font-medium text-white truncate max-w-[220px]">
+                    {documentName}
+                  </span>
+                  {assessment.companyName && (
+                    <>
+                      <span className="h-3 w-px bg-white/20 mx-1" />
+                      <span className="text-xs text-white/60">{assessment.companyName}</span>
+                    </>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white text-xs h-7 px-3 shrink-0 ml-2"
+                    onClick={() => router.push(`/assessments/upload?id=${id}`)}
+                  >
+                    Change Document
+                  </Button>
+                </div>
+              )}
             </div>
 
-            {/* Right Side: Save Draft & Data Completeness */}
-            <div className="flex flex-col items-end gap-4 shrink-0 min-w-[140px]">
+            {/* Right Column: Actions & Progress */}
+            <div className="flex flex-col items-end gap-5 shrink-0 min-w-[240px]">
               <Button
                 variant="outline"
                 size="sm"
-                className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:text-white shrink-0"
+                className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:text-white shrink-0 shadow-sm"
                 onClick={handleSaveDraft}
                 disabled={isSavingDraft}
               >
@@ -254,44 +281,32 @@ export default function GapDetectorClient() {
                 {isSavingDraft ? 'Saving...' : 'Save Draft'}
               </Button>
 
-              <div className="text-right w-full">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 mb-0.5">
-                  Data Completeness
-                </p>
-                <p className="text-3xl font-bold text-white leading-none">{completeness}%</p>
-                <div className="h-1.5 w-full rounded-full bg-white/20 mt-1.5 overflow-hidden">
+              {/* Data Completeness Widget */}
+              <div className="w-full bg-white/5 rounded-xl p-3.5 border border-white/10 shadow-sm">
+                <div className="flex items-end justify-between gap-4 mb-2">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-white/70">
+                    Data Completeness
+                  </p>
+                  <p className="text-2xl font-bold text-white leading-none">{completeness}%</p>
+                </div>
+                <div className="h-1.5 w-full rounded-full bg-white/10 overflow-hidden">
                   <div
                     className="h-full rounded-full bg-emerald-400 transition-all duration-500"
                     style={{ width: `${completeness}%` }}
                   />
                 </div>
-                {requiredRemaining > 0 && (
-                  <p className="text-[10px] text-white/60 mt-1">
-                    {requiredRemaining} required field{requiredRemaining !== 1 ? 's' : ''} remaining
+                {requiredRemaining > 0 ? (
+                  <p className="text-[10px] text-white/60 mt-2 text-right">
+                    <span className="text-white font-medium">{requiredRemaining}</span> required field{requiredRemaining !== 1 ? 's' : ''} remaining
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-emerald-400 mt-2 text-right font-medium">
+                    All required fields complete
                   </p>
                 )}
               </div>
             </div>
           </div>
-
-          {/* Document info bar — compact, not full-width */}
-          {hasDocument && documentName && (
-            <div className="inline-flex items-center gap-3 mt-3 px-3 py-2 rounded-lg bg-white/10">
-              <FileText className="h-5 w-5 text-white/80 shrink-0" />
-              <span className="text-sm font-medium text-white truncate max-w-[220px]">
-                {documentName}
-              </span>
-              <span className="text-xs text-white/50">{assessment.companyName}</span>
-              <Button
-                variant="outline"
-                size="sm"
-                className="bg-white text-[#1A3C40] border-0 hover:bg-white/90 text-xs h-7 px-3 shrink-0"
-                onClick={() => router.push(`/assessments/upload?id=${id}`)}
-              >
-                Change Document
-              </Button>
-            </div>
-          )}
         </div>
       )}
 
