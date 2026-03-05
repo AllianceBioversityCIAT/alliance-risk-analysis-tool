@@ -45,6 +45,14 @@ async function main() {
       // This prompt instructs the AI to classify—not generate—data from the extracted document text.
       systemPrompt: `You are an agricultural business plan analyzer. Your task is to extract and classify 10 mandatory business fields from the provided document text.
 
+## IMPORTANT: Multi-Document Analysis
+
+You are analyzing MULTIPLE business documents that are COMPLEMENTARY — for example, a narrative business plan and financial spreadsheets. You MUST extract information from ALL document sections, not just the first one. Each section starts with '## Document: {fileName}'.
+
+Financial data (revenue, costs, projections) is often in separate spreadsheet documents. Narrative descriptions (business model, workforce, challenges) are typically in the main plan document.
+
+If different documents provide values for the same field, synthesize them into a comprehensive answer. Note which document(s) informed each extraction in your reasoning.
+
 ## Core 10 Fields
 
 1. business_model_summary — How the enterprise creates and delivers value
@@ -60,9 +68,9 @@ async function main() {
 
 ## Classification Rules
 
-- **VERIFIED**: The document contains clear, substantial information addressing this field. Confidence should be >= 0.7.
-- **PARTIAL**: The document contains some relevant information but it is incomplete, vague, or only indirectly addresses the field. Confidence should be 0.3–0.7.
-- **MISSING**: The document contains no relevant information for this field. Confidence should be >= 0.8 (high confidence that the data is absent).
+- **VERIFIED**: The document(s) contain clear, substantial information addressing this field. Confidence should be >= 0.7.
+- **PARTIAL**: The document(s) contain some relevant information but it is incomplete, vague, or only indirectly addresses the field. Confidence should be 0.3–0.7.
+- **MISSING**: None of the documents contain relevant information for this field. Confidence should be >= 0.8 (high confidence that the data is absent).
 
 ## Output Format
 
@@ -72,9 +80,9 @@ Return a JSON object with this exact structure:
     {
       "field": "<field_key>",
       "status": "VERIFIED" | "PARTIAL" | "MISSING",
-      "extractedValue": "<relevant text from document or null>",
+      "extractedValue": "<relevant text from document(s) or null>",
       "confidence": <0.0-1.0>,
-      "reasoning": "<1-2 sentence explanation of classification>"
+      "reasoning": "<1-2 sentence explanation of classification, mentioning which document(s) provided the information>"
     }
   ]
 }
@@ -83,13 +91,13 @@ You MUST return exactly 10 field entries, one for each Core 10 field.
 Return ONLY the JSON object, no additional text.`,
       // User prompt template: the {{extracted_data}} placeholder is replaced at runtime
       // with the truncated text extracted from the business plan PDF via AWS Textract.
-      userPromptTemplate: `Analyze the following extracted business plan text and classify each of the 10 Core 10 mandatory fields.
+      userPromptTemplate: `Analyze the following extracted business plan text and classify each of the 10 Core 10 mandatory fields. The text may contain MULTIPLE documents separated by "## Document:" headers — extract information from ALL of them.
 
 ## Extracted Document Text
 
 {{extracted_data}}
 
-Provide your analysis as the specified JSON format.`,
+Remember: examine ALL document sections above. Financial spreadsheets often contain revenue, cost, and projection data. Narrative documents contain business model descriptions, workforce details, and challenges. Provide your analysis as the specified JSON format.`,
     },
     {
       section: AgentSection.risk_analysis,

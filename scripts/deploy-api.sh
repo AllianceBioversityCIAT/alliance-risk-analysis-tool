@@ -149,7 +149,7 @@ done
 
 log "  Bundling lambda.js..."
 ${ESBUILD} "${API_DIR}/dist/src/lambda.js" \
-  --bundle --platform=node --target=node20 --format=cjs \
+  --bundle --platform=node --target=node22 --format=cjs \
   --outfile="${TEMP_DIR}/dist/src/lambda.js" \
   ${EXTERNAL_FLAGS} \
   --main-fields=main,module \
@@ -158,7 +158,7 @@ ${ESBUILD} "${API_DIR}/dist/src/lambda.js" \
 
 log "  Bundling worker.js..."
 ${ESBUILD} "${API_DIR}/dist/src/worker.js" \
-  --bundle --platform=node --target=node20 --format=cjs \
+  --bundle --platform=node --target=node22 --format=cjs \
   --outfile="${TEMP_DIR}/dist/src/worker.js" \
   ${EXTERNAL_FLAGS} \
   --main-fields=main,module \

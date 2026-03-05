@@ -205,6 +205,32 @@
   opacity: 0.7;
 }
 
+/* Document viewer — table styling for spreadsheet data */
+.doc-viewer-prose table {
+  border-collapse: collapse;
+  width: 100%;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+  font-size: 0.8125em;
+}
+.doc-viewer-prose th {
+  border: 1px solid var(--border);
+  background-color: var(--muted);
+  padding: 0.375rem 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+.doc-viewer-prose td {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.75rem;
+  font-size: 0.8125rem;
+}
+.doc-viewer-prose tr:hover td {
+  background-color: var(--accent);
+}
+
 /* Document viewer — first heading removes top margin */
 .doc-viewer-prose > :first-child {
   margin-top: 0 !important;
@@ -241,4 +267,43 @@
 .doc-viewer-prose li {
   margin-top: 0.125rem;
   margin-bottom: 0.125rem;
+}
+
+/* Document section badge — visual boundary between merged documents */
+.doc-section-badge-wrapper {
+  margin-top: 2.5rem;
+  margin-bottom: 1.5rem;
+  scroll-margin-top: 3rem;
+}
+.doc-section-badge-wrapper:first-child {
+  margin-top: 0;
+}
+.doc-section-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 9999px;
+  border: 1px solid;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  max-width: 100%;
+}
+.doc-section-divider {
+  margin-top: 0.75rem;
+  height: 1px;
+  background: linear-gradient(to right, var(--border), transparent 80%);
+}
+
+/* Sticky document indicator — shows current document while scrolling */
+.sticky-doc-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  background-color: var(--background);
+  z-index: 10;
+  max-width: 100%;
+  overflow: hidden;
 }

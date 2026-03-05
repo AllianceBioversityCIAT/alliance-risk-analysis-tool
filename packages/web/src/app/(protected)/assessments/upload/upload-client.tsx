@@ -36,9 +36,9 @@ export default function UploadClient() {
           <FileUp className="h-5 w-5 text-primary" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-foreground">Upload Business Plan</h1>
+          <h1 className="text-xl font-bold text-foreground">Manage Documents</h1>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Upload your business plan and our AI will extract risk data automatically.
+            View, add or remove documents. New uploads will be analysed automatically.
           </p>
         </div>
       </div>

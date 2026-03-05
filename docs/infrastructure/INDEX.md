@@ -154,7 +154,7 @@ Details the risk analysis workflow:
 ### Pre-Deployment Checklist
 
 - [ ] AWS CLI configured with correct credentials
-- [ ] Node.js 20+ and pnpm 9+ installed
+- [ ] Node.js 22+ and pnpm 9+ installed
 - [ ] CDK bootstrapped in target account/region
 - [ ] Environment parameters configured in `parameters.json`
 - [ ] API code built successfully

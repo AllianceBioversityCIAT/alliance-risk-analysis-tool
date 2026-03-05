@@ -98,7 +98,7 @@ Environment-specific parameters are defined in `infra/cfn/parameters.json`:
 
 **Configuration**:
 - Function name: `alliance-risk-api`
-- Runtime: Node.js 20.x (ARM64)
+- Runtime: Node.js 22.x (ARM64)
 - Handler: `dist/lambda.handler`
 - Timeout: 29 seconds (< API Gateway 30s limit)
 - Memory: 1024 MB
@@ -124,7 +124,7 @@ Environment-specific parameters are defined in `infra/cfn/parameters.json`:
 
 **Configuration**:
 - Function name: `alliance-risk-worker`
-- Runtime: Node.js 20.x (ARM64)
+- Runtime: Node.js 22.x (ARM64)
 - Handler: `dist/worker.handler`
 - Timeout: 15 minutes
 - Memory: 1024 MB

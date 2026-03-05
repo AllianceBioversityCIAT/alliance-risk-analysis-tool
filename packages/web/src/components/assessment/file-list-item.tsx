@@ -55,7 +55,7 @@ export function FileListItem({
   onRemove,
   onRetry,
 }: FileListItemProps) {
-  const canRemove = (status === 'idle' || status === 'uploading') && onRemove;
+  const canRemove = (status === 'idle' || status === 'uploading' || status === 'complete') && onRemove;
   const showProgress = status === 'uploading' || status === 'parsing';
   const isIndeterminate = status === 'parsing';
 
@@ -145,16 +145,17 @@ export function FileListItem({
 
 interface ProcessingQueueProps {
   children: React.ReactNode;
+  label?: string;
 }
 
-export function ProcessingQueue({ children }: ProcessingQueueProps) {
+export function ProcessingQueue({ children, label }: ProcessingQueueProps) {
   return (
     <div className="space-y-3">
       {/* Section header */}
       <div className="flex items-center gap-2">
         <ListOrdered className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Processing Queue
+          {label ?? 'Processing Queue'}
         </p>
       </div>
       {children}

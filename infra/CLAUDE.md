@@ -38,7 +38,7 @@ test/
 Single stack (`AllianceRiskStack`) provisions:
 - **Cognito** — User Pool, Client, `admin` group
 - **RDS PostgreSQL 15** — `db.t3.micro`, credentials in Secrets Manager
-- **API Lambda** — ARM64, 1024MB, Node.js 20, behind API Gateway HTTP API
+- **API Lambda** — ARM64, 1024MB, Node.js 22, behind API Gateway HTTP API
 - **Worker Lambda** — ARM64, 1024MB, 15min timeout, async invocation
 - **API Gateway HTTP API** — 30s timeout, routes to API Lambda
 - **S3** — file storage bucket + web hosting bucket

@@ -5,11 +5,16 @@ import { useEffect, useCallback, useState, useRef } from 'react';
 import {
   Loader2,
   FileText,
+  FileSpreadsheet,
+  File,
   BarChart3,
   Pencil,
   Save,
   Check,
   X,
+  CheckCircle2,
+  Circle,
+  RefreshCw,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
@@ -42,9 +47,11 @@ const DocumentViewer = dynamic(
 import { useGapFields, useUpdateGapFields } from '@/hooks/use-gap-detection';
 import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { useMergedContent } from '@/hooks/use-merged-content';
+import { useMultiDocumentStatus } from '@/hooks/use-multi-document-status';
 import { GapFieldStatus } from '@alliance-risk/shared';
 import type { GapFieldResponse } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
 
 // Group gap fields by category preserving insertion order
@@ -58,6 +65,20 @@ function groupByCategory(fields: GapFieldResponse[]) {
     category,
     fields: catFields,
   }));
+}
+
+// File icon by MIME type
+function FileIcon({ mimeType, className }: { mimeType: string; className?: string }) {
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel') || mimeType.includes('csv')) {
+    return <FileSpreadsheet className={className} />;
+  }
+  if (mimeType.includes('pdf')) {
+    return <FileText className={className} />;
+  }
+  if (mimeType.includes('word') || mimeType.includes('document')) {
+    return <FileText className={className} />;
+  }
+  return <File className={className} />;
 }
 
 export default function GapDetectorClient() {
@@ -74,6 +95,14 @@ export default function GapDetectorClient() {
   const { mutateAsync: updateFields } = useUpdateGapFields(id ?? '');
   const { data: mergedContentData } = useMergedContent(id);
   const { mutateAsync: updateAssessment, isPending: isSavingDraft } = useUpdateAssessment();
+
+  // Multi-document status — always poll when we have an upload-mode assessment
+  const hasDocument = assessment?.intakeMode === 'UPLOAD';
+  const {
+    documents,
+    allParsed,
+    isProcessing: docsProcessing,
+  } = useMultiDocumentStatus(id, hasDocument ?? false);
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string) => {
@@ -158,14 +187,14 @@ export default function GapDetectorClient() {
   const allMandatoryComplete = gapData?.allMandatoryComplete ?? false;
   const groups = groupByCategory(fields);
 
-  const hasDocument = assessment?.intakeMode === 'UPLOAD';
   const mergedMarkdown = mergedContentData?.mergedMarkdown ?? null;
-  // Keep documentName for the document info bar
-  const documentName = mergedMarkdown ? 'Uploaded Documents' : null;
 
   // Data completeness
   const completeness = total > 0 ? Math.round((verified / total) * 100) : 0;
   const requiredRemaining = total - verified;
+
+  // Document count for header
+  const docCount = documents.length;
 
   return (
     <div className="flex flex-col h-full">
@@ -187,7 +216,7 @@ export default function GapDetectorClient() {
       {assessment && (
         <div className="px-6 py-5 text-white" style={{ backgroundColor: '#1A3C40' }}>
           <div className="flex flex-col md:flex-row md:items-end justify-between gap-6">
-            
+
             {/* Left Column: Assessment info & Document bar */}
             <div className="flex flex-col gap-4 min-w-0 flex-1">
               <div>
@@ -243,26 +272,56 @@ export default function GapDetectorClient() {
                 </div>
               </div>
 
-              {/* Document info bar — compact, integrated into left column */}
-              {hasDocument && documentName && (
-                <div className="inline-flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10 w-fit">
-                  <FileText className="h-4 w-4 text-white/60 shrink-0" />
-                  <span className="text-sm font-medium text-white truncate max-w-[220px]">
-                    {documentName}
-                  </span>
-                  {assessment.companyName && (
-                    <>
-                      <span className="h-3 w-px bg-white/20 mx-1" />
-                      <span className="text-xs text-white/60">{assessment.companyName}</span>
-                    </>
-                  )}
+              {/* Document info bar — shows document count + filenames */}
+              {hasDocument && docCount > 0 && (
+                <div className="inline-flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10 w-fit max-w-full">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <FileText className="h-4 w-4 text-white/60 shrink-0" />
+                    <span className="text-sm font-medium text-white shrink-0">
+                      {docCount} Document{docCount !== 1 ? 's' : ''}
+                    </span>
+                    <span className="h-3 w-px bg-white/20 mx-0.5" />
+                    <div className="flex items-center gap-2 min-w-0 overflow-hidden">
+                      {documents.slice(0, 3).map((doc) => (
+                        <span
+                          key={doc.id}
+                          className="inline-flex items-center gap-1 text-xs text-white/70 truncate"
+                          title={doc.fileName}
+                        >
+                          <FileIcon mimeType={doc.mimeType} className="h-3 w-3 shrink-0 text-white/50" />
+                          <span className="truncate max-w-[140px]">{doc.fileName}</span>
+                        </span>
+                      ))}
+                      {docCount > 3 && (
+                        <span className="text-xs text-white/50 shrink-0">
+                          +{docCount - 3} more
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <Button
                     variant="outline"
                     size="sm"
                     className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white text-xs h-7 px-3 shrink-0 ml-2"
                     onClick={() => router.push(`/assessments/upload?id=${id}`)}
                   >
-                    Change Document
+                    Manage Documents
+                  </Button>
+                </div>
+              )}
+
+              {/* Fallback when no documents loaded yet */}
+              {hasDocument && docCount === 0 && (
+                <div className="inline-flex items-center gap-3 px-3 py-2 rounded-lg bg-white/5 border border-white/10 w-fit">
+                  <FileText className="h-4 w-4 text-white/60 shrink-0" />
+                  <span className="text-sm font-medium text-white">Uploaded Documents</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="bg-white/10 text-white border-white/20 hover:bg-white/20 hover:text-white text-xs h-7 px-3 shrink-0 ml-2"
+                    onClick={() => router.push(`/assessments/upload?id=${id}`)}
+                  >
+                    Manage Documents
                   </Button>
                 </div>
               )}
@@ -313,10 +372,73 @@ export default function GapDetectorClient() {
       {/* ─── Main Content (Split Pane) ───────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {isLoading ? (
-          <div className="p-6 space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 w-full rounded-lg" />
-            ))}
+          /* ─── Enhanced Loading State ────────────────────────────────────────── */
+          <div className="flex-1 flex items-center justify-center p-6">
+            <div className="w-full max-w-md bg-card rounded-xl border border-border shadow-sm p-6">
+              <div className="flex flex-col items-center text-center mb-5">
+                <div className="relative mb-3">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                </div>
+                <h3 className="text-base font-semibold text-foreground">
+                  Analyzing your documents...
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Extracting text and detecting gaps
+                </p>
+              </div>
+
+              {/* Per-document status list */}
+              {documents.length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {documents.map((doc) => (
+                    <div
+                      key={doc.id}
+                      className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-muted/50"
+                    >
+                      {doc.status === 'PARSED' ? (
+                        <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                      ) : doc.status === 'PARSING' ? (
+                        <RefreshCw className="h-4 w-4 text-primary animate-spin shrink-0" />
+                      ) : doc.status === 'FAILED' ? (
+                        <X className="h-4 w-4 text-destructive shrink-0" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground/40 shrink-0" />
+                      )}
+                      <FileIcon mimeType={doc.mimeType} className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <span className="text-sm text-foreground truncate flex-1">
+                        {doc.fileName}
+                      </span>
+                      <span className={cn(
+                        'text-[10px] font-medium shrink-0',
+                        doc.status === 'PARSED' && 'text-emerald-600',
+                        doc.status === 'PARSING' && 'text-primary',
+                        doc.status === 'FAILED' && 'text-destructive',
+                        doc.status === 'UPLOADED' && 'text-muted-foreground',
+                      )}>
+                        {doc.status === 'PARSED' ? 'Parsed' :
+                         doc.status === 'PARSING' ? 'Parsing...' :
+                         doc.status === 'FAILED' ? 'Failed' : 'Waiting'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Progress steps */}
+              <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground">
+                <span className={allParsed ? 'text-emerald-600' : docsProcessing ? 'text-primary font-medium' : ''}>
+                  Extracting text
+                </span>
+                <span>{'>'}</span>
+                <span className={allParsed && fields.length === 0 ? 'text-primary font-medium' : allParsed ? 'text-emerald-600' : ''}>
+                  Detecting gaps
+                </span>
+                <span>{'>'}</span>
+                <span className={fields.length > 0 ? 'text-emerald-600' : ''}>
+                  Building fields
+                </span>
+              </div>
+            </div>
           </div>
         ) : (
           <GapLayout
@@ -325,6 +447,11 @@ export default function GapDetectorClient() {
               <DocumentViewer
                 markdownContent={mergedMarkdown}
                 highlightKeyword={highlightKeyword}
+                documents={documents.map((d) => ({
+                  id: d.id,
+                  fileName: d.fileName,
+                  mimeType: d.mimeType,
+                }))}
               />
             }
             fieldsPanel={
@@ -359,14 +486,42 @@ export default function GapDetectorClient() {
                   ))}
                 </div>
 
-                {/* Empty state — polling for gap detection results */}
+                {/* Empty state — AI analysis in progress */}
                 {fields.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-16 text-center text-muted-foreground">
-                    <Loader2 className="h-8 w-8 animate-spin mb-3" />
-                    <p className="text-sm font-medium">Analyzing document...</p>
-                    <p className="text-xs mt-1">
-                      Gap fields will appear here once extraction completes.
+                  <div className="flex flex-col items-center justify-center py-16 text-center">
+                    <div className="relative mb-4">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground">
+                      Running AI gap analysis...
                     </p>
+                    <p className="text-xs text-muted-foreground mt-1 max-w-[280px]">
+                      {docsProcessing
+                        ? 'Still parsing documents. Gap fields will appear once all documents are processed.'
+                        : 'Analyzing all uploaded documents for business data. Gap fields will appear shortly.'}
+                    </p>
+                    {documents.length > 0 && (
+                      <div className="flex items-center gap-2 mt-3">
+                        {documents.map((doc) => (
+                          <span
+                            key={doc.id}
+                            className={cn(
+                              'inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border',
+                              doc.status === 'PARSED'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : doc.status === 'PARSING'
+                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                  : 'bg-gray-50 text-gray-600 border-gray-200',
+                            )}
+                          >
+                            <FileIcon mimeType={doc.mimeType} className="h-2.5 w-2.5" />
+                            {doc.fileName.length > 20
+                              ? doc.fileName.substring(0, 17) + '...'
+                              : doc.fileName}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
 

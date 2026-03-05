@@ -310,7 +310,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: alliance-risk-worker
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Architectures: [arm64]
       Handler: dist/src/worker.handler
       Code:
@@ -401,7 +401,7 @@ Resources:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: alliance-risk-api
-      Runtime: nodejs20.x
+      Runtime: nodejs22.x
       Architectures: [arm64]
       Handler: dist/src/lambda.handler
       Code:

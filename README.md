@@ -142,7 +142,7 @@ Frontend (Next.js) --> API Gateway --> API Lambda (NestJS)
 - **Cognito** — User Pool with `admin` group, email-based auth
 - **RDS PostgreSQL 15** — Primary database, credentials in Secrets Manager
 - **API Lambda** — NestJS behind API Gateway HTTP API (30s timeout)
-- **Worker Lambda** — Background job processor (15min timeout), ARM64 Node.js 20
+- **Worker Lambda** — Background job processor (15min timeout), ARM64 Node.js 22
 - **S3** — File storage + static web hosting
 - **CloudFront** — CDN with SPA fallback
 - **Bedrock** — Claude 3.5 Sonnet v2 for all AI agents
@@ -163,7 +163,7 @@ Frontend (Next.js) --> API Gateway --> API Lambda (NestJS)
 - **NestJS 10** REST API with TypeScript
 - **Prisma** ORM with PostgreSQL
 - **AWS SDK** for Bedrock, S3, Lambda, Cognito
-- **AWS Lambda** on ARM64 architecture (Node.js 20)
+- **AWS Lambda** on ARM64 architecture (Node.js 22)
 - **API Gateway HTTP API** with 30-second timeout
 
 ### Infrastructure

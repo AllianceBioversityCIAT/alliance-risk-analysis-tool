@@ -51,10 +51,10 @@ describe('AllianceRiskStack', () => {
   });
 
   describe('Lambda Functions', () => {
-    it('creates an API Lambda with ARM64 and Node.js 20', () => {
+    it('creates an API Lambda with ARM64 and Node.js 22', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
         FunctionName: 'alliance-risk-api',
-        Runtime: 'nodejs20.x',
+        Runtime: 'nodejs22.x',
         Architectures: ['arm64'],
         MemorySize: 1024,
       });
@@ -63,7 +63,7 @@ describe('AllianceRiskStack', () => {
     it('creates a Worker Lambda with 15-minute timeout', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
         FunctionName: 'alliance-risk-worker',
-        Runtime: 'nodejs20.x',
+        Runtime: 'nodejs22.x',
         Architectures: ['arm64'],
         MemorySize: 1024,
         Timeout: 900, // 15 minutes in seconds

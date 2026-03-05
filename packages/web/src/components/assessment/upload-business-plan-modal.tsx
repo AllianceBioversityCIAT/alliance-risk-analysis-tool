@@ -42,15 +42,48 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
   const router = useRouter();
   const [files, setFiles] = useState<TrackedFile[]>([]);
   const [modalPhase, setModalPhase] = useState<ModalPhase>('selecting');
+  const [existingDocsLoaded, setExistingDocsLoaded] = useState(false);
 
   const { mutateAsync: requestUploadUrl } = useRequestUploadUrl();
   const { mutateAsync: triggerParseAll } = useTriggerParseAll();
   const { mutateAsync: deleteDocumentApi } = useDeleteDocument();
 
-  // Poll documents list once parsing has started
+  // Poll documents list once parsing has started OR on initial load to fetch existing docs
   const pollingEnabled = modalPhase === 'parsing';
   const { allParsed, anyFailed, documents } =
     useMultiDocumentStatus(assessmentId, pollingEnabled);
+
+  // --- Load existing documents on mount ------------------------------------
+  // Fetch once to show already-uploaded docs in the file list
+  const { documents: existingDocs } = useMultiDocumentStatus(assessmentId, !existingDocsLoaded);
+
+  useEffect(() => {
+    if (existingDocsLoaded || existingDocs.length === 0) return;
+
+    const existingTracked: TrackedFile[] = existingDocs.map((doc) => ({
+      selectedFile: {
+        name: doc.fileName,
+        size: doc.fileSize ?? 0,
+        mimeType: doc.mimeType ?? 'application/octet-stream',
+        file: null as unknown as File, // Existing file — no File object available
+      },
+      documentId: doc.id,
+      phase: doc.status === 'PARSED' ? 'parsed' as const
+        : doc.status === 'FAILED' ? 'failed' as const
+        : doc.status === 'PARSING' ? 'parsing' as const
+        : 'uploaded' as const,
+      uploadProgress: 100,
+      errorMessage: doc.status === 'FAILED' ? 'Parsing failed on server' : null,
+    }));
+
+    setFiles(existingTracked);
+    setExistingDocsLoaded(true);
+
+    // If any docs are still parsing, switch to parsing phase
+    if (existingDocs.some((d) => d.status === 'PARSING')) {
+      setModalPhase('parsing');
+    }
+  }, [existingDocs, existingDocsLoaded]);
 
   // Keep phase ref for beforeunload handler
   const phaseRef = useRef(modalPhase);
@@ -244,7 +277,8 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
   }
 
   const isBusy = modalPhase === 'uploading' || modalPhase === 'parsing';
-  const canUpload = files.length > 0 && !isBusy && modalPhase !== 'done';
+  const newFiles = files.filter((f) => f.phase === 'idle');
+  const canUpload = newFiles.length > 0 && !isBusy && modalPhase !== 'done';
 
   return (
     <div className="space-y-6">
@@ -255,7 +289,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
 
       {/* File list */}
       {files.length > 0 && (
-        <ProcessingQueue>
+        <ProcessingQueue label={existingDocsLoaded && files.some((f) => f.phase === 'parsed') ? 'Current Documents' : undefined}>
           {files.map((tf, i) => (
             <FileListItem
               key={`${tf.selectedFile.name}-${tf.selectedFile.size}-${i}`}
@@ -269,7 +303,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
               }
               errorMessage={tf.phase === 'failed' ? (tf.errorMessage ?? undefined) : undefined}
               onRemove={
-                !isBusy && tf.phase === 'idle'
+                !isBusy && (tf.phase === 'idle' || tf.phase === 'parsed')
                   ? () => handleRemoveFile(i)
                   : undefined
               }
@@ -306,10 +340,10 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
       <div className="flex items-center justify-between pt-2 border-t border-border">
         <Button
           variant="outline"
-          onClick={() => router.push('/dashboard')}
+          onClick={() => router.back()}
           disabled={isBusy}
         >
-          Cancel
+          {existingDocsLoaded && files.some((f) => f.phase === 'parsed') ? 'Back' : 'Cancel'}
         </Button>
         <Button
           onClick={handleUpload}
@@ -322,7 +356,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
               {modalPhase === 'uploading' ? 'Uploading...' : 'Analysing...'}
             </>
           ) : (
-            `Upload & Analyse${files.length > 1 ? ` (${files.length} files)` : ''}`
+            `Upload & Analyse${newFiles.length > 1 ? ` (${newFiles.length} files)` : newFiles.length === 1 ? ' (1 file)' : ''}`
           )}
         </Button>
       </div>

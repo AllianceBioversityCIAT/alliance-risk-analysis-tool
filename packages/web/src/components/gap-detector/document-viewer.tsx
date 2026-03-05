@@ -4,15 +4,23 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
-import { ZoomIn, ZoomOut, Maximize2, FileX, FileText } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+
+interface DocumentMeta {
+  id: string;
+  fileName: string;
+  mimeType: string;
+}
 
 interface DocumentViewerProps {
   /** Compiled Markdown content from one or more extracted documents */
   markdownContent?: string | null;
   /** Keyword to highlight and scroll to */
   highlightKeyword?: string | null;
+  /** Document metadata for section badges and navigation */
+  documents?: DocumentMeta[];
   className?: string;
 }
 
@@ -25,15 +33,55 @@ const STOP_WORDS = new Set([
 
 // Font size steps (rem)
 const FONT_SIZES = [0.75, 0.8125, 0.875, 1, 1.125, 1.25];
-const DEFAULT_FONT_IDX = 3; // 1rem
+const DEFAULT_FONT_IDX = 0; // 0.75rem = 75%
+
+// File type → badge color config
+function getFileTypeConfig(fileName: string): { color: string; bg: string; border: string; Icon: typeof FileText } {
+  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
+  switch (ext) {
+    case 'xlsx':
+    case 'xls':
+    case 'csv':
+      return { color: 'text-blue-700', bg: 'bg-blue-50', border: 'border-blue-200', Icon: FileSpreadsheet };
+    case 'pdf':
+      return { color: 'text-red-700', bg: 'bg-red-50', border: 'border-red-200', Icon: FileText };
+    case 'docx':
+    case 'doc':
+      return { color: 'text-teal-700', bg: 'bg-teal-50', border: 'border-teal-200', Icon: FileText };
+    case 'html':
+    case 'htm':
+      return { color: 'text-orange-700', bg: 'bg-orange-50', border: 'border-orange-200', Icon: File };
+    default:
+      return { color: 'text-gray-700', bg: 'bg-gray-50', border: 'border-gray-200', Icon: File };
+  }
+}
+
+// Extract document names from markdown content (## Document: {filename} pattern)
+function extractDocumentNames(content: string): string[] {
+  const matches = content.match(/^## Document: (.+)$/gm);
+  if (!matches) return [];
+  return matches.map((m) => m.replace('## Document: ', ''));
+}
 
 export function DocumentViewer({
   markdownContent,
   highlightKeyword,
+  documents,
   className,
 }: DocumentViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fontIdx, setFontIdx] = useState(DEFAULT_FONT_IDX);
+  const [currentDocName, setCurrentDocName] = useState<string | null>(null);
+  const [jumpToOpen, setJumpToOpen] = useState(false);
+  const jumpToRef = useRef<HTMLDivElement>(null);
+
+  // Parse document names from content
+  const docNames = useMemo(
+    () => (markdownContent ? extractDocumentNames(markdownContent) : []),
+    [markdownContent],
+  );
+
+  const hasMultipleDocs = docNames.length > 1;
 
   const handleZoomIn = useCallback(() => {
     setFontIdx((i) => Math.min(i + 1, FONT_SIZES.length - 1));
@@ -46,6 +94,67 @@ export function DocumentViewer({
   const handleFitToWidth = useCallback(() => {
     setFontIdx(DEFAULT_FONT_IDX);
   }, []);
+
+  // Close jump-to dropdown on outside click
+  useEffect(() => {
+    if (!jumpToOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (jumpToRef.current && !jumpToRef.current.contains(e.target as Node)) {
+        setJumpToOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [jumpToOpen]);
+
+  // Jump to a document section
+  const scrollToDocument = useCallback((docName: string) => {
+    if (!scrollRef.current) return;
+    const badges = scrollRef.current.querySelectorAll('[data-doc-section]');
+    for (const badge of badges) {
+      if (badge.getAttribute('data-doc-section') === docName) {
+        badge.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        break;
+      }
+    }
+    setJumpToOpen(false);
+  }, []);
+
+  // ─── Sticky document indicator via IntersectionObserver ─────────────
+  useEffect(() => {
+    if (!scrollRef.current || !hasMultipleDocs) return;
+
+    const container = scrollRef.current;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // Find the topmost visible section badge
+        for (const entry of entries) {
+          if (entry.isIntersecting) {
+            const name = entry.target.getAttribute('data-doc-section');
+            if (name) setCurrentDocName(name);
+          }
+        }
+      },
+      {
+        root: container,
+        rootMargin: '-10px 0px -80% 0px', // Trigger when badge is near the top
+        threshold: 0,
+      },
+    );
+
+    // Observe after a short delay to ensure DOM is rendered
+    const timer = setTimeout(() => {
+      const badges = container.querySelectorAll('[data-doc-section]');
+      badges.forEach((badge) => observer.observe(badge));
+      // Set initial current doc
+      if (docNames.length > 0) setCurrentDocName(docNames[0]);
+    }, 500);
+
+    return () => {
+      clearTimeout(timer);
+      observer.disconnect();
+    };
+  }, [markdownContent, hasMultipleDocs, docNames]);
 
   // ─── Highlight + scroll to matching text in rendered Markdown ───────
   useEffect(() => {
@@ -61,7 +170,7 @@ export function DocumentViewer({
     if (!highlightKeyword) return;
 
     const timer = setTimeout(() => {
-      // Extract significant keywords (≥4 chars, not stop words)
+      // Extract significant keywords (>=4 chars, not stop words)
       const allKeywords = highlightKeyword
         .toLowerCase()
         .split(/\s+/)
@@ -87,27 +196,24 @@ export function DocumentViewer({
       }
 
       // Keep only keywords that appear in <30% of elements (discriminating)
-      // If that leaves nothing, fall back to the least frequent 6 keywords
       const threshold = Math.max(3, textElements.length * 0.3);
       let keywords = allKeywords.filter((kw) => (docFrequency.get(kw) ?? 0) < threshold);
 
       if (keywords.length === 0) {
-        // Fall back: pick the 6 rarest keywords
         keywords = [...new Set(allKeywords)]
           .sort((a, b) => (docFrequency.get(a) ?? 0) - (docFrequency.get(b) ?? 0))
           .slice(0, 6);
       }
 
-      // Cap at 10 keywords to avoid overly broad matching
       keywords = [...new Set(keywords)].slice(0, 10);
 
-      // Score each element: how many keywords appear in its text?
+      // Score each element
       const scores = textElements.map((el) => {
         const text = (el.textContent ?? '').toLowerCase();
         return keywords.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0);
       });
 
-      // Sliding window of 5 elements — find best cluster (tight focus)
+      // Sliding window of 5 elements
       const WINDOW = 5;
       let bestStart = 0;
       let bestScore = 0;
@@ -128,7 +234,6 @@ export function DocumentViewer({
 
       if (bestScore === 0) return;
 
-      // Highlight only elements in the best window that actually match (max 5)
       const windowEnd = Math.min(bestStart + WINDOW, textElements.length);
       let firstMatch: Element | null = null;
       let highlighted = 0;
@@ -142,19 +247,52 @@ export function DocumentViewer({
         }
       }
 
-      // Scroll first match into view
       firstMatch?.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 300);
 
     return () => clearTimeout(timer);
   }, [highlightKeyword, markdownContent]);
 
-  // Custom renderers — style citation links [1], [2] as superscript badges
+  // Custom renderers
   const components = useMemo<Components>(
     () => ({
+      h2: ({ children }) => {
+        const text = String(children);
+        // Detect document section headers: "Document: filename.ext"
+        const match = text.match(/^Document:\s*(.+)$/);
+        if (match) {
+          const fileName = match[1];
+          const config = getFileTypeConfig(fileName);
+          const { Icon } = config;
+          return (
+            <div
+              className="doc-section-badge-wrapper"
+              data-doc-section={fileName}
+            >
+              <div className={cn(
+                'doc-section-badge',
+                config.bg,
+                config.border,
+                config.color,
+              )}>
+                <Icon className="h-4 w-4 shrink-0" />
+                <span className="font-semibold text-sm truncate">{fileName}</span>
+              </div>
+              <div className="doc-section-divider" />
+            </div>
+          );
+        }
+        // Regular h2
+        return <h2>{children}</h2>;
+      },
+      // Wrap tables in a horizontally-scrollable container for wide spreadsheets
+      table: ({ children, ...props }) => (
+        <div className="overflow-x-auto -mx-1 px-1 my-4">
+          <table {...props}>{children}</table>
+        </div>
+      ),
       a: ({ children, href, ...props }) => {
         const text = String(children);
-        // Detect citation-style links: [1], [2], [10], etc.
         if (/^\[\d+\]$/.test(text)) {
           return (
             <sup className="doc-citation" title={href}>
@@ -162,7 +300,6 @@ export function DocumentViewer({
             </sup>
           );
         }
-        // Regular links — subtle styling, open in new tab
         return (
           <a
             href={href}
@@ -200,9 +337,52 @@ export function DocumentViewer({
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
           <FileText className="h-3.5 w-3.5" />
           <span>Document Preview</span>
+          {hasMultipleDocs && (
+            <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
+              {docNames.length} docs
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-1 ml-auto">
+          {/* Jump-to dropdown */}
+          {hasMultipleDocs && (
+            <div className="relative" ref={jumpToRef}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 px-2 text-xs gap-1"
+                onClick={() => setJumpToOpen(!jumpToOpen)}
+              >
+                Jump to
+                <ChevronDown className="h-3 w-3" />
+              </Button>
+              {jumpToOpen && (
+                <div className="absolute right-0 top-full mt-1 z-50 min-w-[220px] bg-popover border border-border rounded-lg shadow-lg py-1">
+                  {docNames.map((name) => {
+                    const config = getFileTypeConfig(name);
+                    const { Icon } = config;
+                    return (
+                      <button
+                        key={name}
+                        className={cn(
+                          'flex items-center gap-2 w-full px-3 py-2 text-left text-sm hover:bg-accent transition-colors',
+                          currentDocName === name && 'bg-accent/50 font-medium',
+                        )}
+                        onClick={() => scrollToDocument(name)}
+                      >
+                        <Icon className={cn('h-3.5 w-3.5 shrink-0', config.color)} />
+                        <span className="truncate">{name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {hasMultipleDocs && <div className="w-px h-4 bg-border mx-1" />}
+
           {/* Font size controls */}
           <Button
             variant="ghost"
@@ -242,6 +422,24 @@ export function DocumentViewer({
         </div>
       </div>
 
+      {/* Sticky document indicator */}
+      {hasMultipleDocs && currentDocName && (
+        <div className="sticky-doc-indicator">
+          {(() => {
+            const config = getFileTypeConfig(currentDocName);
+            const { Icon } = config;
+            return (
+              <>
+                <Icon className={cn('h-3 w-3 shrink-0', config.color)} />
+                <span className="text-[11px] font-medium text-foreground/80 truncate">
+                  {currentDocName}
+                </span>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
       {/* Markdown content */}
       <div
         ref={scrollRef}
@@ -251,29 +449,18 @@ export function DocumentViewer({
         <div
           className={cn(
             'doc-viewer-prose prose prose-sm max-w-none',
-            // Heading styles — clear section breaks
             'prose-headings:font-semibold prose-headings:text-foreground',
             'prose-h1:text-xl prose-h1:mt-8 prose-h1:mb-3 prose-h1:pb-2 prose-h1:border-b prose-h1:border-border',
             'prose-h2:text-lg prose-h2:mt-6 prose-h2:mb-2',
             'prose-h3:text-base prose-h3:mt-4 prose-h3:mb-1.5',
-            // Paragraph + text — better readability
             'prose-p:text-foreground prose-p:leading-relaxed prose-p:mb-3',
-            // Tables
-            'prose-table:border-collapse prose-table:w-full prose-table:my-4',
-            'prose-th:border prose-th:border-border prose-th:bg-muted prose-th:px-3 prose-th:py-1.5 prose-th:text-left prose-th:font-semibold prose-th:text-xs',
-            'prose-td:border prose-td:border-border prose-td:px-3 prose-td:py-1.5 prose-td:text-sm',
-            // Lists — better spacing
+            /* table styles handled by .doc-viewer-prose in globals.css */
             'prose-li:text-foreground prose-li:my-0.5',
             'prose-ul:my-2 prose-ol:my-2',
-            // HR separators (used between document sections)
             'prose-hr:border-border prose-hr:my-8',
-            // Inline code
             'prose-code:bg-muted prose-code:px-1 prose-code:rounded prose-code:text-sm',
-            // Strong/Bold
             'prose-strong:text-foreground prose-strong:font-semibold',
-            // Emphasis
             'prose-em:text-foreground/80',
-            // Blockquotes
             'prose-blockquote:border-l-2 prose-blockquote:border-primary/30 prose-blockquote:pl-4 prose-blockquote:italic prose-blockquote:text-muted-foreground',
           )}
         >

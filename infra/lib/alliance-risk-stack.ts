@@ -191,7 +191,7 @@ export class AllianceRiskStack extends cdk.Stack {
 
     const workerLambda = new lambda.Function(this, 'WorkerLambda', {
       functionName: 'alliance-risk-worker',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       handler: 'dist/worker.handler',
       code: lambda.Code.fromAsset('../packages/api/dist', {
@@ -282,7 +282,7 @@ export class AllianceRiskStack extends cdk.Stack {
 
     const apiLambda = new lambda.Function(this, 'ApiLambda', {
       functionName: 'alliance-risk-api',
-      runtime: lambda.Runtime.NODEJS_20_X,
+      runtime: lambda.Runtime.NODEJS_22_X,
       architecture: lambda.Architecture.ARM_64,
       handler: 'dist/lambda.handler',
       code: lambda.Code.fromAsset('../packages/api/dist', {
