@@ -44,3 +44,10 @@ export type {
 export { BEDROCK_MODELS } from './constants/bedrock.config';
 export { RISK_CATEGORIES } from './constants/risk-categories';
 export type { RiskCategoryKey } from './constants/risk-categories';
+export {
+  ALLOWED_DOCUMENT_MIME_TYPES,
+  ALLOWED_DOCUMENT_EXTENSIONS,
+  MAX_FILE_SIZE_PDF,
+  MAX_FILE_SIZE_OTHER,
+} from './constants/document.constants';
+export type { AllowedDocumentMimeType } from './constants/document.constants';

@@ -1,8 +1,8 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
-import { JobsService } from './jobs/jobs.service';
-import { PrismaService } from './database/prisma.service';
+import { JobsService } from './platform/jobs/jobs.service';
+import { PrismaService } from './infrastructure/database/prisma.service';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cachedApp: any;

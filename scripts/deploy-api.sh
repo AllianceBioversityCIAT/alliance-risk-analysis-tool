@@ -135,6 +135,10 @@ EXTERNALS=(
   "@nestjs/microservices"
   "@nestjs/websockets"
   "class-transformer/storage"
+  "xlsx"
+  "mammoth"
+  "turndown"
+  "jszip"
 )
 
 # Build esbuild --external flags
@@ -191,17 +195,17 @@ PRISMA_GENERATED_SRC=$(resolve_pkg "${API_DIR}/node_modules/@prisma/client")
 PRISMA_GENERATED_SRC="${PRISMA_GENERATED_SRC%/@prisma/client}/.prisma/client"
 if [[ -d "${PRISMA_GENERATED_SRC}" ]]; then
   mkdir -p "${NM}/.prisma/client"
-  # Copy all JS files
-  find "${PRISMA_GENERATED_SRC}" -maxdepth 1 -name "*.js" -exec cp {} "${NM}/.prisma/client/" \;
+  # Copy all JS files (exclude duplicates with spaces from repeated prisma generate)
+  find "${PRISMA_GENERATED_SRC}" -maxdepth 1 -name "*.js" ! -name "* *" -exec cp "{}" "${NM}/.prisma/client/" \;
   # Copy package.json if exists
   [[ -f "${PRISMA_GENERATED_SRC}/package.json" ]] && cp "${PRISMA_GENERATED_SRC}/package.json" "${NM}/.prisma/client/"
   # Copy schema.prisma if exists
   [[ -f "${PRISMA_GENERATED_SRC}/schema.prisma" ]] && cp "${PRISMA_GENERATED_SRC}/schema.prisma" "${NM}/.prisma/client/"
   # Copy WASM binary (the actual WASM, not base64 encoded)
-  find "${PRISMA_GENERATED_SRC}" -maxdepth 1 -name "*.wasm" -exec cp {} "${NM}/.prisma/client/" \;
+  find "${PRISMA_GENERATED_SRC}" -maxdepth 1 -name "*.wasm" ! -name "* *" -exec cp "{}" "${NM}/.prisma/client/" \;
   # Copy wasm loader files
-  find "${PRISMA_GENERATED_SRC}" -maxdepth 1 -name "wasm-*-loader*" ! -name "*.mjs" \
-    -exec cp {} "${NM}/.prisma/client/" \; 2>/dev/null || true
+  find "${PRISMA_GENERATED_SRC}" -maxdepth 1 -name "wasm-*-loader*" ! -name "*.mjs" ! -name "* *" \
+    -exec cp "{}" "${NM}/.prisma/client/" \; 2>/dev/null || true
 else
   log "  WARNING: .prisma/client not found at expected path, will generate at deploy time"
 fi
@@ -310,6 +314,56 @@ if [[ -n "${SPLIT2_PATH}" ]]; then
   mkdir -p "${NM}/split2"
   cp -R "${SPLIT2_PATH}/"* "${NM}/split2/"
 fi
+
+# --- Document extraction libraries (mammoth, turndown, xlsx) ---
+# These are externalized because their transitive deps (jszip → pako) have
+# internal relative requires that esbuild can't resolve in pnpm's symlinked store.
+#
+# Strategy: Copy each library from its .pnpm store entry (co-located deps), then
+# copy all known transitive dependency store entries. pnpm may isolate transitive
+# deps into separate store entries, so we must explicitly list them.
+
+PNPM_STORE="${ROOT_DIR}/node_modules/.pnpm"
+
+# copy_from_pnpm_store: Find a package in the .pnpm store and rsync its
+# node_modules/ (the package + all co-located deps) into the target.
+copy_from_pnpm_store() {
+  local pkg_name="$1"
+  local store_dir
+  store_dir=$(find "${PNPM_STORE}" -maxdepth 1 -name "${pkg_name}@*" -type d | head -1)
+  if [[ -n "${store_dir}" && -d "${store_dir}/node_modules" ]]; then
+    rsync -aL --ignore-existing "${store_dir}/node_modules/" "${NM}/"
+    return 0
+  fi
+  return 1
+}
+
+# Top-level extraction libraries
+EXTRACTION_LIBS=(mammoth turndown xlsx)
+
+for lib in "${EXTRACTION_LIBS[@]}"; do
+  log "  ${lib} + dependencies..."
+  LIB_REAL=$(resolve_pkg "${API_DIR}/node_modules/${lib}" 2>/dev/null) \
+    || LIB_REAL=$(resolve_pkg "${ROOT_DIR}/node_modules/${lib}" 2>/dev/null) \
+    || continue
+  STORE_NM=$(dirname "${LIB_REAL}")
+  # Only rsync from .pnpm store entries, never from top-level node_modules/
+  if [[ "${STORE_NM}" == */.pnpm/*/node_modules ]]; then
+    rsync -aL --ignore-existing "${STORE_NM}/" "${NM}/"
+  else
+    mkdir -p "${NM}/${lib}"
+    cp -R "${LIB_REAL}/." "${NM}/${lib}/"
+  fi
+done
+
+# Transitive deps that pnpm may isolate into separate store entries.
+# mammoth → jszip → {pako, setimmediate, lie → immediate, readable-stream → {inherits, string_decoder, util-deprecate}}
+# mammoth → lop → {duck → underscore, option}
+# turndown → @mixmark-io/domino
+TRANSITIVE_DEPS=(jszip pako setimmediate lie immediate readable-stream inherits string_decoder util-deprecate lop duck option)
+for dep in "${TRANSITIVE_DEPS[@]}"; do
+  copy_from_pnpm_store "${dep}" && log "  ${dep} (transitive)" || true
+done
 
 # ── Cleanup external packages ────────────────────────────────────────────────
 

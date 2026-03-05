@@ -138,17 +138,31 @@ export function IntakeModeCard({
 
 // ─── FormatBadges ─────────────────────────────────────────────────────────────
 
-/** Supported formats badges (for Upload card) — PDF only for MVP */
+/** Supported formats badges (for Upload card) */
 export function FormatBadges() {
+  const formats = [
+    { label: 'PDF', color: 'text-[#EF4444]' },
+    { label: 'Word', color: 'text-[#2563EB]' },
+    { label: 'Excel', color: 'text-[#16A34A]' },
+  ];
+
   return (
     <div className="rounded-lg bg-[#F8FAFC] p-3">
       <p className="text-[10px] font-bold uppercase tracking-[1.1px] text-[#9CA3AF]">
         Supported Formats
       </p>
-      <div className="mt-2 flex gap-2">
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-[#64748B] border border-[#E2E8F0]">
-          PDF
-        </span>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {formats.map(({ label, color }) => (
+          <span
+            key={label}
+            className={cn(
+              'rounded-full bg-white px-2.5 py-1 text-xs font-medium border border-[#E2E8F0]',
+              color,
+            )}
+          >
+            {label}
+          </span>
+        ))}
       </div>
     </div>
   );

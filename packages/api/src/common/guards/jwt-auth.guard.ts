@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { IS_PUBLIC_KEY } from '../decorators/public.decorator';
-import { PrismaService } from '../../database/prisma.service';
+import { PrismaService } from '../../infrastructure/database/prisma.service';
 
 export interface TokenClaims {
   userId: string;   // Cognito sub claim (from token)

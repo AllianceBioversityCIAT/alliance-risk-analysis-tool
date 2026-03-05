@@ -1,13 +1,16 @@
 'use client';
 
 import { useRef, useState, useCallback } from 'react';
-import { UploadCloud, FileText, X } from 'lucide-react';
+import { UploadCloud } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { sileo } from 'sileo';
-
-const ACCEPTED_TYPES = ['application/pdf'];
-const MAX_SIZE_BYTES = 25 * 1024 * 1024; // 25 MB
+import {
+  ALLOWED_DOCUMENT_MIME_TYPES,
+  ALLOWED_DOCUMENT_EXTENSIONS,
+  MAX_FILE_SIZE_PDF,
+  MAX_FILE_SIZE_OTHER,
+} from '@alliance-risk/shared';
 
 export interface SelectedFile {
   file: File;
@@ -17,7 +20,7 @@ export interface SelectedFile {
 }
 
 interface UploadDropzoneProps {
-  onFileSelected: (file: SelectedFile) => void;
+  onFilesSelected: (files: SelectedFile[]) => void;
   disabled?: boolean;
 }
 
@@ -27,29 +30,41 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropzoneProps) {
+function validateFile(file: File): string | null {
+  if (!(ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return `"${file.name}" has an unsupported type (${file.type || 'unknown'}). Accepted: PDF, Word, Excel, CSV, HTML, MD, TXT.`;
+  }
+  const maxSize = file.type === 'application/pdf' ? MAX_FILE_SIZE_PDF : MAX_FILE_SIZE_OTHER;
+  if (file.size > maxSize) {
+    const limitMB = Math.round(maxSize / (1024 * 1024));
+    return `"${file.name}" is too large (${formatBytes(file.size)}). Maximum is ${limitMB} MB.`;
+  }
+  return null;
+}
+
+export function UploadDropzone({ onFilesSelected, disabled = false }: UploadDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const validateAndEmit = useCallback(
-    (file: File) => {
-      if (!ACCEPTED_TYPES.includes(file.type)) {
-        sileo.error({
-          title: 'Invalid file type',
-          description: 'Only PDF files (.pdf) are accepted.',
-        });
-        return;
+    (fileList: FileList | null) => {
+      if (!fileList || fileList.length === 0) return;
+
+      const valid: SelectedFile[] = [];
+      for (const file of Array.from(fileList)) {
+        const error = validateFile(file);
+        if (error) {
+          sileo.error({ title: 'Invalid file', description: error });
+        } else {
+          valid.push({ file, name: file.name, size: file.size, mimeType: file.type });
+        }
       }
-      if (file.size > MAX_SIZE_BYTES) {
-        sileo.error({
-          title: 'File too large',
-          description: `Maximum size is 25 MB. Your file is ${formatBytes(file.size)}.`,
-        });
-        return;
+
+      if (valid.length > 0) {
+        onFilesSelected(valid);
       }
-      onFileSelected({ file, name: file.name, size: file.size, mimeType: file.type });
     },
-    [onFileSelected],
+    [onFilesSelected],
   );
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -63,14 +78,12 @@ export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropz
     e.preventDefault();
     setIsDragging(false);
     if (disabled) return;
-    const file = e.dataTransfer.files[0];
-    if (file) validateAndEmit(file);
+    validateAndEmit(e.dataTransfer.files);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) validateAndEmit(file);
-    // reset so same file can be re-selected
+    validateAndEmit(e.target.files);
+    // Reset so same files can be re-selected
     e.target.value = '';
   };
 
@@ -78,7 +91,7 @@ export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropz
     <div
       role="button"
       tabIndex={disabled ? -1 : 0}
-      aria-label="Upload file drop zone"
+      aria-label="Upload files drop zone"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -92,17 +105,17 @@ export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropz
         disabled && 'cursor-not-allowed opacity-60 pointer-events-none',
       )}
     >
-      {/* Cloud icon in white circle */}
+      {/* Cloud icon */}
       <div className="flex items-center justify-center h-14 w-14 rounded-full bg-white shadow-md">
-        <UploadCloud className={cn('h-7 w-7', isDragging ? 'text-[#4CAF50]' : 'text-[#4CAF50]')} />
+        <UploadCloud className="h-7 w-7 text-[#4CAF50]" />
       </div>
 
       <div className="text-center space-y-1">
         <p className="text-sm font-medium text-foreground">
-          Drag &amp; drop your PDF here
+          Drag &amp; drop your files here
         </p>
         <p className="text-xs text-muted-foreground">
-          PDF only. Maximum file size 25MB.
+          PDF, Word, Excel, CSV, and more. Max 25MB per file.
         </p>
       </div>
 
@@ -123,67 +136,12 @@ export function UploadDropzone({ onFileSelected, disabled = false }: UploadDropz
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf"
+        multiple
+        accept={ALLOWED_DOCUMENT_EXTENSIONS}
         className="sr-only"
         onChange={handleInputChange}
         disabled={disabled}
       />
-    </div>
-  );
-}
-
-interface FilePreviewProps {
-  file: SelectedFile;
-  progress?: number;
-  onRemove?: () => void;
-}
-
-export function FilePreview({ file, progress, onRemove }: FilePreviewProps) {
-  const isUploading = progress !== undefined && progress < 100;
-  const isDone = progress === 100;
-
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-border bg-card px-4 py-3">
-      <div className="h-9 w-9 rounded-lg bg-[#F4F9F9] border border-[#FEE2E2] flex items-center justify-center shrink-0">
-        <FileText className="h-4 w-4 text-[#4CAF50]" />
-      </div>
-
-      <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
-        <p className="text-xs text-muted-foreground">{formatBytes(file.size)}</p>
-
-        {/* Progress bar */}
-        {progress !== undefined && (
-          <div className="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all duration-300',
-                isDone ? 'bg-[#4CAF50]' : 'bg-[#E87722]',
-              )}
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-        )}
-        {isUploading && (
-          <p className="text-xs text-muted-foreground mt-0.5">{progress}% uploaded...</p>
-        )}
-        {isDone && (
-          <p className="text-xs text-[#16A34A] mt-0.5">Upload complete</p>
-        )}
-      </div>
-
-      {onRemove && !isUploading && !isDone && (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-          onClick={onRemove}
-        >
-          <X className="h-4 w-4" />
-          <span className="sr-only">Remove file</span>
-        </Button>
-      )}
     </div>
   );
 }

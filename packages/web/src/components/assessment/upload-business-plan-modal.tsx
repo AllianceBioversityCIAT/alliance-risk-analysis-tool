@@ -4,46 +4,62 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { sileo } from 'sileo';
-import { JobStatus } from '@alliance-risk/shared';
 import { Button } from '@/components/ui/button';
 import { UploadDropzone, type SelectedFile } from './upload-dropzone';
 import { FileListItem, ProcessingQueue, type FileItemStatus } from './file-list-item';
-import { useRequestUploadUrl, useTriggerParseDocument } from '@/hooks/use-assessments';
-import { useDocumentStatus } from '@/hooks/use-document-status';
+import { useRequestUploadUrl } from '@/hooks/use-assessments';
+import {
+  useMultiDocumentStatus,
+  useTriggerParseAll,
+  useDeleteDocument,
+} from '@/hooks/use-multi-document-status';
 
 interface UploadBusinessPlanModalProps {
   assessmentId: string;
 }
 
-type UploadPhase =
-  | 'idle'           // No file selected
-  | 'uploading'      // S3 XHR in progress
-  | 'triggering'     // POST /parse request
-  | 'parsing'        // Polling job, waiting for COMPLETED/FAILED
-  | 'done'           // Job COMPLETED, about to redirect
-  | 'error';         // Unrecoverable error (allows retry)
+/** Per-file upload/parse phase */
+type FilePhase = 'idle' | 'uploading' | 'uploaded' | 'parsing' | 'parsed' | 'failed';
+
+interface TrackedFile {
+  selectedFile: SelectedFile;
+  /** Document ID returned by the API after requesting a presigned URL */
+  documentId: string | null;
+  phase: FilePhase;
+  uploadProgress: number;
+  errorMessage: string | null;
+}
+
+/** Overall modal phase */
+type ModalPhase =
+  | 'selecting'   // User is adding/removing files
+  | 'uploading'   // S3 uploads in progress
+  | 'parsing'     // Waiting for all documents to be parsed
+  | 'done'        // All parsed, redirecting
+  | 'error';      // Unrecoverable error (user can retry)
 
 export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModalProps) {
   const router = useRouter();
-  const [selectedFile, setSelectedFile] = useState<SelectedFile | null>(null);
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
-  const [phase, setPhase] = useState<UploadPhase>('idle');
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [files, setFiles] = useState<TrackedFile[]>([]);
+  const [modalPhase, setModalPhase] = useState<ModalPhase>('selecting');
 
   const { mutateAsync: requestUploadUrl } = useRequestUploadUrl();
-  const { mutateAsync: triggerParse } = useTriggerParseDocument();
-  const { jobStatus, errorMessage: jobError, isProcessing, startPolling, reset: resetPolling } =
-    useDocumentStatus();
+  const { mutateAsync: triggerParseAll } = useTriggerParseAll();
+  const { mutateAsync: deleteDocumentApi } = useDeleteDocument();
 
-  // Keep a ref to the current phase for the beforeunload handler
-  const phaseRef = useRef(phase);
-  phaseRef.current = phase;
+  // Poll documents list once parsing has started
+  const pollingEnabled = modalPhase === 'parsing';
+  const { allParsed, anyFailed, documents } =
+    useMultiDocumentStatus(assessmentId, pollingEnabled);
+
+  // Keep phase ref for beforeunload handler
+  const phaseRef = useRef(modalPhase);
+  phaseRef.current = modalPhase;
 
   // --- beforeunload warning -------------------------------------------
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      const activePhases: UploadPhase[] = ['uploading', 'triggering', 'parsing'];
-      if (activePhases.includes(phaseRef.current)) {
+      if (phaseRef.current === 'uploading' || phaseRef.current === 'parsing') {
         e.preventDefault();
         e.returnValue = '';
       }
@@ -52,119 +68,235 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
     return () => window.removeEventListener('beforeunload', handler);
   }, []);
 
-  // --- React to job completion / failure --------------------------------
+  // --- React to all-parsed / any-failed from polling -------------------
   useEffect(() => {
-    if (jobStatus === JobStatus.COMPLETED) {
-      setPhase('done');
+    if (modalPhase !== 'parsing') return;
+
+    if (allParsed) {
+      setModalPhase('done');
       sileo.success({
-        title: 'Document analysed',
-        description: 'Your PDF has been extracted. Redirecting to Gap Detector...',
+        title: 'Documents analysed',
+        description: 'All documents extracted. Redirecting to Gap Detector...',
       });
       setTimeout(() => {
         router.push(`/assessments/gap-detector?id=${assessmentId}`);
       }, 1500);
-    } else if (jobStatus === JobStatus.FAILED) {
-      const msg = jobError ?? 'Document analysis failed. Please try again.';
-      setErrorMessage(msg);
-      setPhase('error');
-      sileo.error({ title: 'Analysis failed', description: msg });
+    } else if (anyFailed) {
+      // Sync individual file statuses with polling results
+      setFiles((prev) =>
+        prev.map((tf) => {
+          if (!tf.documentId) return tf;
+          const polledDoc = documents.find((d) => d.id === tf.documentId);
+          if (!polledDoc) return tf;
+          if (polledDoc.status === 'FAILED') {
+            return { ...tf, phase: 'failed', errorMessage: 'Parsing failed on server' };
+          }
+          if (polledDoc.status === 'PARSED') {
+            return { ...tf, phase: 'parsed' };
+          }
+          return tf;
+        }),
+      );
     }
-  }, [jobStatus, jobError, assessmentId, router]);
+  }, [allParsed, anyFailed, modalPhase, assessmentId, router, documents]);
+
+  // --- Sync per-file parsing state from polling results ---------------
+  useEffect(() => {
+    if (modalPhase !== 'parsing' || documents.length === 0) return;
+    setFiles((prev) =>
+      prev.map((tf) => {
+        if (!tf.documentId) return tf;
+        const polledDoc = documents.find((d) => d.id === tf.documentId);
+        if (!polledDoc) return tf;
+        if (polledDoc.status === 'PARSED' && tf.phase !== 'parsed') {
+          return { ...tf, phase: 'parsed' };
+        }
+        if (polledDoc.status === 'FAILED' && tf.phase !== 'failed') {
+          return { ...tf, phase: 'failed', errorMessage: 'Parsing failed on server' };
+        }
+        if (polledDoc.status === 'PARSING' && tf.phase !== 'parsing') {
+          return { ...tf, phase: 'parsing' };
+        }
+        return tf;
+      }),
+    );
+  }, [documents, modalPhase]);
 
   // --- Handlers ----------------------------------------------------------
-  const handleFileSelected = useCallback((file: SelectedFile) => {
-    setSelectedFile(file);
-    setUploadProgress(0);
-    setPhase('idle');
-    setErrorMessage(null);
-    resetPolling();
-  }, [resetPolling]);
+  const handleFilesSelected = useCallback((newFiles: SelectedFile[]) => {
+    setFiles((prev) => {
+      // Deduplicate by name + size
+      const existingKeys = new Set(prev.map((f) => `${f.selectedFile.name}-${f.selectedFile.size}`));
+      const unique = newFiles.filter(
+        (f) => !existingKeys.has(`${f.name}-${f.size}`),
+      );
+      const additions: TrackedFile[] = unique.map((sf) => ({
+        selectedFile: sf,
+        documentId: null,
+        phase: 'idle',
+        uploadProgress: 0,
+        errorMessage: null,
+      }));
+      return [...prev, ...additions];
+    });
+  }, []);
 
-  const handleRemoveFile = useCallback(() => {
-    setSelectedFile(null);
-    setUploadProgress(0);
-    setPhase('idle');
-    setErrorMessage(null);
-    resetPolling();
-  }, [resetPolling]);
+  const handleRemoveFile = useCallback(
+    async (index: number) => {
+      const tf = files[index];
+      if (!tf) return;
+
+      // If document was already registered with the API, delete it
+      if (tf.documentId) {
+        try {
+          await deleteDocumentApi({ assessmentId, documentId: tf.documentId });
+        } catch {
+          // Ignore — might not exist yet
+        }
+      }
+
+      setFiles((prev) => prev.filter((_, i) => i !== index));
+    },
+    [files, assessmentId, deleteDocumentApi],
+  );
+
+  const updateFile = useCallback(
+    (index: number, updates: Partial<TrackedFile>) => {
+      setFiles((prev) =>
+        prev.map((f, i) => (i === index ? { ...f, ...updates } : f)),
+      );
+    },
+    [],
+  );
 
   const handleUpload = useCallback(async () => {
-    if (!selectedFile) return;
-    setErrorMessage(null);
+    if (files.length === 0) return;
 
-    try {
-      // Step 1: Request presigned URL + document record
-      setPhase('uploading');
-      const { presignedUrl, documentId } = await requestUploadUrl({
-        assessmentId,
-        fileName: selectedFile.name,
-        mimeType: selectedFile.mimeType,
-        fileSize: selectedFile.size,
-      });
+    setModalPhase('uploading');
 
-      // Step 2: Upload file to S3 with XHR progress
-      await uploadToS3(presignedUrl, selectedFile, (pct) => setUploadProgress(pct));
-      setUploadProgress(100);
+    // Step 1: Upload all files to S3 sequentially
+    const uploadedFiles: TrackedFile[] = [...files];
+    let hasError = false;
 
-      // Step 3: Trigger parse job
-      setPhase('triggering');
-      const jobId = await triggerParse({ assessmentId, documentId });
+    for (let i = 0; i < uploadedFiles.length; i++) {
+      const tf = uploadedFiles[i];
+      if (tf.phase !== 'idle') continue; // Skip already processed
 
-      // Step 4: Start polling
-      setPhase('parsing');
-      startPolling(jobId as string);
-    } catch (err) {
-      const msg =
-        err instanceof Error ? err.message : 'An error occurred. Please try again.';
-      setErrorMessage(msg);
-      setPhase('error');
-      sileo.error({ title: 'Upload failed', description: msg });
+      try {
+        updateFile(i, { phase: 'uploading', uploadProgress: 0, errorMessage: null });
+
+        const { presignedUrl, documentId } = await requestUploadUrl({
+          assessmentId,
+          fileName: tf.selectedFile.name,
+          mimeType: tf.selectedFile.mimeType,
+          fileSize: tf.selectedFile.size,
+        });
+
+        await uploadToS3(presignedUrl, tf.selectedFile, (pct) => {
+          updateFile(i, { uploadProgress: pct });
+        });
+
+        uploadedFiles[i] = { ...tf, documentId, phase: 'uploaded', uploadProgress: 100 };
+        updateFile(i, { documentId, phase: 'uploaded', uploadProgress: 100 });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Upload failed';
+        uploadedFiles[i] = { ...tf, phase: 'failed', errorMessage: msg };
+        updateFile(i, { phase: 'failed', errorMessage: msg });
+        hasError = true;
+        sileo.error({ title: `Failed to upload ${tf.selectedFile.name}`, description: msg });
+      }
     }
-  }, [selectedFile, assessmentId, requestUploadUrl, triggerParse, startPolling]);
 
-  // --- Derive FileListItem status from phase ----------------------------
-  const fileItemStatus: FileItemStatus = (() => {
-    if (phase === 'uploading') return 'uploading';
-    if (phase === 'triggering' || phase === 'parsing' || isProcessing) return 'parsing';
-    if (phase === 'done') return 'complete';
-    if (phase === 'error') return 'failed';
-    return 'idle';
-  })();
+    if (hasError && uploadedFiles.every((f) => f.phase === 'failed')) {
+      setModalPhase('error');
+      return;
+    }
 
-  const isBusy = phase === 'uploading' || phase === 'triggering' || phase === 'parsing';
+    // Step 2: Trigger parse-all for all uploaded documents
+    try {
+      await triggerParseAll(assessmentId);
+
+      // Mark all successfully uploaded files as parsing
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.phase === 'uploaded' ? { ...f, phase: 'parsing' } : f,
+        ),
+      );
+
+      setModalPhase('parsing');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to start parsing';
+      sileo.error({ title: 'Parse failed', description: msg });
+      setModalPhase('error');
+    }
+  }, [files, assessmentId, requestUploadUrl, triggerParseAll, updateFile]);
+
+  // --- Map per-file phase to FileListItem status -----------------------
+  function toItemStatus(phase: FilePhase): FileItemStatus {
+    switch (phase) {
+      case 'uploading': return 'uploading';
+      case 'uploaded':  return 'uploading'; // Show 100% briefly
+      case 'parsing':   return 'parsing';
+      case 'parsed':    return 'complete';
+      case 'failed':    return 'failed';
+      default:          return 'idle';
+    }
+  }
+
+  const isBusy = modalPhase === 'uploading' || modalPhase === 'parsing';
+  const canUpload = files.length > 0 && !isBusy && modalPhase !== 'done';
 
   return (
     <div className="space-y-6">
-      {/* Dropzone — shown only when no file is selected yet */}
-      {!selectedFile && (
-        <UploadDropzone onFileSelected={handleFileSelected} disabled={isBusy} />
+      {/* Dropzone — always shown while selecting or after error */}
+      {(modalPhase === 'selecting' || modalPhase === 'error') && (
+        <UploadDropzone onFilesSelected={handleFilesSelected} disabled={isBusy} />
       )}
 
-      {/* Processing queue */}
-      {selectedFile && (
+      {/* File list */}
+      {files.length > 0 && (
         <ProcessingQueue>
-          <FileListItem
-            fileName={selectedFile.name}
-            fileSize={selectedFile.size}
-            status={fileItemStatus}
-            uploadProgress={phase === 'uploading' ? uploadProgress : undefined}
-            errorMessage={phase === 'error' ? (errorMessage ?? undefined) : undefined}
-            onRemove={!isBusy && phase !== 'done' ? handleRemoveFile : undefined}
-            onRetry={phase === 'error' ? handleRemoveFile : undefined}
-          />
+          {files.map((tf, i) => (
+            <FileListItem
+              key={`${tf.selectedFile.name}-${tf.selectedFile.size}-${i}`}
+              fileName={tf.selectedFile.name}
+              fileSize={tf.selectedFile.size}
+              status={toItemStatus(tf.phase)}
+              uploadProgress={
+                tf.phase === 'uploading' || tf.phase === 'uploaded'
+                  ? tf.uploadProgress
+                  : undefined
+              }
+              errorMessage={tf.phase === 'failed' ? (tf.errorMessage ?? undefined) : undefined}
+              onRemove={
+                !isBusy && tf.phase === 'idle'
+                  ? () => handleRemoveFile(i)
+                  : undefined
+              }
+              onRetry={
+                tf.phase === 'failed'
+                  ? () => handleRemoveFile(i)
+                  : undefined
+              }
+            />
+          ))}
         </ProcessingQueue>
       )}
 
       {/* Status messages */}
-      {(phase === 'triggering' || (phase === 'parsing' && isProcessing)) && (
+      {modalPhase === 'uploading' && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
-          {phase === 'triggering'
-            ? 'Starting document analysis...'
-            : 'Extracting data from your document...'}
+          Uploading documents...
         </div>
       )}
-      {phase === 'done' && (
+      {modalPhase === 'parsing' && (
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Extracting data from your documents...
+        </div>
+      )}
+      {modalPhase === 'done' && (
         <p className="text-sm text-[#16A34A] font-medium">
           Extraction complete. Redirecting to Gap Detector...
         </p>
@@ -181,16 +313,16 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
         </Button>
         <Button
           onClick={handleUpload}
-          disabled={!selectedFile || isBusy || phase === 'done'}
+          disabled={!canUpload}
           className="bg-[#4CAF50] hover:bg-[#43A047] text-white"
         >
           {isBusy ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {phase === 'uploading' ? `Uploading ${uploadProgress}%...` : 'Analysing...'}
+              {modalPhase === 'uploading' ? 'Uploading...' : 'Analysing...'}
             </>
           ) : (
-            'Upload & Analyse'
+            `Upload & Analyse${files.length > 1 ? ` (${files.length} files)` : ''}`
           )}
         </Button>
       </div>
@@ -217,6 +349,7 @@ async function uploadToS3(
 
     xhr.addEventListener('load', () => {
       if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress(100);
         resolve();
       } else {
         reject(new Error(`Upload failed with HTTP ${xhr.status}`));

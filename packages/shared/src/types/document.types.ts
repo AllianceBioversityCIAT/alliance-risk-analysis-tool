@@ -32,18 +32,22 @@ export interface ExtractedTable {
 }
 
 export interface ExtractionResult {
-  /** Total number of pages in the document */
+  /** Total number of pages in the document (0 for non-paginated formats like CSV/TXT) */
   pages: number;
-  /** Full extracted text, concatenated from all LINE blocks */
+  /** Full extracted text, concatenated (legacy — kept for backward compat) */
   textContent: string;
-  /** Structured tables extracted from the document */
+  /** Extracted content as well-structured Markdown (primary content for viewers) */
+  markdownContent: string;
+  /** Structured tables extracted from the document (populated by Textract; empty for programmatic) */
   tables: ExtractedTable[];
   /** Processing metadata */
   metadata: {
-    textractJobId: string;
+    /** Textract async job ID — only present for PDF/Textract extraction */
+    textractJobId?: string;
     s3Key: string;
     processingTimeMs: number;
     processedAt: string; // ISO 8601
-    textractModel: string; // e.g. "AnalyzeDocument/TABLES"
+    /** Extractor model used: 'textract' | 'programmatic' */
+    extractorModel: string;
   };
 }

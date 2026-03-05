@@ -39,11 +39,14 @@
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^3.2.2",
+    "mammoth": "^1.11.0",
     "pg": "^8.18.0",
     "prisma": "^7.4.1",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.1",
-    "tslib": "^2.8.1"
+    "tslib": "^2.8.1",
+    "turndown": "^7.2.2",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.0.0",
@@ -54,6 +57,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.3.1",
     "@types/supertest": "^7.2.0",
+    "@types/turndown": "^5.0.6",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
     "@typescript-eslint/parser": "^6.0.0",
     "esbuild": "^0.25.0",

@@ -1,7 +1,7 @@
 import { ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { JwtAuthGuard, CognitoVerifier, TokenClaims } from './jwt-auth.guard';
-import { PrismaService } from '../../database/prisma.service';
+import { PrismaService } from '../../infrastructure/database/prisma.service';
 
 const mockClaims: TokenClaims = {
   userId: 'cognito-sub-1',
