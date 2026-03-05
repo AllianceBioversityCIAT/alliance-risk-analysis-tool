@@ -216,26 +216,31 @@ export function AppSidebar() {
                         )}
                       >
                         <Link href={stepHref}>
-                          {/* Orange active indicator */}
+                          {/* Orange active indicator — expanded only */}
                           {isStepActive && !isCollapsed && (
                             <span
                               className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 rounded-r-full"
                               style={{ backgroundColor: '#F18E1C' }}
                             />
                           )}
-                          {/* Step number or icon */}
-                          <div
-                            className={cn(
-                              'h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
-                              isStepActive
-                                ? 'bg-white text-[#008F8F]'
-                                : isCompleted
-                                  ? 'bg-emerald-400 text-white'
-                                  : 'bg-white/20 text-white/60',
-                            )}
-                          >
-                            {index + 1}
-                          </div>
+                          {/* Collapsed: use the Lucide icon so it looks like the rest of the nav */}
+                          {/* Expanded: numbered circle badge showing progress */}
+                          {isCollapsed ? (
+                            <step.icon className="h-4 w-4 shrink-0" />
+                          ) : (
+                            <div
+                              className={cn(
+                                'h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
+                                isStepActive
+                                  ? 'bg-white text-[#008F8F]'
+                                  : isCompleted
+                                    ? 'bg-emerald-400 text-white'
+                                    : 'bg-white/20 text-white/60',
+                              )}
+                            >
+                              {index + 1}
+                            </div>
+                          )}
                           <span className="ml-3 text-sm font-medium">{step.label}</span>
                         </Link>
                       </SidebarMenuButton>
