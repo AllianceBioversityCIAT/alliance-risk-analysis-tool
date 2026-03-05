@@ -25,8 +25,11 @@ import dynamic from 'next/dynamic';
 import { GapLayout } from '@/components/gap-detector/gap-layout';
 import { GapCategoryGroup } from '@/components/gap-detector/gap-field-card';
 
-const PdfViewer = dynamic(
-  () => import('@/components/gap-detector/pdf-viewer').then((mod) => mod.PdfViewer),
+const DocumentViewer = dynamic(
+  () =>
+    import('@/components/gap-detector/document-viewer').then(
+      (mod) => mod.DocumentViewer,
+    ),
   {
     ssr: false,
     loading: () => (
@@ -37,7 +40,8 @@ const PdfViewer = dynamic(
   },
 );
 import { useGapFields, useUpdateGapFields } from '@/hooks/use-gap-detection';
-import { useAssessment, useAssessmentDocuments, useUpdateAssessment } from '@/hooks/use-assessments';
+import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
+import { useMergedContent } from '@/hooks/use-merged-content';
 import { GapFieldStatus } from '@alliance-risk/shared';
 import type { GapFieldResponse } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -68,7 +72,7 @@ export default function GapDetectorClient() {
   const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '');
   const { data: gapData, isLoading: gapLoading } = useGapFields(id ?? '');
   const { mutateAsync: updateFields } = useUpdateGapFields(id ?? '');
-  const { data: documents } = useAssessmentDocuments(id);
+  const { data: mergedContentData } = useMergedContent(id);
   const { mutateAsync: updateAssessment, isPending: isSavingDraft } = useUpdateAssessment();
 
   const handleUpdateField = useCallback(
@@ -155,8 +159,9 @@ export default function GapDetectorClient() {
   const groups = groupByCategory(fields);
 
   const hasDocument = assessment?.intakeMode === 'UPLOAD';
-  const documentUrl = documents?.[0]?.presignedUrl ?? null;
-  const documentName = documents?.[0]?.fileName ?? null;
+  const mergedMarkdown = mergedContentData?.mergedMarkdown ?? null;
+  // Keep documentName for the document info bar
+  const documentName = mergedMarkdown ? 'Uploaded Documents' : null;
 
   // Data completeness
   const completeness = total > 0 ? Math.round((verified / total) * 100) : 0;
@@ -236,35 +241,36 @@ export default function GapDetectorClient() {
               </div>
             </div>
 
-            {/* Middle: Save Draft button */}
-            <Button
-              variant="outline"
-              size="sm"
-              className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:text-white shrink-0"
-              onClick={handleSaveDraft}
-              disabled={isSavingDraft}
-            >
-              <Save className="h-3.5 w-3.5 mr-1.5" />
-              {isSavingDraft ? 'Saving...' : 'Save Draft'}
-            </Button>
+            {/* Right Side: Save Draft & Data Completeness */}
+            <div className="flex flex-col items-end gap-4 shrink-0 min-w-[140px]">
+              <Button
+                variant="outline"
+                size="sm"
+                className="bg-white/10 border-white/30 text-white hover:bg-white/20 hover:text-white shrink-0"
+                onClick={handleSaveDraft}
+                disabled={isSavingDraft}
+              >
+                <Save className="h-3.5 w-3.5 mr-1.5" />
+                {isSavingDraft ? 'Saving...' : 'Save Draft'}
+              </Button>
 
-            {/* Right: Data Completeness */}
-            <div className="text-right shrink-0 min-w-[140px]">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 mb-0.5">
-                Data Completeness
-              </p>
-              <p className="text-3xl font-bold text-white leading-none">{completeness}%</p>
-              <div className="h-1.5 w-full rounded-full bg-white/20 mt-1.5 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-emerald-400 transition-all duration-500"
-                  style={{ width: `${completeness}%` }}
-                />
-              </div>
-              {requiredRemaining > 0 && (
-                <p className="text-[10px] text-white/60 mt-1">
-                  {requiredRemaining} required field{requiredRemaining !== 1 ? 's' : ''} remaining
+              <div className="text-right w-full">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-white/60 mb-0.5">
+                  Data Completeness
                 </p>
-              )}
+                <p className="text-3xl font-bold text-white leading-none">{completeness}%</p>
+                <div className="h-1.5 w-full rounded-full bg-white/20 mt-1.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-emerald-400 transition-all duration-500"
+                    style={{ width: `${completeness}%` }}
+                  />
+                </div>
+                {requiredRemaining > 0 && (
+                  <p className="text-[10px] text-white/60 mt-1">
+                    {requiredRemaining} required field{requiredRemaining !== 1 ? 's' : ''} remaining
+                  </p>
+                )}
+              </div>
             </div>
           </div>
 
@@ -299,9 +305,12 @@ export default function GapDetectorClient() {
           </div>
         ) : (
           <GapLayout
-            hasDocument={hasDocument}
+            hasDocument={hasDocument && !!mergedMarkdown}
             documentPanel={
-              <PdfViewer presignedUrl={documentUrl} fileName={documentName} highlightKeyword={highlightKeyword} />
+              <DocumentViewer
+                markdownContent={mergedMarkdown}
+                highlightKeyword={highlightKeyword}
+              />
             }
             fieldsPanel={
               <div className="p-5">
