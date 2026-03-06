@@ -36,6 +36,25 @@ export function useGapFields(assessmentId: string) {
   });
 }
 
+export function useReAnalyzeGaps(assessmentId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async () => {
+      const response = await apiClient.post<{ jobId: string }>(
+        `/api/assessments/${assessmentId}/gap-fields/re-analyze`,
+      );
+      return response.data;
+    },
+    onSuccess: () => {
+      // Will be refetched after job polling completes
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', assessmentId] });
+    },
+  });
+}
+
 export function useUpdateGapFields(assessmentId: string) {
   const queryClient = useQueryClient();
 

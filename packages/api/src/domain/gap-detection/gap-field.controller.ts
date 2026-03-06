@@ -32,4 +32,12 @@ export class GapFieldController {
   ) {
     return this.gapDetectionService.triggerRiskAnalysis(id, user.userId);
   }
+
+  @Post('re-analyze')
+  triggerReAnalysis(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser() user: UserClaims,
+  ) {
+    return this.gapDetectionService.triggerReAnalysis(id, user.userId);
+  }
 }

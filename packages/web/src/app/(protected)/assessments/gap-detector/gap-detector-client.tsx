@@ -44,11 +44,12 @@ const DocumentViewer = dynamic(
     ),
   },
 );
-import { useGapFields, useUpdateGapFields } from '@/hooks/use-gap-detection';
+import { useGapFields, useUpdateGapFields, useReAnalyzeGaps } from '@/hooks/use-gap-detection';
+import { useJobPolling } from '@/hooks/use-job-polling';
 import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { useMergedContent } from '@/hooks/use-merged-content';
 import { useMultiDocumentStatus } from '@/hooks/use-multi-document-status';
-import { GapFieldStatus } from '@alliance-risk/shared';
+import { GapFieldStatus, JobStatus } from '@alliance-risk/shared';
 import type { GapFieldResponse } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -104,11 +105,36 @@ export default function GapDetectorClient() {
     isProcessing: docsProcessing,
   } = useMultiDocumentStatus(id, hasDocument ?? false);
 
+  // ─── Re-analyze on save ──────────────────────────────────────────────────────
+  const { mutateAsync: reAnalyze } = useReAnalyzeGaps(id ?? '');
+  const { startPolling, isProcessing: isReAnalyzing, status: jobStatus } = useJobPolling();
+  const reAnalyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When re-analysis job completes, show toast
+  useEffect(() => {
+    if (jobStatus === JobStatus.COMPLETED) {
+      sileo.success({ title: 'Re-analysis complete', description: 'Gap fields updated with new insights.' });
+    } else if (jobStatus === JobStatus.FAILED) {
+      sileo.error({ title: 'Re-analysis failed', description: 'Please try again.' });
+    }
+  }, [jobStatus]);
+
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string) => {
       await updateFields([{ id: fieldId, correctedValue: value }]);
+
+      // Debounce re-analysis: wait 2s after last save
+      if (reAnalyzeTimerRef.current) clearTimeout(reAnalyzeTimerRef.current);
+      reAnalyzeTimerRef.current = setTimeout(async () => {
+        try {
+          const { jobId } = await reAnalyze();
+          startPolling(jobId);
+        } catch {
+          // Silent — re-analysis is best-effort
+        }
+      }, 2000);
     },
-    [updateFields],
+    [updateFields, reAnalyze, startPolling],
   );
 
   const handleSaveDraft = useCallback(async () => {
@@ -462,6 +488,12 @@ export default function GapDetectorClient() {
                   <p className="text-sm text-muted-foreground mt-1">
                     Please review detected gaps and complete missing information.
                   </p>
+                  {isReAnalyzing && (
+                    <div className="flex items-center gap-2 mt-2 text-sm text-primary">
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                      <span>Re-analyzing with your corrections...</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Category groups */}
@@ -472,6 +504,7 @@ export default function GapDetectorClient() {
                       category={category}
                       fields={catFields.map((f) => ({
                         id: f.id,
+                        field: f.field,
                         label: f.label,
                         currentValue: f.correctedValue ?? f.extractedValue,
                         extractedValue: f.extractedValue,
@@ -534,15 +567,19 @@ export default function GapDetectorClient() {
                           <span className="block w-full">
                             <Button
                               className="w-full h-11"
-                              disabled={!allMandatoryComplete}
+                              disabled={!allMandatoryComplete || isReAnalyzing}
                               onClick={handleAnalyzeRisks}
                             >
-                              <BarChart3 className="mr-2 h-4 w-4" />
-                              Analyze Risks
+                              {isReAnalyzing ? (
+                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              ) : (
+                                <BarChart3 className="mr-2 h-4 w-4" />
+                              )}
+                              {isReAnalyzing ? 'Re-analyzing...' : 'Analyze Risks'}
                             </Button>
                           </span>
                         </TooltipTrigger>
-                        {!allMandatoryComplete && (
+                        {!allMandatoryComplete && !isReAnalyzing && (
                           <TooltipContent>
                             <p>Fill all mandatory fields to continue.</p>
                           </TooltipContent>

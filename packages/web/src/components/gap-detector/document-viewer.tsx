@@ -173,14 +173,17 @@ export function DocumentViewer({
       // Extract significant keywords (>=4 chars, not stop words)
       const allKeywords = highlightKeyword
         .toLowerCase()
+        .replace(/[(),:;""']/g, ' ')
         .split(/\s+/)
         .filter((w) => w.length >= 4 && !STOP_WORDS.has(w));
 
       if (allKeywords.length === 0) return;
 
-      // Gather all text-bearing elements
+      // Gather all text-bearing elements.
+      // Use `tr` for table rows (not individual td/th) so entire rows score
+      // as one unit — a row like "COGS | 4800 | 6000" matches keywords better.
       const textElements = Array.from(
-        container.querySelectorAll('p, li, td, th, h1, h2, h3, h4, h5, h6'),
+        container.querySelectorAll('p, li, tr, h1, h2, h3, h4, h5, h6'),
       );
 
       if (textElements.length === 0) return;
@@ -205,7 +208,7 @@ export function DocumentViewer({
           .slice(0, 6);
       }
 
-      keywords = [...new Set(keywords)].slice(0, 10);
+      keywords = [...new Set(keywords)].slice(0, 12);
 
       // Score each element
       const scores = textElements.map((el) => {
@@ -213,37 +216,119 @@ export function DocumentViewer({
         return keywords.reduce((acc, kw) => acc + (text.includes(kw) ? 1 : 0), 0);
       });
 
-      // Sliding window of 5 elements
-      const WINDOW = 5;
-      let bestStart = 0;
-      let bestScore = 0;
-      let windowScore = scores.slice(0, WINDOW).reduce((a, b) => a + b, 0);
+      // ─── Per-document-section highlighting ─────────────────────────────
+      // Split elements into sections delimited by [data-doc-section] badges.
+      // Find the best cluster in EACH section so multi-doc fields get
+      // highlights in every document that contributed.
+      const sectionBadges = container.querySelectorAll('[data-doc-section]');
+      type Section = { startIdx: number; endIdx: number };
+      const sections: Section[] = [];
 
-      if (windowScore > bestScore) {
-        bestScore = windowScore;
-        bestStart = 0;
-      }
+      if (sectionBadges.length > 1) {
+        // Build section ranges based on which badge each element follows
+        for (let b = 0; b < sectionBadges.length; b++) {
+          const badgeEl = sectionBadges[b];
+          const nextBadgeEl = sectionBadges[b + 1] ?? null;
 
-      for (let i = WINDOW; i < scores.length; i++) {
-        windowScore += scores[i] - (scores[i - WINDOW] ?? 0);
-        if (windowScore > bestScore) {
-          bestScore = windowScore;
-          bestStart = i - WINDOW + 1;
+          let startIdx = -1;
+          let endIdx = textElements.length;
+          for (let i = 0; i < textElements.length; i++) {
+            if (startIdx === -1 && badgeEl.compareDocumentPosition(textElements[i]) & Node.DOCUMENT_POSITION_FOLLOWING) {
+              startIdx = i;
+            }
+            if (nextBadgeEl && nextBadgeEl.compareDocumentPosition(textElements[i]) & Node.DOCUMENT_POSITION_FOLLOWING) {
+              endIdx = i;
+              break;
+            }
+          }
+          if (startIdx >= 0) sections.push({ startIdx, endIdx });
         }
       }
 
-      if (bestScore === 0) return;
+      // Fallback: treat entire content as one section
+      if (sections.length === 0) {
+        sections.push({ startIdx: 0, endIdx: textElements.length });
+      }
 
-      const windowEnd = Math.min(bestStart + WINDOW, textElements.length);
+      // Find best window in each section and highlight.
+      // For sections with only low scores (e.g. spreadsheets), we still
+      // highlight the best matches as long as there is at least 1 hit.
+      const WINDOW = 5;
+      const MAX_HIGHLIGHTS_PER_SECTION = 3;
       let firstMatch: Element | null = null;
-      let highlighted = 0;
-      const MAX_HIGHLIGHTS = 5;
 
-      for (let i = bestStart; i < windowEnd && highlighted < MAX_HIGHLIGHTS; i++) {
-        if (scores[i] > 0) {
-          textElements[i].classList.add('doc-text-highlight');
-          if (!firstMatch) firstMatch = textElements[i];
-          highlighted++;
+      // Track which sections got keyword hits vs not
+      const sectionHasHits: boolean[] = [];
+      const sectionFirstHeading: (Element | null)[] = [];
+
+      for (let si = 0; si < sections.length; si++) {
+        const section = sections[si];
+        const len = section.endIdx - section.startIdx;
+        if (len === 0) { sectionHasHits.push(false); sectionFirstHeading.push(null); continue; }
+
+        // Find first heading in this section (for fallback highlighting)
+        let heading: Element | null = null;
+        for (let i = section.startIdx; i < section.endIdx; i++) {
+          if (/^H[1-6]$/.test(textElements[i].tagName)) { heading = textElements[i]; break; }
+        }
+        sectionFirstHeading.push(heading);
+
+        // Check if this section has ANY scoring elements at all
+        const sectionScores = scores.slice(section.startIdx, section.endIdx);
+        const hasScoringElements = sectionScores.some((s) => s > 0);
+        sectionHasHits.push(hasScoringElements);
+        if (!hasScoringElements) continue;
+
+        const w = Math.min(WINDOW, len);
+
+        let bestStart = 0;
+        let bestScore = 0;
+        let windowScore = sectionScores.slice(0, w).reduce((a, b) => a + b, 0);
+
+        if (windowScore > bestScore) {
+          bestScore = windowScore;
+          bestStart = 0;
+        }
+
+        for (let i = w; i < sectionScores.length; i++) {
+          windowScore += sectionScores[i] - (sectionScores[i - w] ?? 0);
+          if (windowScore > bestScore) {
+            bestScore = windowScore;
+            bestStart = i - w + 1;
+          }
+        }
+
+        if (bestScore === 0) continue;
+
+        // Highlight best matches in this section
+        const absStart = section.startIdx + bestStart;
+        const absEnd = Math.min(absStart + w, section.endIdx);
+        let highlighted = 0;
+
+        // For low-scoring sections (spreadsheets), also scan beyond the window
+        // to highlight any scoring elements (up to MAX_HIGHLIGHTS_PER_SECTION)
+        const scanEnd = bestScore <= 2
+          ? section.endIdx  // Scan entire section for sparse matches
+          : absEnd;         // Normal: only scan within best window
+
+        for (let i = absStart; i < scanEnd && highlighted < MAX_HIGHLIGHTS_PER_SECTION; i++) {
+          if (scores[i] > 0) {
+            textElements[i].classList.add('doc-text-highlight');
+            if (!firstMatch) firstMatch = textElements[i];
+            highlighted++;
+          }
+        }
+      }
+
+      // Fallback: if some sections have hits but others don't (multi-doc),
+      // highlight the first heading in zero-match sections as a navigational
+      // anchor so the user knows the section is also relevant.
+      const anyHits = sectionHasHits.some(Boolean);
+      if (anyHits && sections.length > 1) {
+        for (let si = 0; si < sections.length; si++) {
+          if (!sectionHasHits[si] && sectionFirstHeading[si]) {
+            sectionFirstHeading[si]!.classList.add('doc-text-highlight');
+          }
         }
       }
 

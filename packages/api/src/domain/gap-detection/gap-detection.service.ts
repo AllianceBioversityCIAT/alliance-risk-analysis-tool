@@ -77,6 +77,16 @@ export class GapDetectionService {
     return { allComplete: missing.length === 0, missing };
   }
 
+  async triggerReAnalysis(assessmentId: string, userId: string): Promise<{ jobId: string }> {
+    await this.validateOwnership(assessmentId, userId);
+    const jobId = await this.jobsService.create(
+      JobType.GAP_DETECTION,
+      { assessmentId, reAnalyze: true },
+      userId,
+    );
+    return { jobId };
+  }
+
   async triggerRiskAnalysis(assessmentId: string, userId: string): Promise<string> {
     await this.validateOwnership(assessmentId, userId);
     const jobId = await this.jobsService.create(

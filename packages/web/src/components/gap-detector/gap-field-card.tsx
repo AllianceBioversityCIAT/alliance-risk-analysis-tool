@@ -12,8 +12,9 @@ import {
   Settings,
   ShoppingBag,
   Shield,
+  Sparkles,
 } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import { GapFieldStatus } from '@alliance-risk/shared';
 
@@ -35,10 +36,26 @@ const CATEGORY_LABELS: Record<string, string> = {
   BUSINESS_PROFILE: 'Business Profile',
 };
 
+// ─── Field descriptions — explains WHY each field matters ─────────────────────
+
+const FIELD_DESCRIPTIONS: Record<string, string> = {
+  business_model_summary: 'Describes how the business creates and delivers value.',
+  enterprise_type: 'Classifies the business structure for regulatory assessment.',
+  country_of_operation: 'Determines geopolitical and market-specific risk factors.',
+  product_service_description: 'Identifies the offering and its market positioning.',
+  revenue_model: 'Helps assess income stability and lending capacity.',
+  cost_drivers: 'Understanding costs helps evaluate profitability risk.',
+  supply_chain_overview: 'Maps dependencies that could disrupt operations.',
+  workforce_summary: 'Assesses human capital risks and organizational capacity.',
+  customer_base: 'Evaluates revenue concentration and market risk.',
+  key_challenges: 'Identifies known risks the business is already facing.',
+};
+
 // ─── GapFieldCard ─────────────────────────────────────────────────────────────
 
 interface GapFieldCardProps {
   id: string;
+  field: string;
   label: string;
   currentValue?: string | null;
   extractedValue?: string | null;
@@ -52,6 +69,7 @@ interface GapFieldCardProps {
 
 const GapFieldCard = memo(function GapFieldCard({
   id,
+  field,
   label,
   currentValue,
   extractedValue,
@@ -73,6 +91,8 @@ const GapFieldCard = memo(function GapFieldCard({
   const isPartial = status === GapFieldStatus.PARTIAL;
   const isVerified = status === GapFieldStatus.VERIFIED && !isDirty;
 
+  const description = FIELD_DESCRIPTIONS[field];
+
   const handleSave = useCallback(async () => {
     if (!editValue.trim()) return;
     setIsSaving(true);
@@ -86,7 +106,8 @@ const GapFieldCard = memo(function GapFieldCard({
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter' && isDirty && editValue.trim()) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && isDirty && editValue.trim()) {
+        e.preventDefault();
         handleSave();
       }
     },
@@ -112,10 +133,10 @@ const GapFieldCard = memo(function GapFieldCard({
         borderLeftColor,
         isMissing && !isEditing && 'bg-red-50/40',
       )}
-      onClick={() => onFieldFocus?.(extractedValue ?? currentValue ?? label)}
+      onClick={() => onFieldFocus?.(`${label} ${extractedValue ?? currentValue ?? ''}`)}
     >
       {/* Label + Status badge */}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-1">
         <span className="text-sm font-medium text-foreground">
           {label}
           {isMandatory && <span className="ml-0.5 text-destructive text-xs align-super">*</span>}
@@ -158,20 +179,40 @@ const GapFieldCard = memo(function GapFieldCard({
         )}
       </div>
 
-      {/* Input + Save icon */}
+      {/* Helper text — explains WHY this field matters */}
+      {description && (
+        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">{description}</p>
+      )}
+
+      {/* AI Extraction — read-only block showing what AI found */}
+      {extractedValue && (
+        <div className="mb-3 px-3 py-2 bg-muted/40 rounded-md border-l-2 border-primary/30">
+          <div className="flex items-center gap-1 mb-0.5">
+            <Sparkles className="h-3 w-3 text-primary/70" />
+            <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">AI Extracted</span>
+          </div>
+          <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">{extractedValue}</p>
+        </div>
+      )}
+
+      {/* Textarea + Save icon */}
       {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-        <Input
+      <div className="flex items-start gap-2" onClick={(e) => e.stopPropagation()}>
+        <Textarea
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => !isDirty && setIsFocused(false)}
           onKeyDown={handleKeyDown}
           placeholder={
-            isMissing ? 'Value required...' : isPartial ? 'Enter value...' : 'Override value...'
+            isMissing
+              ? 'Provide the missing information...'
+              : isPartial
+                ? 'Add more details to complete this field...'
+                : 'Correct or add to the AI extraction...'
           }
           className={cn(
-            'h-9 text-sm flex-1',
+            'text-sm flex-1 min-h-[2.25rem] resize-none',
             isMissing && !isEditing && 'border-red-200 focus-visible:ring-red-300',
           )}
           disabled={isSaving}
@@ -181,10 +222,10 @@ const GapFieldCard = memo(function GapFieldCard({
             type="button"
             onClick={isDirty && editValue.trim() ? handleSave : undefined}
             disabled={!isDirty || !editValue.trim() || isSaving}
-            title="Save changes"
+            title="Save changes (Ctrl+Enter)"
             aria-label={`Save ${label}`}
             className={cn(
-              'h-9 w-9 rounded-lg flex items-center justify-center shrink-0 transition-colors',
+              'h-9 w-9 rounded-lg flex items-center justify-center shrink-0 transition-colors mt-0.5',
               isDirty && editValue.trim()
                 ? 'bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer'
                 : isMissing || isPartial
@@ -196,6 +237,13 @@ const GapFieldCard = memo(function GapFieldCard({
           </button>
         )}
       </div>
+
+      {/* Save hint when editing */}
+      {isFocused && isDirty && (
+        <p className="text-[10px] text-muted-foreground mt-1.5 ml-0.5">
+          Press <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Ctrl+Enter</kbd> to save
+        </p>
+      )}
 
       {/* AI Reasoning expandable */}
       {aiReasoning && (
