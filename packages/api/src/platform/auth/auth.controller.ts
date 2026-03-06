@@ -131,6 +131,7 @@ export class AuthController {
    * POST /api/auth/change-password
    * Changes a user's own password while authenticated.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
   @ApiBearerAuth('cognito-jwt')
