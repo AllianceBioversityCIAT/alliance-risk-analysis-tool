@@ -11,6 +11,7 @@ describe('AuthController (e2e) - Throttling', () => {
   let app: INestApplication;
   const mockCognitoService = {
     login: jest.fn(),
+    changePassword: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -64,6 +65,31 @@ describe('AuthController (e2e) - Throttling', () => {
     // 6th request should fail with 429 Too Many Requests
     await request(app.getHttpServer())
       .post('/auth/login')
+      .send(payload)
+      .expect(429);
+  });
+
+  it('/auth/change-password (POST) - should throttle after 5 requests', async () => {
+    mockCognitoService.changePassword.mockResolvedValue(undefined);
+
+    const payload = {
+      previousPassword: 'OldP@ssw0rd!', // NOSONAR
+      proposedPassword: 'NewP@ssw0rd1!', // NOSONAR
+    };
+
+    // The @Throttle decorator on changePassword() sets limit to 5
+    for (let i = 0; i < 5; i++) {
+      await request(app.getHttpServer())
+        .post('/auth/change-password')
+        .set('Authorization', 'Bearer fake-token')
+        .send(payload)
+        .expect(200);
+    }
+
+    // 6th request should fail with 429 Too Many Requests
+    await request(app.getHttpServer())
+      .post('/auth/change-password')
+      .set('Authorization', 'Bearer fake-token')
       .send(payload)
       .expect(429);
   });
