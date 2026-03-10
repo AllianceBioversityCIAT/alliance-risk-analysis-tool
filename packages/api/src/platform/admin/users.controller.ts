@@ -20,6 +20,7 @@ import {
   ApiQuery,
   ApiBody,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CognitoService } from '../auth/cognito.service';
 import { AdminGuard } from '../../common/guards/admin.guard';
 import { CreateUserDto } from './dto/create-user.dto';
@@ -166,6 +167,7 @@ export class UsersController {
    * POST /api/admin/users/:username/reset-password
    * Sets a temporary password requiring change on next login.
    */
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
   @Post(':username/reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Admin reset user password', description: 'Sets a new temporary password for the user. On next login, the user will be forced through the NEW_PASSWORD_REQUIRED challenge to set a permanent password.' })
