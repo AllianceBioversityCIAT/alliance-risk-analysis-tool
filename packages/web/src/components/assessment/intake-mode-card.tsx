@@ -34,6 +34,8 @@ export function IntakeModeCard({
 
   return (
     <div
+      role={isDisabled ? undefined : 'button'}
+      tabIndex={isDisabled ? undefined : 0}
       className={cn(
         'group relative flex flex-col rounded-xl border-2 p-6 transition-all duration-200',
         // Coming soon — muted, locked look
@@ -45,6 +47,8 @@ export function IntakeModeCard({
       )}
       aria-disabled={isComingSoon}
       title={isComingSoon ? `${title} — Coming soon` : undefined}
+      onClick={isDisabled ? undefined : onSelect}
+      onKeyDown={isDisabled ? undefined : (e) => e.key === 'Enter' && onSelect()}
     >
       {/* Coming Soon pill — top-right badge */}
       {isComingSoon && (
@@ -126,7 +130,7 @@ export function IntakeModeCard({
           )}
           variant={isSelected ? 'default' : 'outline'}
           disabled={isDisabled}
-          onClick={onSelect}
+          onClick={(e) => { e.stopPropagation(); onSelect(); }}
         >
           {buttonLabel}
           {isSelected && <ArrowRight className="ml-2 h-4 w-4" />}

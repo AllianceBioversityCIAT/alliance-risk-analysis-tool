@@ -278,7 +278,9 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
 
   const isBusy = modalPhase === 'uploading' || modalPhase === 'parsing';
   const newFiles = files.filter((f) => f.phase === 'idle');
+  const existingParsed = files.filter((f) => f.phase === 'parsed');
   const canUpload = newFiles.length > 0 && !isBusy && modalPhase !== 'done';
+  const canContinue = newFiles.length === 0 && existingParsed.length > 0 && !isBusy && modalPhase !== 'done';
 
   return (
     <div className="space-y-6">
@@ -345,20 +347,29 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
         >
           {existingDocsLoaded && files.some((f) => f.phase === 'parsed') ? 'Back' : 'Cancel'}
         </Button>
-        <Button
-          onClick={handleUpload}
-          disabled={!canUpload}
-          className="bg-[#4CAF50] hover:bg-[#43A047] text-white"
-        >
-          {isBusy ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              {modalPhase === 'uploading' ? 'Uploading...' : 'Analysing...'}
-            </>
-          ) : (
-            `Upload & Analyse${newFiles.length > 1 ? ` (${newFiles.length} files)` : newFiles.length === 1 ? ' (1 file)' : ''}`
-          )}
-        </Button>
+        {canContinue ? (
+          <Button
+            onClick={() => router.push(`/assessments/gap-detector?id=${assessmentId}`)}
+            className="bg-[#4CAF50] hover:bg-[#43A047] text-white"
+          >
+            Continue to Gap Detector
+          </Button>
+        ) : (
+          <Button
+            onClick={handleUpload}
+            disabled={!canUpload}
+            className="bg-[#4CAF50] hover:bg-[#43A047] text-white"
+          >
+            {isBusy ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                {modalPhase === 'uploading' ? 'Uploading...' : 'Analysing...'}
+              </>
+            ) : (
+              `Upload & Analyse${newFiles.length > 1 ? ` (${newFiles.length} files)` : newFiles.length === 1 ? ' (1 file)' : ''}`
+            )}
+          </Button>
+        )}
       </div>
     </div>
   );
