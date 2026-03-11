@@ -25,7 +25,7 @@ export type {
   AssessmentDetail,
   AssessmentStats,
 } from './types/assessment.types';
-export type { GapFieldResponse } from './types/gap-field.types';
+export type { GapFieldResponse, InvalidField, GapFieldValidationError } from './types/gap-field.types';
 export type {
   SubcategoryScore,
   RiskScoreResponse,

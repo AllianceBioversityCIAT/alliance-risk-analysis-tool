@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useCallback, useState, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   Loader2,
   FileText,
@@ -15,6 +16,7 @@ import {
   CheckCircle2,
   Circle,
   RefreshCw,
+  AlertTriangle,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
@@ -50,10 +52,11 @@ import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { useMergedContent } from '@/hooks/use-merged-content';
 import { useMultiDocumentStatus } from '@/hooks/use-multi-document-status';
 import { GapFieldStatus, JobStatus } from '@alliance-risk/shared';
-import type { GapFieldResponse } from '@alliance-risk/shared';
+import type { GapFieldResponse, InvalidField } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
+import { AxiosError } from 'axios';
 
 // Group gap fields by category preserving insertion order
 function groupByCategory(fields: GapFieldResponse[]) {
@@ -85,6 +88,7 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
 export default function GapDetectorClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const id = searchParams.get('id');
 
   useEffect(() => {
@@ -120,8 +124,11 @@ export default function GapDetectorClient() {
   }, [jobStatus]);
 
   const handleUpdateField = useCallback(
-    async (fieldId: string, value: string) => {
+    async (fieldId: string, value: string, currentStatus?: GapFieldStatus) => {
       await updateFields([{ id: fieldId, correctedValue: value }]);
+
+      // PARTIAL fields just need verification — no AI re-analysis needed
+      if (currentStatus === GapFieldStatus.PARTIAL) return;
 
       // Debounce re-analysis: wait 2s after last save
       if (reAnalyzeTimerRef.current) clearTimeout(reAnalyzeTimerRef.current);
@@ -150,18 +157,47 @@ export default function GapDetectorClient() {
     }
   }, [id, updateAssessment]);
 
+  const [isValidating, setIsValidating] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<'all' | 'attention' | 'verified'>('all');
+  const [showValidationBanner, setShowValidationBanner] = useState(false);
+
   const handleAnalyzeRisks = useCallback(async () => {
     if (!id) return;
+    setIsValidating(true);
     try {
-      await apiClient.post(`/api/assessments/${id}/trigger-risk-analysis`);
+      await apiClient.post(`/api/assessments/${id}/gap-fields/submit`);
       router.push(`/assessments/risk-scorecard?id=${id}`);
     } catch (err) {
-      sileo.error({
-        title: 'Failed to start risk analysis',
-        description: err instanceof Error ? err.message : 'Please try again.',
-      });
+      // Handle validation failure — fields rejected by AI
+      if (err instanceof AxiosError && err.response?.status === 400 && Array.isArray(err.response.data?.invalidFields)) {
+        const invalidFields = err.response.data.invalidFields as InvalidField[];
+        if (invalidFields.length > 0) {
+          const count = invalidFields.length;
+          sileo.warning({
+            title: `${count} field${count !== 1 ? 's' : ''} need${count === 1 ? 's' : ''} more detail`,
+            description: 'Please review the highlighted fields and provide meaningful information.',
+          });
+          setShowValidationBanner(true);
+          setActiveFilter('attention');
+        } else {
+          // Validation service unavailable — invalidFields is empty
+          sileo.error({
+            title: 'Validation temporarily unavailable',
+            description: 'Please try again in a moment.',
+          });
+        }
+        // Refetch gap fields to get updated statuses and feedback from server
+        queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
+      } else {
+        sileo.error({
+          title: 'Failed to start risk analysis',
+          description: err instanceof Error ? err.message : 'Please try again.',
+        });
+      }
+    } finally {
+      setIsValidating(false);
     }
-  }, [id, router]);
+  }, [id, router, queryClient]);
 
   // ─── PDF highlight on field click ───────────────────────────────────────────
   const [highlightKeyword, setHighlightKeyword] = useState<string | null>(null);
@@ -203,21 +239,43 @@ export default function GapDetectorClient() {
     setIsEditingName(false);
   }, [id, editName, assessment?.name, updateAssessment, cancelEditingName]);
 
-  if (!id) return null;
-
   // ─── Derived state ────────────────────────────────────────────────────────────
   const isLoading = assessmentLoading || gapLoading;
   const fields = gapData?.data ?? [];
   const total = gapData?.total ?? 0;
   const verified = gapData?.verifiedCount ?? 0;
   const allMandatoryComplete = gapData?.allMandatoryComplete ?? false;
-  const groups = groupByCategory(fields);
 
   const mergedMarkdown = mergedContentData?.mergedMarkdown ?? null;
 
-  // Data completeness
+  // Filter counts
+  const needsAttentionCount = fields.filter(
+    (f) => f.status === GapFieldStatus.MISSING || f.status === GapFieldStatus.PARTIAL,
+  ).length;
+  const verifiedCount = verified;
+
+  // Auto-clear banner when no issues remain
+  const hasPendingIssues = needsAttentionCount > 0;
+  useEffect(() => {
+    if (!hasPendingIssues && showValidationBanner) {
+      setShowValidationBanner(false);
+      setActiveFilter('all');
+    }
+  }, [hasPendingIssues, showValidationBanner]);
+
+  // Apply filter to fields before grouping
+  const filteredFields = activeFilter === 'all'
+    ? fields
+    : activeFilter === 'attention'
+      ? fields.filter((f) => f.status === GapFieldStatus.MISSING || f.status === GapFieldStatus.PARTIAL)
+      : fields.filter((f) => f.status === GapFieldStatus.VERIFIED);
+  const groups = groupByCategory(filteredFields);
+
+  // Data completeness — only VERIFIED counts
   const completeness = total > 0 ? Math.round((verified / total) * 100) : 0;
   const requiredRemaining = total - verified;
+
+  if (!id) return null;
 
   // Document count for header
   const docCount = documents.length;
@@ -483,7 +541,7 @@ export default function GapDetectorClient() {
             fieldsPanel={
               <div className="p-5">
                 {/* Panel heading */}
-                <div className="mb-5">
+                <div className="mb-4">
                   <h2 className="text-xl font-bold text-foreground">Gap Detector</h2>
                   <p className="text-sm text-muted-foreground mt-1">
                     Please review detected gaps and complete missing information.
@@ -495,6 +553,73 @@ export default function GapDetectorClient() {
                     </div>
                   )}
                 </div>
+
+                {/* Validation alert banner */}
+                {showValidationBanner && needsAttentionCount > 0 && (
+                  <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200">
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-900">
+                        {needsAttentionCount} field{needsAttentionCount !== 1 ? 's' : ''} need{needsAttentionCount === 1 ? 's' : ''} more detail
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Please review the highlighted fields and provide meaningful corrections before analyzing risks.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowValidationBanner(false)}
+                      className="shrink-0 p-1 rounded hover:bg-amber-100 transition-colors"
+                      aria-label="Dismiss"
+                    >
+                      <X className="h-4 w-4 text-amber-500" />
+                    </button>
+                  </div>
+                )}
+
+                {/* Filter pill tabs */}
+                {fields.length > 0 && (
+                  <div className="flex items-center gap-2 mb-5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveFilter('all')}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+                        activeFilter === 'all'
+                          ? 'bg-foreground text-background'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                      )}
+                    >
+                      All ({total})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFilter('attention')}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+                        activeFilter === 'attention'
+                          ? 'bg-amber-500 text-white'
+                          : needsAttentionCount > 0
+                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
+                            : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                      )}
+                    >
+                      Needs Attention ({needsAttentionCount})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveFilter('verified')}
+                      className={cn(
+                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
+                        activeFilter === 'verified'
+                          ? 'bg-emerald-500 text-white'
+                          : 'bg-muted text-muted-foreground hover:bg-muted/80',
+                      )}
+                    >
+                      Verified ({verifiedCount})
+                    </button>
+                  </div>
+                )}
 
                 {/* Category groups */}
                 <div className="space-y-4">
@@ -512,12 +637,28 @@ export default function GapDetectorClient() {
                         isMandatory: f.isMandatory,
                         confidence: f.confidence,
                         aiReasoning: f.aiReasoning,
+                        validationFeedback: f.validationFeedback,
                         onUpdate: handleUpdateField,
                         onFieldFocus: handleFieldFocus,
                       }))}
                     />
                   ))}
                 </div>
+
+                {/* Empty filter state */}
+                {fields.length > 0 && filteredFields.length === 0 && (
+                  <div className="flex flex-col items-center justify-center py-12 text-center">
+                    <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-3" />
+                    <p className="text-sm font-medium text-foreground">
+                      {activeFilter === 'attention' ? 'No fields need attention' : 'No verified fields yet'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {activeFilter === 'attention'
+                        ? 'All fields are verified. You can proceed to analyze risks.'
+                        : 'Complete the fields above to see them here.'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Empty state — AI analysis in progress */}
                 {fields.length === 0 && (
@@ -567,15 +708,17 @@ export default function GapDetectorClient() {
                           <span className="block w-full">
                             <Button
                               className="w-full h-11"
-                              disabled={!allMandatoryComplete || isReAnalyzing}
+                              disabled={!allMandatoryComplete || isReAnalyzing || isValidating}
                               onClick={handleAnalyzeRisks}
                             >
                               {isReAnalyzing ? (
                                 <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                              ) : isValidating ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                               ) : (
                                 <BarChart3 className="mr-2 h-4 w-4" />
                               )}
-                              {isReAnalyzing ? 'Re-analyzing...' : 'Analyze Risks'}
+                              {isReAnalyzing ? 'Re-analyzing...' : isValidating ? 'Validating fields...' : 'Analyze Risks'}
                             </Button>
                           </span>
                         </TooltipTrigger>

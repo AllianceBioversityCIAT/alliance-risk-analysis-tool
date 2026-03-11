@@ -331,8 +331,11 @@ copy_from_pnpm_store() {
   local pkg_name="$1"
   local store_dir
   store_dir=$(find "${PNPM_STORE}" -maxdepth 1 -name "${pkg_name}@*" -type d | head -1)
-  if [[ -n "${store_dir}" && -d "${store_dir}/node_modules" ]]; then
-    rsync -aL --ignore-existing "${store_dir}/node_modules/" "${NM}/"
+  if [[ -n "${store_dir}" && -d "${store_dir}/node_modules/${pkg_name}" ]]; then
+    # Use tar pipe — avoids macOS cp -R slowness with extended attributes and pnpm symlinks
+    mkdir -p "${NM}/${pkg_name}"
+    tar cf - -C "${store_dir}/node_modules/${pkg_name}" --exclude='* 2' --exclude='* 2.*' . 2>/dev/null \
+      | tar xf - -C "${NM}/${pkg_name}/"
     return 0
   fi
   return 1
@@ -346,23 +349,19 @@ for lib in "${EXTRACTION_LIBS[@]}"; do
   LIB_REAL=$(resolve_pkg "${API_DIR}/node_modules/${lib}" 2>/dev/null) \
     || LIB_REAL=$(resolve_pkg "${ROOT_DIR}/node_modules/${lib}" 2>/dev/null) \
     || continue
-  STORE_NM=$(dirname "${LIB_REAL}")
-  # Only rsync from .pnpm store entries, never from top-level node_modules/
-  if [[ "${STORE_NM}" == */.pnpm/*/node_modules ]]; then
-    rsync -aL --ignore-existing "${STORE_NM}/" "${NM}/"
-  else
-    mkdir -p "${NM}/${lib}"
-    cp -R "${LIB_REAL}/." "${NM}/${lib}/"
-  fi
+  # Use tar pipe to copy — avoids macOS cp -R slowness with extended attributes
+  mkdir -p "${NM}/${lib}"
+  tar cf - -C "${LIB_REAL}" --exclude='* 2' --exclude='* 2.*' --exclude='test' --exclude='.github' . 2>/dev/null | tar xf - -C "${NM}/${lib}/"
 done
 
 # Transitive deps that pnpm may isolate into separate store entries.
 # mammoth → jszip → {pako, setimmediate, lie → immediate, readable-stream → {inherits, string_decoder, util-deprecate}}
 # mammoth → lop → {duck → underscore, option}
 # turndown → @mixmark-io/domino
-TRANSITIVE_DEPS=(jszip pako setimmediate lie immediate readable-stream inherits string_decoder util-deprecate lop duck option)
+log "  Copying transitive dependencies..."
+TRANSITIVE_DEPS=(jszip pako setimmediate lie immediate readable-stream inherits string_decoder util-deprecate lop duck option underscore)
 for dep in "${TRANSITIVE_DEPS[@]}"; do
-  copy_from_pnpm_store "${dep}" && log "  ${dep} (transitive)" || true
+  copy_from_pnpm_store "${dep}" && log "    ${dep}" || true
 done
 
 # ── Cleanup external packages ────────────────────────────────────────────────

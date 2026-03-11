@@ -63,7 +63,8 @@ interface GapFieldCardProps {
   isMandatory?: boolean;
   confidence?: number | null;
   aiReasoning?: string | null;
-  onUpdate: (id: string, value: string) => Promise<void> | void;
+  validationFeedback?: string | null;
+  onUpdate: (id: string, value: string, currentStatus?: GapFieldStatus) => Promise<void> | void;
   onFieldFocus?: (value: string | null) => void;
 }
 
@@ -77,6 +78,7 @@ const GapFieldCard = memo(function GapFieldCard({
   isMandatory = false,
   confidence,
   aiReasoning,
+  validationFeedback,
   onUpdate,
   onFieldFocus,
 }: GapFieldCardProps) {
@@ -97,12 +99,12 @@ const GapFieldCard = memo(function GapFieldCard({
     if (!editValue.trim()) return;
     setIsSaving(true);
     try {
-      await onUpdate(id, editValue);
+      await onUpdate(id, editValue, status);
     } finally {
       setIsSaving(false);
       setIsFocused(false);
     }
-  }, [id, editValue, onUpdate]);
+  }, [id, editValue, onUpdate, status]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -237,6 +239,14 @@ const GapFieldCard = memo(function GapFieldCard({
           </button>
         )}
       </div>
+
+      {/* Validation feedback warning */}
+      {validationFeedback && isPartial && !isEditing && (
+        <div className="flex items-start gap-1.5 mt-2 px-2.5 py-2 rounded-md bg-amber-50 border border-amber-200">
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-amber-800 leading-relaxed">{validationFeedback}</p>
+        </div>
+      )}
 
       {/* Save hint when editing */}
       {isFocused && isDirty && (

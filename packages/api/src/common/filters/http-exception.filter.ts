@@ -38,6 +38,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
       body.code = code;
     }
 
+    // Forward extra fields from BadRequestException (e.g. invalidFields)
+    if (exception instanceof HttpException) {
+      const resp = exception.getResponse();
+      if (typeof resp === 'object' && resp !== null) {
+        const extra = resp as Record<string, unknown>;
+        if (extra.invalidFields) {
+          body.invalidFields = extra.invalidFields;
+        }
+      }
+    }
+
     if (statusCode >= 500) {
       this.logger.error(
         `${request.method} ${request.url} ${statusCode}`,
