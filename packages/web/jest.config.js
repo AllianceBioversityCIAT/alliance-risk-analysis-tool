@@ -8,7 +8,10 @@ const createJestConfig = nextJest({
 /** @type {import('jest').Config} */
 const customConfig = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
-  testEnvironment: 'jsdom',
+  testEnvironment: 'jest-environment-jsdom',
+  testEnvironmentOptions: {
+    customExportConditions: [''],
+  },
   moduleNameMapper: {
     // Path alias: @/* → src/*
     '^@/(.*)$': path.resolve(__dirname, 'src/$1'),

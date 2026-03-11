@@ -42,11 +42,10 @@ function createWrapper() {
 describe('useJobPolling', () => {
   beforeEach(() => {
     jest.resetAllMocks();
-    jest.useFakeTimers();
   });
 
   afterEach(() => {
-    jest.useRealTimers();
+    jest.clearAllTimers();
   });
 
   it('starts with null status and no result', () => {
@@ -60,7 +59,7 @@ describe('useJobPolling', () => {
   });
 
   it('starts polling when startPolling is called', async () => {
-    mockGet.mockResolvedValue({ data: { data: makeJobResponse(JobStatus.PROCESSING) } });
+    mockGet.mockResolvedValue({ data: makeJobResponse(JobStatus.PROCESSING) });
 
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useJobPolling(), { wrapper: Wrapper });
@@ -78,7 +77,7 @@ describe('useJobPolling', () => {
   });
 
   it('stops polling when job reaches COMPLETED status', async () => {
-    mockGet.mockResolvedValue({ data: { data: makeJobResponse(JobStatus.COMPLETED) } });
+    mockGet.mockResolvedValue({ data: makeJobResponse(JobStatus.COMPLETED) });
 
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useJobPolling(), { wrapper: Wrapper });
@@ -99,7 +98,7 @@ describe('useJobPolling', () => {
   });
 
   it('stops polling when job reaches FAILED status', async () => {
-    mockGet.mockResolvedValue({ data: { data: makeJobResponse(JobStatus.FAILED) } });
+    mockGet.mockResolvedValue({ data: makeJobResponse(JobStatus.FAILED) });
 
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useJobPolling(), { wrapper: Wrapper });
@@ -118,7 +117,7 @@ describe('useJobPolling', () => {
   });
 
   it('resets all state when reset() is called', async () => {
-    mockGet.mockResolvedValue({ data: { data: makeJobResponse(JobStatus.COMPLETED) } });
+    mockGet.mockResolvedValue({ data: makeJobResponse(JobStatus.COMPLETED) });
 
     const { Wrapper } = createWrapper();
     const { result } = renderHook(() => useJobPolling(), { wrapper: Wrapper });
@@ -143,9 +142,9 @@ describe('useJobPolling', () => {
 
   it('transitions from PROCESSING to COMPLETED across multiple polls', async () => {
     mockGet
-      .mockResolvedValueOnce({ data: { data: makeJobResponse(JobStatus.PROCESSING) } })
-      .mockResolvedValueOnce({ data: { data: makeJobResponse(JobStatus.PROCESSING) } })
-      .mockResolvedValueOnce({ data: { data: makeJobResponse(JobStatus.COMPLETED) } });
+      .mockResolvedValueOnce({ data: makeJobResponse(JobStatus.PROCESSING) })
+      .mockResolvedValueOnce({ data: makeJobResponse(JobStatus.PROCESSING) })
+      .mockResolvedValueOnce({ data: makeJobResponse(JobStatus.COMPLETED) });
 
     const { Wrapper } = createWrapper();
     const { result } = renderHook(
