@@ -27,6 +27,13 @@ src/
     (protected)/
       layout.tsx                # ProtectedRoute guard (redirects unauthenticated)
       dashboard/page.tsx        # Dashboard
+      assessments/
+        gap-detector/page.tsx        # Gap detector page (SSR wrapper)
+        gap-detector/gap-detector-client.tsx  # Gap detector client (validation, filtering, field management)
+        risk-scorecard/page.tsx      # Risk scores display
+        upload/page.tsx              # Document upload
+        report/page.tsx              # Full report
+        manual-entry/page.tsx        # Manual data entry
     (admin)/
       layout.tsx                # AdminRoute guard (redirects non-admin)
       admin/
@@ -46,6 +53,10 @@ src/
       user-management.tsx       # Paginated user table with filters
       create-user-modal.tsx     # Create user dialog
       edit-user-modal.tsx       # Edit user dialog (attributes, groups, reset)
+    gap-detector/
+      gap-field-card.tsx        # Individual field card (status badges, validation feedback, save)
+      gap-layout.tsx            # Split-pane layout (document viewer + fields panel)
+      document-viewer.tsx       # Markdown document preview with keyword highlighting
     prompts/
       prompt-list.tsx           # Grid of prompt cards
       prompt-card.tsx           # Summary card (name, section, version, active badge)
@@ -59,6 +70,10 @@ src/
     use-prompts.ts              # React Query hooks for prompt CRUD
     use-users.ts                # React Query hooks for user CRUD + groups
     use-job-polling.ts          # Polls GET /api/jobs/:id every 3s until terminal state
+    use-gap-detection.ts        # React Query hooks for gap fields CRUD + re-analyze
+    use-assessments.ts          # React Query hooks for assessment CRUD
+    use-merged-content.ts       # Fetches merged document content for preview
+    use-multi-document-status.ts # Polls document parsing status
 
   lib/
     api-client.ts               # Axios instance with Bearer token + 401 refresh interceptor
@@ -137,6 +152,31 @@ const { id } = useParams();
 router.push(`/admin/prompt-manager/edit?id=${prompt.id}`);
 // NOT: router.push(`/admin/prompt-manager/edit/${prompt.id}`);
 ```
+
+## Gap Detector Page
+
+The gap detector (`gap-detector-client.tsx`) manages the field review workflow:
+
+### Field Statuses
+- **MISSING** — No data extracted or provided (red badge)
+- **PARTIAL** — AI validation rejected the user's edit (amber badge + validation feedback)
+- **VERIFIED** — AI confirmed the field content is substantive (green badge)
+
+### Validation Flow
+1. User edits fields and saves → optimistic update to VERIFIED
+2. User clicks "Analyze Risks" → `POST /api/assessments/:id/gap-fields/submit`
+3. API validates edited fields via Bedrock AI
+4. If rejected → 400 with `invalidFields` array → toast + banner + filter auto-switches to "Needs Attention"
+5. If passed → navigates to `/assessments/risk-scorecard?id=...`
+
+### Filter Pill Tabs
+Three filter pills above the field list: `All (N)` / `Needs Attention (N)` / `Verified (N)`. After validation rejection, auto-switches to "Needs Attention". Auto-resets to "All" when all issues resolved.
+
+### Validation Alert Banner
+Amber banner appears between heading and filters when validation rejects fields. Dismissable with X button. Auto-clears when no PARTIAL/MISSING fields remain.
+
+### Data Completeness
+Only VERIFIED fields count toward completeness percentage. PARTIAL fields reduce the percentage and show as "remaining".
 
 ## ESLint
 

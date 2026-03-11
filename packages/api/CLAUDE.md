@@ -76,13 +76,14 @@ src/
                                   # CreateAssessmentCommentDto
 
     gap-detection/
-      gap-detection.module.ts
-      gap-field.controller.ts     # 3 endpoints under /api/assessments/:id/gap-fields
+      gap-detection.module.ts     # Imports DatabaseModule, JobsModule, BedrockModule
+      gap-field.controller.ts     # 4 endpoints under /api/assessments/:id/gap-fields
       │  GET    /                 # Get all gap fields for assessment
-      │  PUT    /                 # Update gap field values
-      │  POST   /submit           # Submit gap fields → triggers gap-detection job
-      gap-detection.service.ts    # Gap field CRUD + job dispatch
-      gap-detection.config.ts     # CORE_10_FIELDS definitions (field schema + Bedrock prompts)
+      │  PUT    /                 # Update gap field values (clears validationFeedback)
+      │  POST   /submit           # Validate edited fields via Bedrock AI → trigger risk analysis
+      │  POST   /re-analyze       # Re-run gap detection with user corrections
+      gap-detection.service.ts    # Gap field CRUD + AI validation + job dispatch
+      gap-detection.config.ts     # CORE_10_FIELDS definitions, FIELD_DESCRIPTIONS, GAP_VALIDATION_CONFIG
       dto/                        # UpdateGapFieldsDto
 
     risk-analysis/
@@ -217,7 +218,8 @@ src/
       risk-scoring.exception.ts
       index.ts                    # Barrel export
     filters/
-      http-exception.filter.ts    # Global: all exceptions → { success, error, statusCode }
+      http-exception.filter.ts    # Global: all exceptions → { statusCode, error, message }
+                                  # Forwards `invalidFields` from BadRequestException for validation errors
     utils/
       circuit-breaker.ts          # CircuitBreaker: CLOSED → OPEN → HALF_OPEN state machine
       retry.ts                    # withRetry(): exponential backoff with jitter
@@ -305,6 +307,22 @@ aws lambda invoke --function-name alliance-risk-worker \
     }
   }
   ```
+
+## Gap Field Validation Flow
+
+When a user clicks "Analyze Risks", `POST /submit` triggers AI validation before risk analysis:
+
+1. `triggerRiskAnalysis()` calls `validateEditedFields()` which queries only user-edited fields (`correctedValue IS NOT NULL`)
+2. Sends edited fields to Bedrock (`GAP_VALIDATION_CONFIG` in `gap-detection.config.ts`) for substance validation
+3. AI returns `{ results: [{ field, valid, feedback }] }` — invalid fields are set to `PARTIAL` status with `validationFeedback`
+4. If any fields are invalid → throws `BadRequestException` with `invalidFields` array → frontend shows feedback
+5. If all fields pass → proceeds to create `RISK_ANALYSIS` job
+6. If Bedrock call fails → throws `BadRequestException` (fail-closed, does NOT silently allow submission)
+
+Key config:
+- Model ID comes from `BEDROCK_MODELS[AgentSection.GAP_DETECTOR]` — never hardcode
+- Only `temperature` is set (0.1) — do NOT set both `temperature` and `top_p` (Bedrock rejects it)
+- `validationFeedback` is cleared on every new field edit (`updateBatch()`)
 
 ## ESLint
 
