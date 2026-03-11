@@ -190,6 +190,17 @@ Resources:
         ExcludeCharacters: " %+~`#$&*()|[]{}:;<>?!'/@\"\\"
     DeletionPolicy: Retain
 
+  WorkerAdminToken:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: alliance-risk/worker-admin-token
+      GenerateSecretString:
+        SecretStringTemplate: '{}'
+        GenerateStringKey: token
+        PasswordLength: 64
+        ExcludeCharacters: " "
+    DeletionPolicy: Retain
+
   Database:
     Type: AWS::RDS::DBInstance
     Properties:
@@ -333,6 +344,7 @@ Resources:
             - Username: postgres
               Password: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
               Host: !GetAtt Database.Endpoint.Address
+          WORKER_ADMIN_TOKEN: !Sub "{{resolve:secretsmanager:${WorkerAdminToken}:SecretString:token}}"
 
   # ── IAM — API Lambda Role ──────────────────────────────────────────────────
   ApiLambdaRole:

@@ -3,6 +3,7 @@
   "private": true,
   "pnpm": {
     "onlyBuiltDependencies": [
+      "canvas",
       "@nestjs/core",
       "@prisma/engines",
       "esbuild",
@@ -26,5 +27,8 @@
   },
   "dependencies": {
     "@radix-ui/react-visually-hidden": "^1.2.4"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1"
   }
 }

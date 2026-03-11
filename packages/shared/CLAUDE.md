@@ -33,7 +33,7 @@ src/
     assessment.types.ts      # AssessmentSummary, AssessmentDetail, AssessmentStats
     auth.types.ts            # LoginResponse, UserInfo, CognitoUser
     document.types.ts        # DocumentInfo, UploadUrlResponse, ExtractionResult, ExtractedTable
-    gap-field.types.ts       # GapFieldResponse
+    gap-field.types.ts       # GapFieldResponse, InvalidField, GapFieldValidationError
     job.types.ts             # JobStatus enum, JobType enum, JobResponse, JobSubmitResponse
     prompt.types.ts          # FewShotExample, PromptContext, PromptSummary, PromptDetail, …
     report.types.ts          # ReportResponse
@@ -105,6 +105,7 @@ export const BEDROCK_MODELS: Record<AgentSection, {
 **Rules:**
 - **Never hardcode model IDs anywhere else** — always read `BEDROCK_MODELS[section].modelId`
 - `maxTokens` and `temperature` are optional; add them only for sections that deviate from Bedrock defaults or need documented reasoning
+- **Do NOT set both `temperature` and `top_p`** for the same model — Bedrock rejects it for Anthropic models. Use one or the other.
 - Other invocation params that are the same for all sections (e.g. `top_p`) stay in `BedrockService`, not here
 - When a new `AgentSection` value is added to the enum, add a matching entry to `BEDROCK_MODELS` — the `Record<AgentSection, …>` type enforces exhaustiveness at compile time
 

@@ -12,4 +12,17 @@ export interface GapFieldResponse {
   order: number;
   confidence: number | null;
   aiReasoning: string | null;
+  validationFeedback?: string | null;
+}
+
+export interface InvalidField {
+  id: string;
+  field: string;
+  feedback: string;
+}
+
+export interface GapFieldValidationError {
+  statusCode: 400;
+  message: string;
+  invalidFields: InvalidField[];
 }

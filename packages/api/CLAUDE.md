@@ -76,13 +76,14 @@ src/
                                   # CreateAssessmentCommentDto
 
     gap-detection/
-      gap-detection.module.ts
-      gap-field.controller.ts     # 3 endpoints under /api/assessments/:id/gap-fields
+      gap-detection.module.ts     # Imports DatabaseModule, JobsModule, BedrockModule
+      gap-field.controller.ts     # 4 endpoints under /api/assessments/:id/gap-fields
       │  GET    /                 # Get all gap fields for assessment
-      │  PUT    /                 # Update gap field values
-      │  POST   /submit           # Submit gap fields → triggers gap-detection job
-      gap-detection.service.ts    # Gap field CRUD + job dispatch
-      gap-detection.config.ts     # CORE_10_FIELDS definitions (field schema + Bedrock prompts)
+      │  PUT    /                 # Update gap field values (clears validationFeedback)
+      │  POST   /submit           # Validate edited fields via Bedrock AI → trigger risk analysis
+      │  POST   /re-analyze       # Re-run gap detection with user corrections
+      gap-detection.service.ts    # Gap field CRUD + AI validation + job dispatch
+      gap-detection.config.ts     # CORE_10_FIELDS definitions, FIELD_DESCRIPTIONS, GAP_VALIDATION_CONFIG
       dto/                        # UpdateGapFieldsDto
 
     risk-analysis/
@@ -217,7 +218,8 @@ src/
       risk-scoring.exception.ts
       index.ts                    # Barrel export
     filters/
-      http-exception.filter.ts    # Global: all exceptions → { success, error, statusCode }
+      http-exception.filter.ts    # Global: all exceptions → { statusCode, error, message }
+                                  # Forwards `invalidFields` from BadRequestException for validation errors
     utils/
       circuit-breaker.ts          # CircuitBreaker: CLOSED → OPEN → HALF_OPEN state machine
       retry.ts                    # withRetry(): exponential backoff with jitter
@@ -276,21 +278,26 @@ POST /api/assessments/:id/documents/:docId/parse
 - `emitDecoratorMetadata` + `experimentalDecorators` required for NestJS DI
 - CommonJS module system (`"module": "commonjs"`)
 
-## Worker Lambda — `run-sql` Action
+## Worker Lambda — `run-sql` Action (Authenticated)
 
-The Worker Lambda includes a `run-sql` action for executing raw SQL on the private-VPC RDS instance (unreachable from local machines).
+The Worker Lambda includes a `run-sql` action for executing raw SQL on the private-VPC RDS instance (unreachable from local machines). **Requires `authToken` matching `WORKER_ADMIN_TOKEN` env var** (auto-generated in Secrets Manager: `alliance-risk/worker-admin-token`).
 
 ```bash
-# Run migrations remotely (from project root)
+# Run migrations remotely (from project root) — fetches token automatically
 pnpm migrate:remote
 ```
 
-The script `scripts/migrate-remote.sh` discovers Prisma migration files, sends each SQL payload to the Worker Lambda, and updates the `_prisma_migrations` tracking table.
+The script `scripts/migrate-remote.sh` fetches the admin token from Secrets Manager, then sends authenticated migration SQL to the Worker Lambda.
 
 **Direct invocation (ad-hoc SQL):**
 ```bash
+# First fetch the token
+TOKEN=$(aws secretsmanager get-secret-value \
+  --secret-id alliance-risk/worker-admin-token \
+  --query 'SecretString' --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
 aws lambda invoke --function-name alliance-risk-worker \
-  --payload '{"action":"run-sql","sql":"SELECT count(*) FROM users"}' \
+  --payload "{\"action\":\"run-sql\",\"authToken\":\"${TOKEN}\",\"sql\":\"SELECT count(*) FROM users\"}" \
   /tmp/result.json
 ```
 
@@ -305,6 +312,22 @@ aws lambda invoke --function-name alliance-risk-worker \
     }
   }
   ```
+
+## Gap Field Validation Flow
+
+When a user clicks "Analyze Risks", `POST /submit` triggers AI validation before risk analysis:
+
+1. `triggerRiskAnalysis()` calls `validateEditedFields()` which queries only user-edited fields (`correctedValue IS NOT NULL`)
+2. Sends edited fields to Bedrock (`GAP_VALIDATION_CONFIG` in `gap-detection.config.ts`) for substance validation
+3. AI returns `{ results: [{ field, valid, feedback }] }` — invalid fields are set to `PARTIAL` status with `validationFeedback`
+4. If any fields are invalid → throws `BadRequestException` with `invalidFields` array → frontend shows feedback
+5. If all fields pass → proceeds to create `RISK_ANALYSIS` job
+6. If Bedrock call fails → throws `BadRequestException` (fail-closed, does NOT silently allow submission)
+
+Key config:
+- Model ID comes from `BEDROCK_MODELS[AgentSection.GAP_DETECTOR]` — never hardcode
+- Only `temperature` is set (0.1) — do NOT set both `temperature` and `top_p` (Bedrock rejects it)
+- `validationFeedback` is cleared on every new field edit (`updateBatch()`)
 
 ## ESLint
 
