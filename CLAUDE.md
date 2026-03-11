@@ -138,4 +138,4 @@ npx --prefix packages/api tsx prisma/seed.ts                  # Seed sample data
 - Web test script includes `--passWithNoTests` since test files may not always exist
 - Prisma schema lives in `packages/api/prisma/schema.prisma`
 - Shared package must be built (`pnpm --filter @alliance-risk/shared build`) before API or Web can import from it
-- RDS is in a private VPC — migrations and seeds must run through the Worker Lambda `run-sql` action, not directly from local machines
+- RDS is in a private VPC — migrations must run via `pnpm migrate:remote` (uses `scripts/migrate-remote.sh`), not directly from local machines

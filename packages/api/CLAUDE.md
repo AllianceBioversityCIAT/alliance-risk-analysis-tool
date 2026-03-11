@@ -278,23 +278,9 @@ POST /api/assessments/:id/documents/:docId/parse
 - `emitDecoratorMetadata` + `experimentalDecorators` required for NestJS DI
 - CommonJS module system (`"module": "commonjs"`)
 
-## Worker Lambda — `run-sql` Action
+## Worker Lambda
 
-The Worker Lambda includes a `run-sql` action for executing raw SQL on the private-VPC RDS instance (unreachable from local machines).
-
-```bash
-# Run migrations remotely (from project root)
-pnpm migrate:remote
-```
-
-The script `scripts/migrate-remote.sh` discovers Prisma migration files, sends each SQL payload to the Worker Lambda, and updates the `_prisma_migrations` tracking table.
-
-**Direct invocation (ad-hoc SQL):**
-```bash
-aws lambda invoke --function-name alliance-risk-worker \
-  --payload '{"action":"run-sql","sql":"SELECT count(*) FROM users"}' \
-  /tmp/result.json
-```
+The Worker Lambda processes async jobs only. The `run-sql` action was **removed** (security vulnerability — unauthenticated arbitrary SQL execution). Use `pnpm migrate:remote` for database migrations, which uses `scripts/migrate-remote.sh`.
 
 ## Lambda Best Practices
 
