@@ -30,16 +30,46 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-function validateFile(file: File): string | null {
-  if (!(ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(file.type)) {
-    return `"${file.name}" has an unsupported type (${file.type || 'unknown'}). Accepted: PDF, Word, Excel, CSV, HTML, MD, TXT.`;
+/** Map file extensions to MIME types for fallback when browser reports empty/wrong type */
+const EXT_TO_MIME: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+  '.csv': 'text/csv',
+  '.html': 'text/html',
+  '.htm': 'text/html',
+  '.md': 'text/markdown',
+  '.txt': 'text/plain',
+};
+
+function resolveFileMime(file: File): string {
+  // Trust browser MIME if it's in our allowed list
+  if ((ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(file.type)) {
+    return file.type;
   }
-  const maxSize = file.type === 'application/pdf' ? MAX_FILE_SIZE_PDF : MAX_FILE_SIZE_OTHER;
+  // Fallback: derive MIME from extension
+  const ext = file.name.toLowerCase().match(/\.[^.]+$/)?.[0] ?? '';
+  return EXT_TO_MIME[ext] ?? file.type;
+}
+
+function validateFile(file: File): { error: string | null; mime: string } {
+  const mime = resolveFileMime(file);
+  if (!(ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(mime)) {
+    return {
+      error: `"${file.name}" has an unsupported type (${file.type || 'unknown'}). Accepted: PDF, Word, Excel, CSV, HTML, MD, TXT.`,
+      mime,
+    };
+  }
+  const maxSize = mime === 'application/pdf' ? MAX_FILE_SIZE_PDF : MAX_FILE_SIZE_OTHER;
   if (file.size > maxSize) {
     const limitMB = Math.round(maxSize / (1024 * 1024));
-    return `"${file.name}" is too large (${formatBytes(file.size)}). Maximum is ${limitMB} MB.`;
+    return {
+      error: `"${file.name}" is too large (${formatBytes(file.size)}). Maximum is ${limitMB} MB.`,
+      mime,
+    };
   }
-  return null;
+  return { error: null, mime };
 }
 
 export function UploadDropzone({ onFilesSelected, disabled = false }: UploadDropzoneProps) {
@@ -52,11 +82,11 @@ export function UploadDropzone({ onFilesSelected, disabled = false }: UploadDrop
 
       const valid: SelectedFile[] = [];
       for (const file of Array.from(fileList)) {
-        const error = validateFile(file);
+        const { error, mime } = validateFile(file);
         if (error) {
           sileo.error({ title: 'Invalid file', description: error });
         } else {
-          valid.push({ file, name: file.name, size: file.size, mimeType: file.type });
+          valid.push({ file, name: file.name, size: file.size, mimeType: mime });
         }
       }
 
