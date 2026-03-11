@@ -278,21 +278,26 @@ POST /api/assessments/:id/documents/:docId/parse
 - `emitDecoratorMetadata` + `experimentalDecorators` required for NestJS DI
 - CommonJS module system (`"module": "commonjs"`)
 
-## Worker Lambda — `run-sql` Action
+## Worker Lambda — `run-sql` Action (Authenticated)
 
-The Worker Lambda includes a `run-sql` action for executing raw SQL on the private-VPC RDS instance (unreachable from local machines).
+The Worker Lambda includes a `run-sql` action for executing raw SQL on the private-VPC RDS instance (unreachable from local machines). **Requires `authToken` matching `WORKER_ADMIN_TOKEN` env var** (auto-generated in Secrets Manager: `alliance-risk/worker-admin-token`).
 
 ```bash
-# Run migrations remotely (from project root)
+# Run migrations remotely (from project root) — fetches token automatically
 pnpm migrate:remote
 ```
 
-The script `scripts/migrate-remote.sh` discovers Prisma migration files, sends each SQL payload to the Worker Lambda, and updates the `_prisma_migrations` tracking table.
+The script `scripts/migrate-remote.sh` fetches the admin token from Secrets Manager, then sends authenticated migration SQL to the Worker Lambda.
 
 **Direct invocation (ad-hoc SQL):**
 ```bash
+# First fetch the token
+TOKEN=$(aws secretsmanager get-secret-value \
+  --secret-id alliance-risk/worker-admin-token \
+  --query 'SecretString' --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
 aws lambda invoke --function-name alliance-risk-worker \
-  --payload '{"action":"run-sql","sql":"SELECT count(*) FROM users"}' \
+  --payload "{\"action\":\"run-sql\",\"authToken\":\"${TOKEN}\",\"sql\":\"SELECT count(*) FROM users\"}" \
   /tmp/result.json
 ```
 

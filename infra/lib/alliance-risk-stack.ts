@@ -187,6 +187,19 @@ export class AllianceRiskStack extends cdk.Stack {
       }),
     );
 
+    // ─── Worker Admin Token ──────────────────────────────────────────────────────
+
+    const workerAdminToken = new cdk.aws_secretsmanager.Secret(this, 'WorkerAdminToken', {
+      secretName: 'alliance-risk/worker-admin-token',
+      generateSecretString: {
+        secretStringTemplate: '{}',
+        generateStringKey: 'token',
+        passwordLength: 64,
+        excludeCharacters: ' ',
+      },
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
     // ─── Worker Lambda ──────────────────────────────────────────────────────────
 
     const workerLambda = new lambda.Function(this, 'WorkerLambda', {
@@ -204,6 +217,7 @@ export class AllianceRiskStack extends cdk.Stack {
         ENVIRONMENT: 'production',
         AWS_ACCOUNT_ID: this.account,
         S3_BUCKET_NAME: fileBucket.bucketName,
+        WORKER_ADMIN_TOKEN: workerAdminToken.secretValueFromJson('token').unsafeUnwrap(),
       },
     });
 

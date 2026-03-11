@@ -18,6 +18,7 @@ const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 interface WorkerEvent {
   jobId?: string;
   action?: string;
+  authToken?: string;
   sql?: string;
 }
 
@@ -27,8 +28,19 @@ export const handler = async (event: WorkerEvent, context: any) => {
   const logger = new Logger('WorkerHandler');
 
   // Admin: run raw SQL (for migrations/seeding from outside VPC)
-  if (event.action === 'run-sql' && event.sql) {
-    logger.log('Running SQL...');
+  // Requires WORKER_ADMIN_TOKEN authentication
+  if (event.action === 'run-sql') {
+    const expectedToken = process.env.WORKER_ADMIN_TOKEN;
+    if (!expectedToken || event.authToken !== expectedToken) {
+      logger.error('Unauthorized run-sql attempt');
+      return { success: false, error: 'Unauthorized' };
+    }
+
+    if (!event.sql) {
+      return { success: false, error: 'Missing sql payload' };
+    }
+
+    logger.log('Running authenticated SQL...');
     const app = await bootstrap();
     const prisma = app.get(PrismaService);
     const statements = event.sql.split(';').map(s => s.trim()).filter(s => s.length > 0);

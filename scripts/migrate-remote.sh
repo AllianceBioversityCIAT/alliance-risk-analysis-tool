@@ -5,7 +5,8 @@ set -euo pipefail
 # migrate-remote.sh — Run Prisma migrations on remote RDS via Worker Lambda
 #
 # The RDS is in a private VPC and unreachable from local machines.
-# This script sends migration SQL to the Worker Lambda's run-sql action.
+# This script fetches the admin token from Secrets Manager and sends
+# authenticated migration SQL to the Worker Lambda's run-sql action.
 #
 # Usage: bash scripts/migrate-remote.sh
 ###############################################################################
@@ -13,6 +14,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS_DIR="${ROOT_DIR}/packages/api/prisma/migrations"
 WORKER_FUNCTION="alliance-risk-worker"
+SECRET_NAME="alliance-risk/worker-admin-token"
 
 log()  { echo "▸ $*"; }
 ok()   { echo "✓ $*"; }
@@ -22,6 +24,16 @@ fail() { echo "✗ $*" >&2; exit 1; }
 command -v aws    >/dev/null 2>&1 || fail "aws CLI not found"
 command -v python3 >/dev/null 2>&1 || fail "python3 not found"
 aws sts get-caller-identity >/dev/null 2>&1 || fail "AWS credentials not configured"
+
+# Fetch admin token from Secrets Manager
+log "Fetching worker admin token from Secrets Manager..."
+ADMIN_TOKEN=$(aws secretsmanager get-secret-value \
+  --secret-id "${SECRET_NAME}" \
+  --query 'SecretString' --output text \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+
+[[ -n "${ADMIN_TOKEN}" ]] || fail "Failed to retrieve admin token from ${SECRET_NAME}"
+ok "Admin token retrieved"
 
 # Discover migration directories (sorted by timestamp prefix)
 MIGRATION_DIRS=$(find "${MIGRATIONS_DIR}" -mindepth 1 -maxdepth 1 -type d | sort)
@@ -40,12 +52,13 @@ for MIGRATION_DIR in ${MIGRATION_DIRS}; do
 
   log "Applying migration: ${MIGRATION_NAME}"
 
-  # Build JSON payload with proper escaping
+  # Build JSON payload with proper escaping (includes authToken)
   PAYLOAD_FILE=$(mktemp)
-  python3 -c "
-import json
+  ADMIN_TOKEN_ENV="${ADMIN_TOKEN}" python3 -c "
+import json, os
 sql = open('${SQL_FILE}').read()
-payload = json.dumps({'action': 'run-sql', 'sql': sql}, ensure_ascii=True)
+token = os.environ['ADMIN_TOKEN_ENV']
+payload = json.dumps({'action': 'run-sql', 'authToken': token, 'sql': sql}, ensure_ascii=True)
 with open('${PAYLOAD_FILE}', 'w') as f:
     f.write(payload)
 "
@@ -101,10 +114,11 @@ done
 
 PAYLOAD_FILE=$(mktemp)
 RESULT_FILE=$(mktemp)
-python3 -c "
-import json
-sql = '''${TRACKING_SQL}'''
-payload = json.dumps({'action': 'run-sql', 'sql': sql}, ensure_ascii=True)
+ADMIN_TOKEN_ENV="${ADMIN_TOKEN}" TRACKING_SQL_ENV="${TRACKING_SQL}" python3 -c "
+import json, os
+sql = os.environ['TRACKING_SQL_ENV']
+token = os.environ['ADMIN_TOKEN_ENV']
+payload = json.dumps({'action': 'run-sql', 'authToken': token, 'sql': sql}, ensure_ascii=True)
 with open('${PAYLOAD_FILE}', 'w') as f:
     f.write(payload)
 "
@@ -118,4 +132,5 @@ rm -f "${PAYLOAD_FILE}" "${RESULT_FILE}"
 echo ""
 echo "═══════════════════════════════════════════════════"
 echo "  Migration complete: ${TOTAL} total statements"
+echo "  (authenticated via Secrets Manager token)"
 echo "═══════════════════════════════════════════════════"

@@ -103,6 +103,7 @@ Both Lambdas require these environment variables (defined in the CloudFormation 
 | `CORS_ORIGIN` | Parameter | API Lambda only |
 | `DATABASE_URL` | Constructed from Secrets Manager + RDS endpoint | **Both Lambdas** — critical, without it Prisma falls back to `localhost` |
 | `AWS_ACCOUNT_ID` | `!Ref AWS::AccountId` | Both Lambdas |
+| `WORKER_ADMIN_TOKEN` | Secrets Manager (`alliance-risk/worker-admin-token`) | Worker Lambda only — authenticates `run-sql` action |
 
 **`DATABASE_URL` construction pattern in CloudFormation:**
 ```yaml
@@ -124,7 +125,7 @@ DATABASE_URL: !Sub
 
 Steps 1-2 are only needed when infrastructure or schema changes. For code-only changes, run `pnpm deploy:all` (steps 3+4).
 
-**IMPORTANT:** `pnpm migrate:deploy` (direct Prisma) only works against local PostgreSQL. For the deployed RDS, always use `pnpm migrate:remote`, which sends SQL through the Worker Lambda's `run-sql` action.
+**IMPORTANT:** `pnpm migrate:deploy` (direct Prisma) only works against local PostgreSQL. For the deployed RDS, always use `pnpm migrate:remote`, which fetches the admin token from Secrets Manager and sends authenticated SQL through the Worker Lambda's `run-sql` action.
 
 ## VPC Networking
 
