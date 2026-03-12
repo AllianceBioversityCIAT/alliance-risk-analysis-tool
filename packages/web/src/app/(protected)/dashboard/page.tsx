@@ -11,6 +11,7 @@ import {
   useAssessments,
   useAssessmentStats,
   useDeleteAssessment,
+  AssessmentStatus,
   type AssessmentFilters,
 } from '@/hooks/use-assessments';
 import { useSearch } from '@/providers/search-provider';
@@ -26,6 +27,7 @@ export default function DashboardPage() {
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [filters, setFilters] = useState<AssessmentFilters>({ limit: PAGE_SIZE });
+  const [statusFilter, setStatusFilter] = useState<AssessmentStatus | undefined>(undefined);
   const [draftToResume, setDraftToResume] = useState<AssessmentRowData | null>(null);
   const [resumeModalOpen, setResumeModalOpen] = useState(false);
 
@@ -40,13 +42,20 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Sync debounced search into filters
+  // Sync debounced search + status filter into filters
   useEffect(() => {
     setFilters((prev) => ({
       ...prev,
       search: debouncedSearch || undefined,
+      status: statusFilter,
     }));
-  }, [debouncedSearch]);
+  }, [debouncedSearch, statusFilter]);
+
+  const handleStatusFilter = useCallback((status: string | undefined) => {
+    setStatusFilter(status as AssessmentStatus | undefined);
+    setCurrentPage(1);
+    setCursors([undefined]);
+  }, []);
 
   const { data: stats, isLoading: statsLoading } = useAssessmentStats();
   const { data: assessmentsData, isLoading: assessmentsLoading } = useAssessments({
@@ -175,6 +184,8 @@ export default function DashboardPage() {
         hasPrevPage={hasPrevPage}
         isLoading={assessmentsLoading}
         searchQuery={debouncedSearch}
+        activeStatus={statusFilter}
+        onStatusFilter={handleStatusFilter}
         onNextPage={handleNextPage}
         onPrevPage={handlePrevPage}
         onView={handleView}

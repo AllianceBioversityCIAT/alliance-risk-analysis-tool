@@ -1,6 +1,7 @@
 'use client';
 
-import { ChevronLeft, ChevronRight, FileSearch } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { ChevronLeft, ChevronRight, FileSearch, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   Table,
@@ -10,7 +11,11 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import { cn } from '@/lib/utils';
 import { AssessmentTableRow, type AssessmentRowData } from './assessment-table-row';
+
+type SortKey = 'updatedAt' | 'progress' | 'status';
+type SortDir = 'asc' | 'desc';
 
 interface AssessmentTableProps {
   assessments: AssessmentRowData[];
@@ -22,6 +27,9 @@ interface AssessmentTableProps {
   isLoading?: boolean;
   /** Active search query — drives contextual heading and empty state */
   searchQuery?: string;
+  /** Active status filter — drives pill highlight */
+  activeStatus?: string;
+  onStatusFilter?: (status: string | undefined) => void;
   onNextPage: () => void;
   onPrevPage: () => void;
   onView?: (id: string) => void;
@@ -29,6 +37,21 @@ interface AssessmentTableProps {
   onDelete?: (id: string) => void;
   onResume?: (assessment: AssessmentRowData) => void;
 }
+
+const STATUS_PILLS = [
+  { key: undefined, label: 'All' },
+  { key: 'DRAFT', label: 'Draft' },
+  { key: 'ANALYZING', label: 'Analyzing' },
+  { key: 'ACTION_REQUIRED', label: 'Action Required' },
+  { key: 'COMPLETE', label: 'Complete' },
+] as const;
+
+const STATUS_ORDER: Record<string, number> = {
+  DRAFT: 0,
+  ANALYZING: 1,
+  ACTION_REQUIRED: 2,
+  COMPLETE: 3,
+};
 
 function TableRowSkeleton() {
   return (
@@ -50,6 +73,13 @@ function TableRowSkeleton() {
   );
 }
 
+function SortIcon({ active, direction }: { active: boolean; direction: SortDir }) {
+  if (!active) return <ArrowUpDown className="h-3 w-3 ml-1 opacity-40" />;
+  return direction === 'asc'
+    ? <ArrowUp className="h-3 w-3 ml-1" />
+    : <ArrowDown className="h-3 w-3 ml-1" />;
+}
+
 export function AssessmentTable({
   assessments,
   total,
@@ -59,6 +89,8 @@ export function AssessmentTable({
   hasPrevPage,
   isLoading = false,
   searchQuery = '',
+  activeStatus,
+  onStatusFilter,
   onNextPage,
   onPrevPage,
   onView,
@@ -66,32 +98,106 @@ export function AssessmentTable({
   onDelete,
   onResume,
 }: AssessmentTableProps) {
+  const [sortKey, setSortKey] = useState<SortKey | null>(null);
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+
   const startRecord = (currentPage - 1) * pageSize + 1;
   const endRecord = Math.min(currentPage * pageSize, total);
-  const isFiltering = searchQuery.length > 0;
-  const heading = isFiltering ? `Results for "${searchQuery}"` : 'Active Assessments';
+  const isFiltering = searchQuery.length > 0 || !!activeStatus;
+  const heading = searchQuery.length > 0
+    ? `Results for "${searchQuery}"`
+    : activeStatus
+      ? `${STATUS_PILLS.find((p) => p.key === activeStatus)?.label ?? ''} Assessments`
+      : 'Active Assessments';
+
+  const handleSort = (key: SortKey) => {
+    if (sortKey === key) {
+      setSortDir((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortKey(key);
+      setSortDir(key === 'updatedAt' ? 'desc' : 'asc');
+    }
+  };
+
+  const sortedAssessments = useMemo(() => {
+    if (!sortKey) return assessments;
+    return [...assessments].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case 'updatedAt':
+          cmp = new Date(a.updatedAt).getTime() - new Date(b.updatedAt).getTime();
+          break;
+        case 'progress':
+          cmp = a.progress - b.progress;
+          break;
+        case 'status':
+          cmp = (STATUS_ORDER[a.status] ?? 99) - (STATUS_ORDER[b.status] ?? 99);
+          break;
+      }
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [assessments, sortKey, sortDir]);
+
+  const thClass = 'text-[11px] font-bold uppercase tracking-[1.1px] text-[#9CA3AF]';
+  const sortableThClass = `${thClass} cursor-pointer select-none hover:text-[#6B7280] transition-colors`;
 
   return (
     <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
-      {/* Table heading */}
-      <div className="px-6 py-4 border-b border-border">
+      {/* Table heading + filter pills */}
+      <div className="px-6 py-4 border-b border-border flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <h2 className="text-base font-semibold text-foreground">{heading}</h2>
+        {onStatusFilter && (
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {STATUS_PILLS.map((pill) => (
+              <button
+                key={pill.label}
+                onClick={() => onStatusFilter(pill.key)}
+                className={cn(
+                  'px-3 py-1 rounded-full text-xs font-medium transition-colors',
+                  activeStatus === pill.key || (!activeStatus && !pill.key)
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'bg-[#F1F5F9] text-[#64748B] hover:bg-[#E2E8F0]',
+                )}
+              >
+                {pill.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <Table>
         <TableHeader>
           <TableRow className="bg-[#F8FAFC]/50 hover:bg-[#F8FAFC]/50">
-            <TableHead className="text-[11px] font-bold uppercase tracking-[1.1px] text-[#9CA3AF] w-72">
+            <TableHead className={cn(thClass, 'w-72')}>
               Business Name
             </TableHead>
-            <TableHead className="text-[11px] font-bold uppercase tracking-[1.1px] text-[#9CA3AF]">
-              Date Modified
+            <TableHead
+              className={sortableThClass}
+              onClick={() => handleSort('updatedAt')}
+            >
+              <span className="flex items-center">
+                Date Modified
+                <SortIcon active={sortKey === 'updatedAt'} direction={sortDir} />
+              </span>
             </TableHead>
-            <TableHead className="text-[11px] font-bold uppercase tracking-[1.1px] text-[#9CA3AF]">
-              Progress
+            <TableHead
+              className={sortableThClass}
+              onClick={() => handleSort('progress')}
+            >
+              <span className="flex items-center">
+                Progress
+                <SortIcon active={sortKey === 'progress'} direction={sortDir} />
+              </span>
             </TableHead>
-            <TableHead className="text-[11px] font-bold uppercase tracking-[1.1px] text-[#9CA3AF]">
-              Status
+            <TableHead
+              className={sortableThClass}
+              onClick={() => handleSort('status')}
+            >
+              <span className="flex items-center">
+                Status
+                <SortIcon active={sortKey === 'status'} direction={sortDir} />
+              </span>
             </TableHead>
             <TableHead className="w-12" />
           </TableRow>
@@ -99,7 +205,7 @@ export function AssessmentTable({
         <TableBody>
           {isLoading ? (
             Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)
-          ) : assessments.length === 0 ? (
+          ) : sortedAssessments.length === 0 ? (
             <TableRow>
               <td colSpan={5} className="py-16 text-center">
                 {isFiltering ? (
@@ -107,7 +213,9 @@ export function AssessmentTable({
                     <FileSearch className="h-10 w-10 text-muted-foreground/50" />
                     <p className="text-sm font-medium text-foreground">No results found</p>
                     <p className="text-sm text-muted-foreground">
-                      No results for &ldquo;{searchQuery}&rdquo;. Try a different search term.
+                      {searchQuery
+                        ? <>No results for &ldquo;{searchQuery}&rdquo;. Try a different search term.</>
+                        : 'No assessments match this filter.'}
                     </p>
                   </div>
                 ) : (
@@ -122,7 +230,7 @@ export function AssessmentTable({
               </td>
             </TableRow>
           ) : (
-            assessments.map((assessment) => (
+            sortedAssessments.map((assessment) => (
               <AssessmentTableRow
                 key={assessment.id}
                 assessment={assessment}
