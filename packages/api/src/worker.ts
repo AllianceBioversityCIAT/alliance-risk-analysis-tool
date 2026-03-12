@@ -43,6 +43,22 @@ export const handler = async (event: WorkerEvent, context: any) => {
     logger.log('Running authenticated SQL...');
     const app = await bootstrap();
     const prisma = app.get(PrismaService);
+
+    // Support parameterized queries: { sql: "UPDATE x SET y = $1", params: ["value"] }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const params = (event as any).params;
+    if (params && Array.isArray(params)) {
+      try {
+        await prisma.$executeRawUnsafe(event.sql, ...params);
+        logger.log('Parameterized SQL complete');
+        return { success: true, executed: 1 };
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        logger.error(`Parameterized SQL failed: ${msg}`);
+        return { success: false, executed: 0, error: msg, statement: event.sql.substring(0, 200) };
+      }
+    }
+
     const statements = event.sql.split(';').map(s => s.trim()).filter(s => s.length > 0);
     let executed = 0;
     for (const stmt of statements) {

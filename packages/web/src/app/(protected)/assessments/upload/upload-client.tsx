@@ -2,9 +2,9 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import { FileUp } from 'lucide-react';
-import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
+import { AssessmentPageShell } from '@/components/shared/assessment-page-shell';
 import { UploadBusinessPlanModal } from '@/components/assessment/upload-business-plan-modal';
+import { useAssessment } from '@/hooks/use-assessments';
 
 export default function UploadClient() {
   const searchParams = useSearchParams();
@@ -17,36 +17,25 @@ export default function UploadClient() {
     }
   }, [id, router]);
 
+  const { data: assessment } = useAssessment(id ?? '');
+
   if (!id) return null;
 
   return (
-    <div className="max-w-2xl mx-auto py-8 px-4 space-y-6">
-      {/* Breadcrumb */}
-      <BreadcrumbTrail
-        items={[
-          { label: 'Dashboard', href: '/dashboard' },
-          { label: 'New Assessment', href: '#' },
-          { label: 'Upload Business Plan' },
-        ]}
-      />
-
-      {/* Page header */}
-      <div className="flex items-center gap-3">
-        <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-          <FileUp className="h-5 w-5 text-primary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Manage Documents</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">
-            View, add or remove documents. New uploads will be analysed automatically.
-          </p>
+    <AssessmentPageShell
+      breadcrumbs={[
+        { label: 'Dashboard', href: '/dashboard' },
+        { label: 'Manage Documents' },
+      ]}
+      assessment={assessment}
+      title="Manage Documents"
+      description="View, add or remove documents. New uploads will be analysed automatically."
+    >
+      <div className="flex-1 px-6 pb-6 max-w-2xl mx-auto w-full">
+        <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
+          <UploadBusinessPlanModal assessmentId={id} />
         </div>
       </div>
-
-      {/* Upload card */}
-      <div className="bg-card border border-border rounded-xl p-6 shadow-sm">
-        <UploadBusinessPlanModal assessmentId={id} />
-      </div>
-    </div>
+    </AssessmentPageShell>
   );
 }

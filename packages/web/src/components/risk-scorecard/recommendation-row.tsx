@@ -101,7 +101,7 @@ export function RecommendationRow({ recommendation, onSave }: RecommendationRowP
         <Button
           size="icon"
           variant="ghost"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 shrink-0 transition-opacity"
+          className="h-7 w-7 text-muted-foreground hover:text-foreground shrink-0"
           onClick={() => setIsEditing(true)}
         >
           <Pencil className="h-3.5 w-3.5" />

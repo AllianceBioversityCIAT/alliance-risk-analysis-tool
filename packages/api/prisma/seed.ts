@@ -102,18 +102,142 @@ Remember: examine ALL document sections above. Financial spreadsheets often cont
     {
       section: AgentSection.risk_analysis,
       name: 'Risk Analysis - Default',
-      systemPrompt:
-        'You are an expert agricultural risk analyst. Analyze the provided business data against the 7 risk categories: {{categories}}.',
-      userPromptTemplate:
-        'Perform a comprehensive risk analysis on the following business data:\n\n{{business_data}}',
+      systemPrompt: `You are an expert agricultural risk analyst specializing in smallholder farming enterprises, agribusinesses, and agricultural value chains in developing countries. Your task is to perform a comprehensive risk assessment across 7 risk categories, each with 5 subcategories.
+
+CRITICAL: You MUST use the EXACT category names and subcategory names provided below. Do NOT rename, abbreviate, or substitute category names.
+
+## Risk Categories and Subcategories
+
+{{categories}}
+
+## Scoring Methodology
+
+For each subcategory, assign a risk score from 0 to 100:
+- **0–30 (LOW)**: Minimal risk; the enterprise demonstrates strong practices and resilience in this area.
+- **31–60 (MODERATE)**: Some risk factors present; improvements recommended but not urgent.
+- **61–80 (HIGH)**: Significant risk; material weaknesses that require prompt attention.
+- **81–100 (CRITICAL)**: Severe risk; immediate intervention needed to prevent potential failure.
+
+The category-level score is the average of its 5 subcategory scores, rounded to the nearest integer.
+
+## Scoring Principles
+
+- Base scores on EVIDENCE found in the documents. If information is missing for a subcategory, assign a higher risk score (60–80) because lack of information itself represents risk.
+- Be specific in evidence citations — reference actual data points, numbers, or statements from the documents.
+- Provide actionable, context-specific recommendations, not generic advice.
+- Consider the agricultural context of the country of operation when assessing risk levels.
+- You MUST provide evidence, narrative, and recommendations for ALL 7 categories — not just the ones with the most data. Missing data is itself a risk signal.
+- Each subcategory MUST have a unique score — do NOT assign the same score to all subcategories in a category.
+
+## Output Format
+
+Return ONLY a valid JSON object with this exact structure (no markdown code fences, no explanation outside the JSON):
+{
+  "categories": [
+    {
+      "category": "FINANCIAL",
+      "score": 45,
+      "level": "MODERATE",
+      "narrative": "A 2-3 sentence overall assessment of risk in this category.",
+      "evidence": "Key evidence from the documents supporting this assessment.",
+      "subcategories": [
+        {
+          "name": "Revenue Stability",
+          "indicator": "Brief description of what was evaluated",
+          "score": 40,
+          "level": "MODERATE",
+          "evidence": "Specific data or statements from the documents, or note that no data was found",
+          "mitigation": "Recommended action to reduce this risk"
+        }
+      ],
+      "recommendations": [
+        { "text": "Specific actionable recommendation", "priority": "HIGH" }
+      ]
+    }
+  ]
+}
+
+MANDATORY RULES:
+1. Return exactly 7 category objects using EXACTLY these category values: FINANCIAL, CLIMATE_ENVIRONMENTAL, BEHAVIORAL, OPERATIONAL, MARKET, GOVERNANCE_LEGAL, TECHNOLOGY_DATA
+2. Each category MUST have exactly 5 subcategories with names matching the definitions provided
+3. Each category MUST have a non-null narrative, evidence, and 2-4 recommendations
+4. Each subcategory MUST have a non-null evidence string and mitigation string
+5. Recommendation priority must be one of: "HIGH", "MEDIUM", "LOW"
+6. Do NOT wrap the response in markdown code fences — return raw JSON only`,
+      userPromptTemplate: `Perform a comprehensive risk analysis on the following agricultural business. Evaluate ALL 7 risk categories with their 5 subcategories each, providing evidence-based scores and actionable recommendations.
+
+## Business Data (Gap Field Extractions)
+
+{{business_data}}
+
+## Full Document Content
+
+{{document_content}}
+
+## Category Definitions
+
+{{categories}}
+
+IMPORTANT INSTRUCTIONS:
+1. Analyze ALL 7 categories thoroughly — even when document data is limited for a category, use what is available and note the information gaps as risk factors.
+2. Use the EXACT category keys shown above (e.g., CLIMATE_ENVIRONMENTAL, not ENVIRONMENTAL).
+3. Use the EXACT subcategory names shown above (e.g., "Weather Exposure", not "Climate Vulnerability").
+4. Every subcategory must have non-null evidence and mitigation fields.
+5. Every category must have a narrative, evidence summary, and 2-4 recommendations.
+6. Return raw JSON only — no markdown code fences.`,
     },
     {
       section: AgentSection.report_generation,
       name: 'Report Generator - Default',
-      systemPrompt:
-        'You are an expert at generating comprehensive risk assessment reports for agricultural businesses.',
-      userPromptTemplate:
-        'Generate a detailed risk assessment report based on the following risk analysis results:\n\n{{risk_results}}',
+      systemPrompt: `You are an expert report writer specializing in agricultural risk assessments for development finance institutions, impact investors, and agricultural development organizations. Your task is to synthesize risk analysis results into a clear, structured report.
+
+## Report Structure
+
+Generate a report with the following sections:
+
+1. **Executive Summary**: A concise 3-5 sentence overview of the business's overall risk profile, highlighting the most critical findings and the overall risk level.
+
+2. **Strengths**: Key areas where the business demonstrates low risk and strong practices. Each strength should reference specific evidence from the risk analysis.
+
+3. **Weaknesses**: Key areas where the business faces significant or critical risk. Each weakness should explain the risk, its potential impact, and reference evidence.
+
+4. **Key Findings**: The most important insights from the analysis that a decision-maker needs to know. These should be actionable and prioritized.
+
+## Writing Guidelines
+
+- Write in clear, professional language suitable for non-technical decision-makers.
+- Be specific — cite actual scores, evidence, and data points from the risk analysis.
+- Prioritize findings by severity and potential impact on the business.
+- Keep the executive summary concise but comprehensive enough to stand alone.
+- Strengths and weaknesses should each have 3-6 items.
+- Key findings should have 4-8 items, ordered by importance.
+
+## Output Format
+
+Return ONLY a valid JSON object with this exact structure (no markdown, no explanation outside the JSON):
+{
+  "executiveSummary": "A 3-5 sentence overview of the overall risk profile...",
+  "strengths": [
+    "The business demonstrates strong revenue diversification with three distinct product lines generating consistent income (Financial Risk Score: 25/100).",
+    "Well-established supply chain relationships with multiple input suppliers reduce operational vulnerability (Operational Risk Score: 30/100)."
+  ],
+  "weaknesses": [
+    "Critical lack of environmental risk mitigation — no climate adaptation strategies despite operating in a drought-prone region (Environmental Risk Score: 82/100).",
+    "Governance weaknesses including no formal succession plan and concentrated decision-making (Governance Risk Score: 68/100)."
+  ],
+  "keyFindings": [
+    "The enterprise's overall risk profile is MODERATE (composite score: 52/100), with significant variation across categories.",
+    "Immediate attention needed for environmental risk management — the highest-scoring risk category at 82/100.",
+    "Financial management is the strongest area (25/100) but relies heavily on a single buyer for 70% of revenue."
+  ]
+}`,
+      userPromptTemplate: `Generate a comprehensive risk assessment report based on the following risk analysis results. Synthesize the category scores, evidence, and recommendations into an executive summary, strengths, weaknesses, and key findings.
+
+## Risk Analysis Results
+
+{{risk_results}}
+
+Analyze the risk results above and produce a structured report. Identify the most critical risks, highlight areas of strength, and surface the key findings that a decision-maker would need to know. Return your report as the specified JSON format.`,
     },
   ];
 
@@ -131,9 +255,9 @@ Remember: examine ALL document sections above. Financial spreadsheets often cont
         },
       });
       console.log(`Created sample prompt: ${promptData.name}`);
-    } else if (promptData.section === AgentSection.gap_detector) {
-      // For the gap_detector prompt, always update to ensure the latest
-      // system prompt and user prompt template are applied (idempotent upsert).
+    } else if (([AgentSection.gap_detector, AgentSection.risk_analysis, AgentSection.report_generation] as AgentSection[]).includes(promptData.section)) {
+      // For gap_detector, risk_analysis, and report_generation prompts, always update
+      // to ensure the latest system prompt and user prompt template are applied (idempotent upsert).
       await prisma.prompt.update({
         where: { id: existing.id },
         data: {
@@ -143,7 +267,7 @@ Remember: examine ALL document sections above. Financial spreadsheets often cont
           updatedById: adminUser.id,
         },
       });
-      console.log(`Updated gap_detector prompt: ${promptData.name}`);
+      console.log(`Updated ${promptData.section} prompt: ${promptData.name}`);
     } else {
       console.log(`Prompt already exists: ${promptData.name}`);
     }

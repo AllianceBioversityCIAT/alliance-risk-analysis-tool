@@ -7,22 +7,16 @@ import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { BreadcrumbTrail } from '@/components/shared/breadcrumb-trail';
-import { AssessmentSubHeader } from '@/components/layout/assessment-sub-header';
+import { SidebarTrigger } from '@/components/ui/sidebar';
+import { AssessmentTopBar } from '@/components/shared/assessment-top-bar';
 import { ReportLayout } from '@/components/report/report-layout';
 import { ReportSection } from '@/components/report/report-section';
 import { RadarChart } from '@/components/report/radar-chart';
 import { useReport, useGeneratePdf } from '@/hooks/use-report';
+import { useAssessment } from '@/hooks/use-assessments';
 import { useJobPolling } from '@/hooks/use-job-polling';
-import type { AssessmentStatus as BadgeStatus } from '@/components/shared/status-badge';
 import type { TocItem } from '@/components/report/report-toc-sidebar';
 import { LEVEL_CONFIG } from '@/components/risk-scorecard/risk-score-overview';
-
-function mapStatus(s: string | undefined): BadgeStatus {
-  const map: Record<string, BadgeStatus> = {
-    DRAFT: 'draft', ANALYZING: 'analyzing', ACTION_REQUIRED: 'action_required', COMPLETE: 'complete',
-  };
-  return map[s ?? 'DRAFT'] ?? 'draft';
-}
 
 export default function ReportClient() {
   const searchParams = useSearchParams();
@@ -38,6 +32,7 @@ export default function ReportClient() {
   const { data: report, isLoading } = useReport(id ?? '');
   const { mutateAsync: generatePdf, isPending: generatingPdf } = useGeneratePdf(id ?? '');
   const { startPolling, result: jobResult, isProcessing: pdfProcessing } = useJobPolling();
+  const { data: assessment } = useAssessment(id ?? '');
 
   const handlePrint = useCallback(() => {
     window.print();
@@ -68,6 +63,9 @@ export default function ReportClient() {
 
   if (!id) return null;
 
+  // Use assessment from report when available, fallback to separate query
+  const reportAssessment = report?.assessment ?? assessment;
+
   // Build TOC items
   const tocItems: TocItem[] = [
     { id: 'executive-summary', label: 'Executive Summary' },
@@ -82,59 +80,89 @@ export default function ReportClient() {
     })),
   ];
 
+  // Common header (always visible, even during loading)
+  const headerSection = (
+    <>
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2 print:hidden">
+        <SidebarTrigger className="shrink-0" />
+        <BreadcrumbTrail
+          items={[
+            { label: 'Dashboard', href: '/dashboard' },
+            { label: 'Risk Scorecard', href: `/assessments/risk-scorecard?id=${id}` },
+            { label: 'Full Report' },
+          ]}
+        />
+      </div>
+
+      {/* Teal sub-header */}
+      {reportAssessment && (
+        <div className="print:hidden">
+          <AssessmentTopBar
+            name={reportAssessment.name}
+            shortId={reportAssessment.id?.substring(0, 8).toUpperCase() ?? ''}
+            progress={reportAssessment.progress ?? 100}
+            status={reportAssessment.status ?? 'COMPLETE'}
+          />
+        </div>
+      )}
+    </>
+  );
+
   if (isLoading) {
     return (
-      <div className="p-6 max-w-4xl mx-auto space-y-4">
-        <Skeleton className="h-8 w-48" />
-        <Skeleton className="h-40 w-full rounded-xl" />
-        <Skeleton className="h-64 w-full rounded-xl" />
-        <Skeleton className="h-40 w-full rounded-xl" />
+      <div className="flex flex-col min-h-0 flex-1 overflow-y-auto">
+        {headerSection}
+        <div className="flex-1 p-6 max-w-4xl mx-auto w-full space-y-4">
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Full Report</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Comprehensive risk assessment report with executive summary and recommendations.
+            </p>
+          </div>
+          <Skeleton className="h-8 w-48" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-64 w-full rounded-xl" />
+          <Skeleton className="h-40 w-full rounded-xl" />
+        </div>
       </div>
     );
   }
 
   if (!report) {
     return (
-      <div className="flex flex-col items-center justify-center h-full py-20 text-center">
-        <Loader2 className="h-8 w-8 animate-spin mb-3 text-muted-foreground" />
-        <p className="text-sm font-medium text-foreground">Generating report...</p>
-        <p className="text-xs text-muted-foreground mt-1">This may take a moment.</p>
+      <div className="flex flex-col min-h-0 flex-1 overflow-y-auto">
+        {headerSection}
+        <div className="flex-1 p-6 max-w-4xl mx-auto w-full">
+          <div className="mb-8">
+            <h1 className="text-xl font-bold text-foreground">Full Report</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Comprehensive risk assessment report with executive summary and recommendations.
+            </p>
+          </div>
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <Loader2 className="h-8 w-8 animate-spin mb-3 text-muted-foreground" />
+            <p className="text-sm font-medium text-foreground">Generating report...</p>
+            <p className="text-xs text-muted-foreground mt-1">This may take a moment.</p>
+          </div>
+        </div>
       </div>
     );
   }
 
-  const assessment = report.assessment;
+  const fullAssessment = report.assessment;
   const levelConfig = LEVEL_CONFIG[report.overallLevel];
 
   return (
     <>
-      {/* Breadcrumb — outside the layout for proper positioning */}
-      <div className="px-6 pt-4 pb-2 print:hidden">
-        <BreadcrumbTrail
-          items={[
-            { label: 'Dashboard', href: '/dashboard' },
-            { label: assessment.name, href: '#' },
-            { label: 'Full Report' },
-          ]}
-        />
-      </div>
-
-      {/* Sub-header */}
-      <div className="print:hidden">
-        <AssessmentSubHeader
-          businessName={assessment.companyName}
-          businessType={assessment.intakeMode ?? ''}
-          date={assessment.updatedAt}
-          status={mapStatus(assessment.status)}
-        />
-      </div>
+      {headerSection}
 
       <ReportLayout
         tocItems={tocItems}
         toolbar={
           <>
             <div className="text-sm font-semibold text-foreground">
-              {assessment.name} — Risk Analysis Report
+              {fullAssessment.name} — Risk Analysis Report
             </div>
             <div className="flex items-center gap-2">
               <Button variant="outline" size="sm" onClick={handlePrint} className="gap-1.5">
@@ -164,8 +192,8 @@ export default function ReportClient() {
               </div>
               <div className="w-px h-12 bg-border" />
               <div>
-                <p className="text-sm font-medium text-foreground">{assessment.companyName}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{assessment.country} · {assessment.companyType}</p>
+                <p className="text-sm font-medium text-foreground">{fullAssessment.companyName}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{fullAssessment.country} · {fullAssessment.companyType}</p>
                 <span className={`inline-block mt-2 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${levelConfig.color} ${levelConfig.bg}`}>
                   {levelConfig.label}
                 </span>

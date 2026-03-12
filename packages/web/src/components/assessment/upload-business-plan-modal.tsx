@@ -54,8 +54,10 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
     useMultiDocumentStatus(assessmentId, pollingEnabled);
 
   // --- Load existing documents on mount ------------------------------------
-  // Fetch once to show already-uploaded docs in the file list
-  const { documents: existingDocs } = useMultiDocumentStatus(assessmentId, !existingDocsLoaded);
+  // Fetch once to show already-uploaded docs in the file list.
+  // Disabled once upload starts to prevent overwriting local state mid-upload.
+  const existingDocsEnabled = !existingDocsLoaded && modalPhase === 'selecting';
+  const { documents: existingDocs } = useMultiDocumentStatus(assessmentId, existingDocsEnabled);
 
   useEffect(() => {
     if (existingDocsLoaded || existingDocs.length === 0) return;
@@ -206,6 +208,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
     if (files.length === 0) return;
 
     setModalPhase('uploading');
+    setExistingDocsLoaded(true); // Stop existing-docs polling to prevent overwriting local state
 
     // Step 1: Upload all files to S3 sequentially
     const uploadedFiles: TrackedFile[] = [...files];

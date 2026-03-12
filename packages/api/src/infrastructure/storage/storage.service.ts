@@ -91,6 +91,22 @@ export class StorageService {
   }
 
   /**
+   * Upload a Buffer directly to S3.
+   * Used for generated PDFs and other server-created content.
+   */
+  async uploadBuffer(key: string, buffer: Buffer, contentType: string): Promise<void> {
+    const command = new PutObjectCommand({
+      Bucket: this.bucketName,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+    });
+
+    await this.s3Client.send(command);
+    this.logger.log(`Uploaded buffer to S3: ${key} (${buffer.length} bytes)`);
+  }
+
+  /**
    * Build the S3 key for an assessment document.
    * Convention: assessments/{assessmentId}/documents/{documentId}/{fileName}
    */

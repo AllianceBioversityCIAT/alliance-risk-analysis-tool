@@ -18,9 +18,13 @@ import {
   RefreshCw,
   AlertTriangle,
   ChevronDown,
+  Clock,
+  Upload,
+  Brain,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
+import { PipelineStepper } from '@/components/shared/pipeline-stepper';
 import {
   Tooltip,
   TooltipContent,
@@ -84,6 +88,26 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
     return <FileText className={className} />;
   }
   return <File className={className} />;
+}
+
+// ─── Gap Analysis Steps ─────────────────────────────────────────────────────
+
+const GAP_PIPELINE_STEPS: import('@/components/shared/pipeline-stepper').PipelineStep[] = [
+  { label: 'Documents Uploaded', description: 'Files received and queued', icon: <Upload className="h-4 w-4" /> },
+  { label: 'Text Extraction', description: 'Parsing content from all documents', icon: <FileText className="h-4 w-4" /> },
+  { label: 'AI Gap Analysis', description: 'Identifying business data fields', icon: <Brain className="h-4 w-4" /> },
+  { label: 'Fields Ready', description: 'Gap fields available for review', icon: <Check className="h-4 w-4" /> },
+];
+
+function getGapActiveStep(
+  docsProcessing: boolean,
+  documents: Array<{ status: string }>,
+): number {
+  const allParsed = documents.length > 0 && documents.every((d) => d.status === 'PARSED');
+  if (documents.length === 0) return 0;
+  if (docsProcessing) return 1;
+  if (allParsed) return 2;
+  return 1;
 }
 
 export default function GapDetectorClient() {
@@ -291,7 +315,8 @@ export default function GapDetectorClient() {
           items={[
             { label: 'Dashboard', href: '/dashboard' },
             {
-              label: hasDocument ? 'Upload Business Plan' : (assessment?.name ?? 'Assessment'),
+              label: 'Manage Documents',
+              href: `/assessments/upload?id=${id}`,
             },
             { label: 'Gap Detector' },
           ]}
@@ -484,6 +509,20 @@ export default function GapDetectorClient() {
         </div>
       )}
 
+      {/* ─── Page heading ─────────────────────────────────────────────────────────── */}
+      <div className="px-6 pt-4 pb-3">
+        <h1 className="text-xl font-bold text-foreground">Gap Detector</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Please review detected gaps and complete missing information.
+        </p>
+        {isReAnalyzing && (
+          <div className="flex items-center gap-2 mt-2 text-sm text-primary">
+            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+            <span>Re-analyzing with your corrections...</span>
+          </div>
+        )}
+      </div>
+
       {/* ─── Main Content (Split Pane) ───────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
         {isLoading ? (
@@ -571,20 +610,6 @@ export default function GapDetectorClient() {
             }
             fieldsPanel={
               <div className="p-5">
-                {/* Panel heading */}
-                <div className="mb-4">
-                  <h2 className="text-xl font-bold text-foreground">Gap Detector</h2>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    Please review detected gaps and complete missing information.
-                  </p>
-                  {isReAnalyzing && (
-                    <div className="flex items-center gap-2 mt-2 text-sm text-primary">
-                      <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                      <span>Re-analyzing with your corrections...</span>
-                    </div>
-                  )}
-                </div>
-
                 {/* Validation alert banner */}
                 {showValidationBanner && needsAttentionCount > 0 && (
                   <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200">
@@ -691,22 +716,15 @@ export default function GapDetectorClient() {
                   </div>
                 )}
 
-                {/* Empty state — AI analysis in progress */}
+                {/* Empty state — AI analysis in progress (pipeline stepper) */}
                 {fields.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-16 text-center">
-                    <div className="relative mb-4">
-                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                    </div>
-                    <p className="text-sm font-medium text-foreground">
-                      Running AI gap analysis...
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1 max-w-[280px]">
-                      {docsProcessing
-                        ? 'Still parsing documents. Gap fields will appear once all documents are processed.'
-                        : 'Analyzing all uploaded documents for business data. Gap fields will appear shortly.'}
-                    </p>
-                    {documents.length > 0 && (
-                      <div className="flex items-center gap-2 mt-3">
+                  <PipelineStepper
+                    title="Gap Analysis in Progress"
+                    subtitle="This typically takes 30–60 seconds"
+                    steps={GAP_PIPELINE_STEPS}
+                    activeStepIndex={getGapActiveStep(docsProcessing, documents)}
+                    footer={documents.length > 0 ? (
+                      <div className="flex flex-wrap items-center gap-2">
                         {documents.map((doc) => (
                           <span
                             key={doc.id}
@@ -720,14 +738,12 @@ export default function GapDetectorClient() {
                             )}
                           >
                             <FileIcon mimeType={doc.mimeType} className="h-2.5 w-2.5" />
-                            {doc.fileName.length > 20
-                              ? doc.fileName.substring(0, 17) + '...'
-                              : doc.fileName}
+                            {doc.fileName.length > 20 ? doc.fileName.substring(0, 17) + '...' : doc.fileName}
                           </span>
                         ))}
                       </div>
-                    )}
-                  </div>
+                    ) : undefined}
+                  />
                 )}
 
                 {/* Analyze Risks button */}
