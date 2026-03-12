@@ -148,7 +148,7 @@ export class AssessmentsService {
     id: string,
     dto: RequestUploadDto,
     userId: string,
-  ): Promise<{ presignedUrl: string; documentId: string }> {
+  ): Promise<{ presignedUrl: string; presignedFields: Record<string, string>; documentId: string }> {
     await this.findOne(id, userId); // Ownership check
 
     if (!(ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(dto.mimeType)) {
@@ -185,12 +185,13 @@ export class AssessmentsService {
       data: { s3Key },
     });
 
-    const presignedUrl = await this.storageService.generatePresignedUploadUrl(
+    const presigned = await this.storageService.generatePresignedUploadUrl(
       s3Key,
       dto.mimeType,
+      dto.fileSize,
     );
 
-    return { presignedUrl, documentId: document.id };
+    return { presignedUrl: presigned.url, presignedFields: presigned.fields, documentId: document.id };
   }
 
   async getDocuments(id: string, userId: string) {

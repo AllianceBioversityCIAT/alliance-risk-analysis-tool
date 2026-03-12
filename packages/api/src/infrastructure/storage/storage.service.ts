@@ -5,7 +5,8 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
+import { GetObjectCommand } from '@aws-sdk/client-s3';
 import type { Readable } from 'stream';
 
 @Injectable()
@@ -21,21 +22,27 @@ export class StorageService {
   }
 
   /**
-   * Generate a presigned URL for uploading a file to S3.
+   * Generate a presigned POST for uploading a file to S3.
    * Key convention: assessments/{assessmentId}/documents/{documentId}/{fileName}
    */
   async generatePresignedUploadUrl(
     key: string,
     contentType: string,
+    maxSize: number,
     expiresIn: number = 3600,
-  ): Promise<string> {
-    const command = new PutObjectCommand({
+  ): Promise<{ url: string; fields: Record<string, string> }> {
+    return createPresignedPost(this.s3Client, {
       Bucket: this.bucketName,
       Key: key,
-      ContentType: contentType,
+      Conditions: [
+        ['eq', '$Content-Type', contentType],
+        ['content-length-range', 0, maxSize],
+      ],
+      Fields: {
+        'Content-Type': contentType,
+      },
+      Expires: expiresIn,
     });
-
-    return getSignedUrl(this.s3Client, command, { expiresIn });
   }
 
   /**

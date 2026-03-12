@@ -58,7 +58,7 @@ const mockPrisma = {
 
 const mockStorage = {
   buildDocumentKey: jest.fn().mockReturnValue('assessments/assess-1/documents/doc-1/plan.pdf'),
-  generatePresignedUploadUrl: jest.fn().mockResolvedValue('https://s3.example.com/upload'),
+  generatePresignedUploadUrl: jest.fn().mockResolvedValue({ url: 'https://s3.example.com/upload', fields: { key: 'value' } }),
 };
 
 const mockJobs = {

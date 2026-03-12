@@ -218,14 +218,14 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
       try {
         updateFile(i, { phase: 'uploading', uploadProgress: 0, errorMessage: null });
 
-        const { presignedUrl, documentId } = await requestUploadUrl({
+        const { presignedUrl, presignedFields, documentId } = await requestUploadUrl({
           assessmentId,
           fileName: tf.selectedFile.name,
           mimeType: tf.selectedFile.mimeType,
           fileSize: tf.selectedFile.size,
         });
 
-        await uploadToS3(presignedUrl, tf.selectedFile, (pct) => {
+        await uploadToS3(presignedUrl, presignedFields, tf.selectedFile, (pct) => {
           updateFile(i, { uploadProgress: pct });
         });
 
@@ -379,10 +379,19 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
 
 async function uploadToS3(
   presignedUrl: string,
+  presignedFields: Record<string, string>,
   selectedFile: SelectedFile,
   onProgress: (pct: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    // Append all required AWS fields
+    Object.entries(presignedFields).forEach(([k, v]) => {
+      formData.append(k, v);
+    });
+    // The file MUST be the last field
+    formData.append('file', selectedFile.file);
+
     const xhr = new XMLHttpRequest();
 
     xhr.upload.addEventListener('progress', (e) => {
@@ -404,8 +413,7 @@ async function uploadToS3(
     xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
     xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
 
-    xhr.open('PUT', presignedUrl);
-    xhr.setRequestHeader('Content-Type', selectedFile.mimeType);
-    xhr.send(selectedFile.file);
+    xhr.open('POST', presignedUrl);
+    xhr.send(formData);
   });
 }
