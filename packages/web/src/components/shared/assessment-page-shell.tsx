@@ -37,7 +37,7 @@ export function AssessmentPageShell({
   children,
   className,
   printHidden = false,
-}: AssessmentPageShellProps) {
+}: Readonly<AssessmentPageShellProps>) {
   const printClass = printHidden ? 'print:hidden' : '';
 
   return (

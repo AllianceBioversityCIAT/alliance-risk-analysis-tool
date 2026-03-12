@@ -49,7 +49,7 @@ function RiskSkeletonGrid() {
         <Skeleton className="h-5 w-36 mb-3 rounded" />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {Array.from({ length: 7 }).map((_, i) => (
-            <div key={i} className="rounded-xl border bg-card p-4 space-y-3">
+            <div key={`cat-skeleton-${i}`} className="rounded-xl border bg-card p-4 space-y-3">
               <div className="flex items-center justify-between">
                 <Skeleton className="h-4 w-32 rounded" />
                 <Skeleton className="h-6 w-16 rounded-full" />
@@ -64,7 +64,7 @@ function RiskSkeletonGrid() {
         <Skeleton className="h-5 w-40 mb-3 rounded" />
         <div className="space-y-2">
           {Array.from({ length: 3 }).map((_, i) => (
-            <Skeleton key={i} className="h-14 w-full rounded-lg" />
+            <Skeleton key={`rec-skeleton-${i}`} className="h-14 w-full rounded-lg" />
           ))}
         </div>
       </div>
@@ -163,7 +163,6 @@ export default function RiskScorecardClient() {
   ) : undefined;
 
   return (
-    <>
       <AssessmentPageShell
         breadcrumbs={[
           { label: 'Dashboard', href: '/dashboard' },
@@ -176,17 +175,19 @@ export default function RiskScorecardClient() {
         actions={actionButtons}
       >
         <div className="flex-1 px-6 pb-6 space-y-6 max-w-6xl mx-auto w-full">
-          {isLoading ? (
-            <RiskSkeletonGrid />
-          ) : analysisRunning ? (
+          {isLoading && <RiskSkeletonGrid />}
+
+          {!isLoading && analysisRunning && (
             <PipelineStepper
               title="Risk Analysis in Progress"
-              subtitle="This typically takes 3–5 minutes"
+              subtitle="This typically takes 3-5 minutes"
               steps={RISK_PIPELINE_STEPS}
               activeStepIndex={getRiskActiveStep(assessment?.progress ?? 50)}
               progress={assessment?.progress ?? 50}
             />
-          ) : (
+          )}
+
+          {!isLoading && !analysisRunning && (
             <>
               {scores.length > 0 && (
                 <RiskScoreOverview overallScore={overallScore} overallLevel={overallLevel} />
@@ -253,6 +254,5 @@ export default function RiskScorecardClient() {
           />
         )}
       </AssessmentPageShell>
-    </>
   );
 }

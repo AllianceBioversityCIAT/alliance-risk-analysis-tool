@@ -25,7 +25,7 @@ function categoryLabel(raw: string): string {
 
 // ─── Subcategory Card ────────────────────────────────────────────────────────
 
-function SubcategoryCard({ sub }: { sub: SubcategoryScore }) {
+function SubcategoryCard({ sub }: Readonly<{ sub: SubcategoryScore }>) {
   const config = LEVEL_CONFIG[sub.level];
   const [showDetails, setShowDetails] = useState(false);
 
@@ -88,7 +88,7 @@ interface CategoryScoreCardProps {
   score: RiskScoreResponse;
 }
 
-export function CategoryScoreCard({ score }: CategoryScoreCardProps) {
+export function CategoryScoreCard({ score }: Readonly<CategoryScoreCardProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const config = LEVEL_CONFIG[score.level];
   const label = categoryLabel(score.category);
@@ -159,8 +159,8 @@ export function CategoryScoreCard({ score }: CategoryScoreCardProps) {
                 'grid gap-2',
                 'grid-cols-1 lg:grid-cols-2',
               )}>
-                {score.subcategories.map((sub, i) => (
-                  <SubcategoryCard key={i} sub={sub} />
+                {score.subcategories.map((sub) => (
+                  <SubcategoryCard key={sub.name} sub={sub} />
                 ))}
               </div>
             </div>

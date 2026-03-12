@@ -10,19 +10,19 @@ TOKEN=$(aws secretsmanager get-secret-value \
   --secret-id "$SECRET_ID" \
   --query 'SecretString' --output text | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
 
-if [ -z "$TOKEN" ]; then
+if [[ -z "$TOKEN" ]]; then
   echo "✗ Failed to fetch admin token"
   exit 1
 fi
 echo "✓ Token retrieved"
 
 invoke_sql() {
-  local SQL="$1"
-  local DESC="$2"
-  echo "▸ Executing: $DESC"
+  local sql="$1"
+  local desc="$2"
+  echo "▸ Executing: $desc"
 
   export SEED_TOKEN="$TOKEN"
-  export SEED_SQL="$SQL"
+  export SEED_SQL="$sql"
   PAYLOAD=$(python3 -c "
 import json, os
 token = os.environ['SEED_TOKEN']
@@ -39,11 +39,11 @@ print(json.dumps({'action': 'run-sql', 'authToken': token, 'sql': sql}))
   RESPONSE=$(cat /tmp/seed-result.json)
   SUCCESS=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('success', False))" 2>/dev/null || echo "False")
 
-  if [ "$SUCCESS" = "True" ]; then
-    echo "  ✓ $DESC — success"
+  if [[ "$SUCCESS" = "True" ]]; then
+    echo "  ✓ $desc — success"
   else
-    echo "  ✗ $DESC — failed"
-    echo "  $(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','unknown')[:200])" 2>/dev/null)"
+    echo "  ✗ $desc — failed"
+    echo "  $(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin).get('error','unknown')[:200])" 2>/dev/null)" >&2
     return 1
   fi
 }

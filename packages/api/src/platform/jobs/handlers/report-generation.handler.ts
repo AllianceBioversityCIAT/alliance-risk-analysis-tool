@@ -226,7 +226,7 @@ export class ReportGenerationHandler implements JobHandler {
     }
 
     // Strategy 3: Regex extract first { ... } JSON block
-    const match = output.match(/\{[\s\S]*\}/);
+    const match = /\{[\s\S]*\}/.exec(output);
     if (match) {
       try {
         const parsed = JSON.parse(match[0]) as ReportAIResponse;

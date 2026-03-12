@@ -61,8 +61,8 @@ export class RiskAnalysisHandler implements JobHandler {
   async execute(input: RiskAnalysisInput): Promise<RiskAnalysisResult> {
     this.logger.log(`Running risk analysis for assessment: ${input.assessmentId}`);
 
-    // 1. Fetch assessment
-    const assessment = await this.prisma.assessment.findUniqueOrThrow({
+    // 1. Verify assessment exists (throws if not found)
+    await this.prisma.assessment.findUniqueOrThrow({
       where: { id: input.assessmentId },
     });
 
@@ -321,75 +321,82 @@ export class RiskAnalysisHandler implements JobHandler {
     return extractedText;
   }
 
-  // ─── JSON Parsing (3-Strategy Defensive) ─────────────────────────────────
+  // ─── JSON Parsing (4-Strategy Defensive) ─────────────────────────────────
 
-  private parseAIResponse(output: string): RiskAnalysisAIResponse {
-    const tryParse = (text: string): RiskAnalysisAIResponse | null => {
-      try {
-        const parsed = JSON.parse(text) as RiskAnalysisAIResponse;
-        if (parsed.categories && Array.isArray(parsed.categories)) return parsed;
-      } catch {
-        // Not valid JSON
-      }
-      return null;
-    };
+  private tryParseRiskResponse(text: string): RiskAnalysisAIResponse | null {
+    try {
+      const parsed = JSON.parse(text) as RiskAnalysisAIResponse;
+      if (parsed.categories && Array.isArray(parsed.categories)) return parsed;
+    } catch {
+      // Not valid JSON
+    }
+    return null;
+  }
 
-    // Strategy 1: Direct JSON.parse
-    let result = tryParse(output);
-    if (result) return result;
-
-    // Strategy 2: Strip markdown code fences (```json ... ```)
-    const stripped = output
+  private stripMarkdownFences(output: string): string {
+    return output
       .replace(/^```(?:json)?\s*\n?/gm, '')
       .replace(/\n?```\s*$/gm, '')
       .trim();
-    result = tryParse(stripped);
-    if (result) return result;
+  }
+
+  private countUnclosedDelimiters(text: string): { braces: number; brackets: number } {
+    let braces = 0;
+    let brackets = 0;
+    let inString = false;
+    let escape = false;
+    for (const ch of text) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') braces++;
+      else if (ch === '}') braces--;
+      else if (ch === '[') brackets++;
+      else if (ch === ']') brackets--;
+    }
+    return { braces, brackets };
+  }
+
+  private repairTruncatedJson(jsonText: string): RiskAnalysisAIResponse | null {
+    let { braces, brackets } = this.countUnclosedDelimiters(jsonText);
+    if (braces <= 0 && brackets <= 0) return null;
+
+    this.logger.warn(
+      `Attempting to repair truncated JSON (${braces} unclosed braces, ${brackets} unclosed brackets)`,
+    );
+
+    let repaired = jsonText.replace(/,\s*"[^"]*"?\s*:?\s*[^,\]}]*$/, '');
+    while (brackets > 0) { repaired += ']'; brackets--; }
+    while (braces > 0) { repaired += '}'; braces--; }
+
+    const result = this.tryParseRiskResponse(repaired);
+    if (result) {
+      this.logger.warn(`Repaired truncated JSON — got ${result.categories.length} categories`);
+    }
+    return result;
+  }
+
+  private parseAIResponse(output: string): RiskAnalysisAIResponse {
+    // Strategy 1: Direct JSON.parse
+    const direct = this.tryParseRiskResponse(output);
+    if (direct) return direct;
+
+    // Strategy 2: Strip markdown code fences
+    const stripped = this.tryParseRiskResponse(this.stripMarkdownFences(output));
+    if (stripped) return stripped;
 
     // Strategy 3: Regex extract first { ... } JSON block
-    const match = output.match(/\{[\s\S]*\}/);
+    const match = /\{[\s\S]*\}/.exec(output);
     if (match) {
-      result = tryParse(match[0]);
-      if (result) return result;
+      const extracted = this.tryParseRiskResponse(match[0]);
+      if (extracted) return extracted;
 
-      // Strategy 4: Truncated JSON — try to repair by closing open brackets
-      let truncated = match[0];
-      // Count open vs close braces/brackets
-      let braces = 0;
-      let brackets = 0;
-      let inString = false;
-      let escape = false;
-      for (const ch of truncated) {
-        if (escape) { escape = false; continue; }
-        if (ch === '\\') { escape = true; continue; }
-        if (ch === '"') { inString = !inString; continue; }
-        if (inString) continue;
-        if (ch === '{') braces++;
-        else if (ch === '}') braces--;
-        else if (ch === '[') brackets++;
-        else if (ch === ']') brackets--;
-      }
-
-      // If truncated (unclosed braces/brackets), try removing the last
-      // incomplete element and closing the structure
-      if (braces > 0 || brackets > 0) {
-        this.logger.warn(
-          `Attempting to repair truncated JSON (${braces} unclosed braces, ${brackets} unclosed brackets)`,
-        );
-        // Remove trailing incomplete value (after last comma)
-        truncated = truncated.replace(/,\s*"[^"]*"?\s*:?\s*[^,\]}]*$/, '');
-        // Close remaining brackets/braces
-        while (brackets > 0) { truncated += ']'; brackets--; }
-        while (braces > 0) { truncated += '}'; braces--; }
-        result = tryParse(truncated);
-        if (result) {
-          this.logger.warn(`Repaired truncated JSON — got ${result.categories.length} categories`);
-          return result;
-        }
-      }
+      // Strategy 4: Repair truncated JSON
+      const repaired = this.repairTruncatedJson(match[0]);
+      if (repaired) return repaired;
     }
 
-    // Log diagnostic info
     this.logger.error(
       `All JSON parse strategies failed. Output length: ${output.length}, ` +
       `starts with: ${JSON.stringify(output.substring(0, 100))}, ` +

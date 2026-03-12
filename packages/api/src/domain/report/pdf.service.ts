@@ -253,58 +253,77 @@ export class PdfService {
 
   private renderCategoryDetails(doc: PDFKit.PDFDocument, report: ReportResponse): void {
     for (const category of report.categories) {
-      // New page for each category
       doc.addPage();
       const categoryLabel = this.formatCategoryName(category.category);
       this.renderPageHeader(doc, categoryLabel);
+      this.renderCategoryScoreBadge(doc, category);
+      this.renderCategoryNarrative(doc, category);
+      this.renderCategoryEvidence(doc, category);
+      this.renderCategorySubcategories(doc, category);
+      this.renderCategoryRecommendations(doc, category);
+    }
+  }
 
-      // Score badge
-      const levelColor = this.getLevelColor(category.level);
-      doc
-        .fontSize(24)
-        .fillColor(levelColor)
-        .text(`${category.score}/100`, { continued: true })
-        .fontSize(14)
-        .fillColor(this.colors.textLight)
-        .text(`  ${category.level}`, { continued: false });
+  private renderCategoryScoreBadge(
+    doc: PDFKit.PDFDocument,
+    category: ReportResponse['categories'][number],
+  ): void {
+    const levelColor = this.getLevelColor(category.level);
+    doc
+      .fontSize(24)
+      .fillColor(levelColor)
+      .text(`${category.score}/100`, { continued: true })
+      .fontSize(14)
+      .fillColor(this.colors.textLight)
+      .text(`  ${category.level}`, { continued: false });
+    doc.moveDown(0.5);
+  }
 
-      doc.moveDown(0.5);
+  private renderCategoryNarrative(
+    doc: PDFKit.PDFDocument,
+    category: ReportResponse['categories'][number],
+  ): void {
+    if (!category.narrative) return;
+    doc
+      .fontSize(11)
+      .fillColor(this.colors.text)
+      .text(category.narrative, { align: 'justify', lineGap: 3 });
+    doc.moveDown(1);
+  }
 
-      // Narrative
-      if (category.narrative) {
-        doc
-          .fontSize(11)
-          .fillColor(this.colors.text)
-          .text(category.narrative, { align: 'justify', lineGap: 3 });
-        doc.moveDown(1);
-      }
+  private renderCategoryEvidence(
+    doc: PDFKit.PDFDocument,
+    category: ReportResponse['categories'][number],
+  ): void {
+    if (!category.evidence) return;
+    this.renderSectionHeading(doc, 'Evidence');
+    doc
+      .fontSize(10)
+      .fillColor(this.colors.textLight)
+      .text(category.evidence, { align: 'justify', lineGap: 2 });
+    doc.moveDown(1);
+  }
 
-      // Evidence
-      if (category.evidence) {
-        this.renderSectionHeading(doc, 'Evidence');
-        doc
-          .fontSize(10)
-          .fillColor(this.colors.textLight)
-          .text(category.evidence, { align: 'justify', lineGap: 2 });
-        doc.moveDown(1);
-      }
+  private renderCategorySubcategories(
+    doc: PDFKit.PDFDocument,
+    category: ReportResponse['categories'][number],
+  ): void {
+    if (category.subcategories.length === 0) return;
+    this.renderSectionHeading(doc, 'Subcategory Scores');
+    this.renderSubcategoryTable(doc, category.subcategories);
+  }
 
-      // Subcategory table
-      if (category.subcategories.length > 0) {
-        this.renderSectionHeading(doc, 'Subcategory Scores');
-        this.renderSubcategoryTable(doc, category.subcategories);
-      }
-
-      // Category recommendations
-      const catRecs = category.recommendations;
-      if (catRecs.length > 0) {
-        doc.moveDown(1);
-        this.renderSectionHeading(doc, 'Recommendations');
-        for (const rec of catRecs) {
-          const text = rec.isEdited && rec.editedText ? rec.editedText : rec.text;
-          this.renderBulletPoint(doc, `[${rec.priority}] ${text}`);
-        }
-      }
+  private renderCategoryRecommendations(
+    doc: PDFKit.PDFDocument,
+    category: ReportResponse['categories'][number],
+  ): void {
+    const catRecs = category.recommendations;
+    if (catRecs.length === 0) return;
+    doc.moveDown(1);
+    this.renderSectionHeading(doc, 'Recommendations');
+    for (const rec of catRecs) {
+      const text = rec.isEdited && rec.editedText ? rec.editedText : rec.text;
+      this.renderBulletPoint(doc, `[${rec.priority}] ${text}`);
     }
   }
 

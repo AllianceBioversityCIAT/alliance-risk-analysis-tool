@@ -20,7 +20,7 @@ export interface AssessmentTopBarProps {
   status: string;
 }
 
-export function AssessmentTopBar({ name, shortId, progress, status }: AssessmentTopBarProps) {
+export function AssessmentTopBar({ name, shortId, progress, status }: Readonly<AssessmentTopBarProps>) {
   const isAnalyzing = status === AssessmentStatus.ANALYZING;
 
   return (

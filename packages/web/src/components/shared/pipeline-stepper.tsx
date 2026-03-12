@@ -56,7 +56,7 @@ export function PipelineStepper({
   activeStepIndex,
   progress,
   footer,
-}: PipelineStepperProps) {
+}: Readonly<PipelineStepperProps>) {
   const elapsedStr = useElapsedTimer();
 
   return (
@@ -99,13 +99,9 @@ export function PipelineStepper({
                       isActive && 'bg-blue-100 text-blue-600 ring-2 ring-blue-500/30',
                       isPending && 'bg-muted text-muted-foreground/40',
                     )}>
-                      {isComplete ? (
-                        <Check className="h-3.5 w-3.5" />
-                      ) : isActive ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        step.icon
-                      )}
+                      {isComplete && <Check className="h-3.5 w-3.5" />}
+                      {isActive && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                      {isPending && step.icon}
                     </div>
                     {!isLast && (
                       <div className={cn(
