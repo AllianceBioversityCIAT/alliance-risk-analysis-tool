@@ -272,10 +272,7 @@ export function AppSidebar() {
                 />
                 <div className="flex-1 min-w-0 text-left">
                   <p className="text-sm font-semibold text-white truncate">
-                    {user.username ?? user.email}
-                  </p>
-                  <p className="text-xs text-[#CCFBF1] truncate">
-                    {user.email}
+                    {user.email ?? user.username}
                   </p>
                 </div>
                 <ChevronUp className="h-4 w-4 text-[#CCFBF1] shrink-0" />
