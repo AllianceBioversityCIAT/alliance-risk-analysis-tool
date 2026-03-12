@@ -180,7 +180,7 @@ export class ReportGenerationHandler implements JobHandler {
     });
 
     // 7. Upload PDF to S3
-    const reportId = `report-${Date.now()}`;
+    const reportId = `report-${crypto.randomUUID()}`;
     const pdfKey = this.storageService.buildReportKey(input.assessmentId, reportId);
     await this.storageService.uploadBuffer(pdfKey, pdfBuffer, 'application/pdf');
 

@@ -137,7 +137,7 @@ export function PipelineStepper({
             <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
               <div
                 className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-blue-500 transition-all duration-1000 ease-out"
-                style={{ width: `${Math.min(progress, 95)}%` }}
+                style={{ width: `${progress}%` }}
               />
             </div>
             <p className="text-[11px] text-muted-foreground mt-1.5 text-right">{progress}% complete</p>

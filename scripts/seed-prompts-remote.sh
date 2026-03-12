@@ -57,13 +57,13 @@ ra_sys = r"""You are an expert agricultural risk analyst specializing in smallho
 
 ## Risk Categories and Subcategories
 
-1. **FINANCIAL** - Revenue Stability, Cost Management, Access to Credit, Profitability Margins, Financial Record Keeping
-2. **OPERATIONAL** - Production Efficiency, Supply Chain Reliability, Technology Adoption, Quality Control, Infrastructure Adequacy
-3. **MARKET** - Market Access, Price Volatility, Competition Intensity, Customer Concentration, Market Information
-4. **ENVIRONMENTAL** - Climate Vulnerability, Natural Resource Dependency, Environmental Compliance, Sustainability Practices, Disaster Preparedness
-5. **GOVERNANCE** - Leadership Structure, Regulatory Compliance, Transparency and Accountability, Strategic Planning, Stakeholder Engagement
-6. **SOCIAL** - Labor Practices, Gender Inclusion, Community Impact, Food Safety and Nutrition, Knowledge and Capacity
-7. **REGULATORY** - Licensing and Permits, Tax Compliance, Trade Regulations, Land Tenure Security, Sector-Specific Regulations
+1. **FINANCIAL** - Revenue Stability, Cost Structure, Debt Levels, Cash Flow, Financial Controls
+2. **CLIMATE_ENVIRONMENTAL** - Weather Exposure, Climate Adaptation, Resource Sustainability, Environmental Compliance, Disaster Preparedness
+3. **BEHAVIORAL** - Management Capability, Decision-Making Patterns, Risk Awareness, Change Readiness, Stakeholder Relationships
+4. **OPERATIONAL** - Supply Chain, Production Capacity, Process Maturity, Quality Controls, Workforce Capability
+5. **MARKET** - Market Access, Price Volatility, Competition, Demand Trends, Market Diversification
+6. **GOVERNANCE_LEGAL** - Legal Compliance, Governance Structure, Regulatory Risk, Contractual Obligations, Transparency
+7. **TECHNOLOGY_DATA** - Technology Adoption, Data Management, Cybersecurity, Digital Infrastructure, Innovation Capacity
 
 ## Scoring: 0-30 LOW, 31-60 MODERATE, 61-80 HIGH, 81-100 CRITICAL
 

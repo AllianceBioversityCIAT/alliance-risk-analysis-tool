@@ -18,7 +18,6 @@ import {
   RefreshCw,
   AlertTriangle,
   ChevronDown,
-  Clock,
   Upload,
   Brain,
 } from 'lucide-react';

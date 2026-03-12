@@ -88,10 +88,10 @@
     "collectCoverageFrom": [
       "**/*.(t|j)s",
       "!**/*.module.(t|j)s",
-      "!main.ts",
-      "!worker.ts",
-      "!lambda.ts",
-      "!configure-app.ts"
+      "!**/main.ts",
+      "!**/worker.ts",
+      "!**/lambda.ts",
+      "!**/configure-app.ts"
     ],
     "coverageThreshold": {
       "global": {

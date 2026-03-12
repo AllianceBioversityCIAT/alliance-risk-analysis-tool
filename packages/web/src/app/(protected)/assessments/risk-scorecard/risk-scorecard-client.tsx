@@ -36,7 +36,7 @@ const RISK_THRESHOLDS = [30, 50, 75, 90];
 
 function getRiskActiveStep(progress: number): number {
   for (let i = RISK_THRESHOLDS.length - 1; i >= 0; i--) {
-    if (progress >= RISK_THRESHOLDS[i]) return i + 1;
+    if (progress >= RISK_THRESHOLDS[i]) return Math.min(i + 1, RISK_PIPELINE_STEPS.length - 1);
   }
   return 0;
 }

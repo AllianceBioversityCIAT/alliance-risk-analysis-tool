@@ -23,7 +23,7 @@ export interface AssessmentPageShellProps {
   children: React.ReactNode;
   /** Additional class name on the outer wrapper */
   className?: string;
-  /** Whether to hide in print mode (breadcrumb + top bar). Default true. */
+  /** Whether to hide in print mode (breadcrumb + top bar). Default false. */
   printHidden?: boolean;
 }
 
