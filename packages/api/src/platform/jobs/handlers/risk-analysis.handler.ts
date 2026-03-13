@@ -386,14 +386,16 @@ export class RiskAnalysisHandler implements JobHandler {
     const stripped = this.tryParseRiskResponse(this.stripMarkdownFences(output));
     if (stripped) return stripped;
 
-    // Strategy 3: Regex extract first { ... } JSON block
-    const match = /\{[\s\S]*\}/.exec(output);
-    if (match) {
-      const extracted = this.tryParseRiskResponse(match[0]);
+    // Strategy 3: Extract first { ... } JSON block (string-based, no regex)
+    const firstBrace = output.indexOf('{');
+    const lastBrace = output.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
+      const jsonBlock = output.substring(firstBrace, lastBrace + 1);
+      const extracted = this.tryParseRiskResponse(jsonBlock);
       if (extracted) return extracted;
 
       // Strategy 4: Repair truncated JSON
-      const repaired = this.repairTruncatedJson(match[0]);
+      const repaired = this.repairTruncatedJson(jsonBlock);
       if (repaired) return repaired;
     }
 

@@ -225,11 +225,12 @@ export class ReportGenerationHandler implements JobHandler {
       // Fall through
     }
 
-    // Strategy 3: Regex extract first { ... } JSON block
-    const match = /\{[\s\S]*\}/.exec(output);
-    if (match) {
+    // Strategy 3: Extract first { ... } JSON block (string-based, no regex)
+    const firstBrace = output.indexOf('{');
+    const lastBrace = output.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
       try {
-        const parsed = JSON.parse(match[0]) as ReportAIResponse;
+        const parsed = JSON.parse(output.substring(firstBrace, lastBrace + 1)) as ReportAIResponse;
         if (parsed.executiveSummary) return this.normalizeReportResponse(parsed);
       } catch {
         // Fall through
