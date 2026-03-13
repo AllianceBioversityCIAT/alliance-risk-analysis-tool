@@ -13,12 +13,14 @@ export class TextractExtractor implements DocumentExtractor {
 
   constructor(private readonly textract: TextractService) {}
 
+  /* eslint-disable @typescript-eslint/no-unused-vars */
   async extract(
     s3Bucket: string,
     s3Key: string,
     _mimeType: string,
     _fileName: string,
   ): Promise<ExtractionResult> {
+    /* eslint-enable @typescript-eslint/no-unused-vars */
     const result = await this.textract.analyzeDocument(s3Bucket, s3Key);
 
     // Convert textContent + tables to Markdown

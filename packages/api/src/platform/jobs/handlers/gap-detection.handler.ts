@@ -42,8 +42,6 @@ interface GapDetectionAIResponse {
 @Injectable()
 export class GapDetectionHandler implements JobHandler {
   private readonly logger = new Logger(GapDetectionHandler.name);
-  /** Holds the merged Markdown from processUploadMode() for inclusion in result */
-  private _lastMergedMarkdown = '';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,12 +64,14 @@ export class GapDetectionHandler implements JobHandler {
     }
 
     let bedrockTokensUsed = 0;
+    let mergedMarkdown = '';
 
     if (assessment.intakeMode === 'UPLOAD') {
-      bedrockTokensUsed = await this.processUploadMode(input.assessmentId, isReAnalyze);
+      const result = await this.processUploadMode(input.assessmentId, isReAnalyze);
+      bedrockTokensUsed = result.tokensUsed;
+      mergedMarkdown = result.mergedMarkdown;
     } else {
       // GUIDED_INTERVIEW or MANUAL_ENTRY: create skeleton fields without Bedrock
-      this._lastMergedMarkdown = '';
       if (!isReAnalyze) {
         await this.createSkeletonFields(input.assessmentId);
       }
@@ -91,13 +91,13 @@ export class GapDetectionHandler implements JobHandler {
       assessmentId: input.assessmentId,
       gapFieldsCreated: GAP_DETECTION_CONFIG.core10Fields.length,
       bedrockTokensUsed,
-      mergedMarkdown: this._lastMergedMarkdown,
+      mergedMarkdown,
     };
   }
 
   // ─── Upload Mode ─────────────────────────────────────────────────────────────
 
-  private async processUploadMode(assessmentId: string, isReAnalyze = false): Promise<number> {
+  private async processUploadMode(assessmentId: string, isReAnalyze = false): Promise<{ tokensUsed: number; mergedMarkdown: string }> {
     // 1. Fetch ALL completed PARSE_DOCUMENT jobs for this assessment
     const parseJobs = await this.prisma.job.findMany({
       where: {
@@ -111,8 +111,7 @@ export class GapDetectionHandler implements JobHandler {
     if (parseJobs.length === 0) {
       this.logger.warn(`No completed PARSE_DOCUMENT jobs found for assessment ${assessmentId}. Creating skeleton fields.`);
       await this.createSkeletonFields(assessmentId);
-      this._lastMergedMarkdown = '';
-      return 0;
+      return { tokensUsed: 0, mergedMarkdown: '' };
     }
 
     // 2. Merge all markdownContent with document separators
@@ -139,9 +138,6 @@ export class GapDetectionHandler implements JobHandler {
       );
       extractedText = extractedText.substring(0, GAP_DETECTION_CONFIG.maxInputCharacters);
     }
-
-    // Store for gap detection result
-    this._lastMergedMarkdown = extractedText;
 
     // 3. Retrieve active gap_detector prompt directly from DB
     //    (PromptsModule imports JobsModule creating a circular dependency, so we query Prisma directly)
@@ -205,17 +201,19 @@ export class GapDetectionHandler implements JobHandler {
         await this.createFieldsFromAIResponse(assessmentId, parsed);
       }
 
-      return tokensUsed;
+      return { tokensUsed, mergedMarkdown: extractedText };
     } catch (error) {
       // On Bedrock failure: create all-MISSING fields with error reasoning
       this.logger.error(
         `Bedrock invocation failed for assessment ${assessmentId}: ${(error as Error).message}`,
       );
-      this._lastMergedMarkdown = extractedText; // Preserve merged content even on Bedrock failure
       if (!isReAnalyze) {
         await this.createErrorFields(assessmentId, error);
+      } else {
+        // In re-analyze mode, log the error on existing fields so the user knows
+        this.logger.warn(`Re-analyze Bedrock failure for ${assessmentId} — existing fields preserved with no update`);
       }
-      return 0;
+      return { tokensUsed: 0, mergedMarkdown: extractedText };
     }
   }
 
@@ -291,7 +289,6 @@ export class GapDetectionHandler implements JobHandler {
     const existingFields = await this.prisma.gapField.findMany({
       where: { assessmentId },
     });
-    const fieldMap = new Map(existingFields.map((f) => [f.field, f]));
     const responseMap = new Map(response.fields.map((f) => [f.field, f]));
 
     const updates = existingFields.map((existing) => {
@@ -320,9 +317,9 @@ export class GapDetectionHandler implements JobHandler {
           aiReasoning: aiField.reasoning,
         },
       });
-    }).filter(Boolean);
+    }).filter((u): u is NonNullable<typeof u> => u !== null);
 
-    await this.prisma.$transaction(updates as any[]);
+    await this.prisma.$transaction(updates);
     this.logger.log(`Updated ${updates.length} gap fields from re-analysis for assessment ${assessmentId}`);
   }
 

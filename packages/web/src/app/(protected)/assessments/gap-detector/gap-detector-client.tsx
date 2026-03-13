@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useCallback, useState, useRef } from 'react';
+import { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Loader2,
@@ -138,6 +138,13 @@ export default function GapDetectorClient() {
   const { startPolling, isProcessing: isReAnalyzing, status: jobStatus } = useJobPolling();
   const reAnalyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Clean up debounce timer on unmount
+  useEffect(() => {
+    return () => {
+      if (reAnalyzeTimerRef.current) clearTimeout(reAnalyzeTimerRef.current);
+    };
+  }, []);
+
   // When re-analysis job completes, show toast
   useEffect(() => {
     if (jobStatus === JobStatus.COMPLETED) {
@@ -171,7 +178,7 @@ export default function GapDetectorClient() {
   const handleSaveDraft = useCallback(async () => {
     if (!id) return;
     try {
-      await updateAssessment({ id, data: { status: 'DRAFT' as never } });
+      await updateAssessment({ id, data: { status: 'DRAFT' } });
       sileo.success({ title: 'Draft saved' });
     } catch (err) {
       sileo.error({
@@ -193,8 +200,9 @@ export default function GapDetectorClient() {
       router.push(`/assessments/risk-scorecard?id=${id}`);
     } catch (err) {
       // Handle validation failure — fields rejected by AI
-      if (err instanceof AxiosError && err.response?.status === 400 && Array.isArray(err.response.data?.invalidFields)) {
-        const invalidFields = err.response.data.invalidFields as InvalidField[];
+      const errData = err instanceof AxiosError ? err.response?.data : undefined;
+      if (err instanceof AxiosError && err.response?.status === 400 && errData && typeof errData === 'object' && Array.isArray(errData.invalidFields)) {
+        const invalidFields = errData.invalidFields as InvalidField[];
         if (invalidFields.length > 0) {
           const count = invalidFields.length;
           sileo.warning({
@@ -266,7 +274,7 @@ export default function GapDetectorClient() {
 
   // ─── Derived state ────────────────────────────────────────────────────────────
   const isLoading = assessmentLoading || gapLoading;
-  const fields = gapData?.data ?? [];
+  const fields = useMemo(() => gapData?.data ?? [], [gapData?.data]);
   const total = gapData?.total ?? 0;
   const verified = gapData?.verifiedCount ?? 0;
   const allMandatoryComplete = gapData?.allMandatoryComplete ?? false;
@@ -288,13 +296,16 @@ export default function GapDetectorClient() {
     }
   }, [hasPendingIssues, showValidationBanner]);
 
-  // Apply filter to fields before grouping
-  const filteredFields = activeFilter === 'all'
-    ? fields
-    : activeFilter === 'attention'
-      ? fields.filter((f) => f.status === GapFieldStatus.MISSING || f.status === GapFieldStatus.PARTIAL)
-      : fields.filter((f) => f.status === GapFieldStatus.VERIFIED);
-  const groups = groupByCategory(filteredFields);
+  // Apply filter to fields before grouping (memoized to avoid re-renders)
+  const filteredFields = useMemo(
+    () => activeFilter === 'all'
+      ? fields
+      : activeFilter === 'attention'
+        ? fields.filter((f) => f.status === GapFieldStatus.MISSING || f.status === GapFieldStatus.PARTIAL)
+        : fields.filter((f) => f.status === GapFieldStatus.VERIFIED),
+    [fields, activeFilter],
+  );
+  const groups = useMemo(() => groupByCategory(filteredFields), [filteredFields]);
 
   // Data completeness — only VERIFIED counts
   const completeness = total > 0 ? Math.round((verified / total) * 100) : 0;
