@@ -112,7 +112,7 @@ export class AllianceRiskStack extends cdk.Stack {
       cors: [
         {
           allowedOrigins: ['*'],
-          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT],
+          allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.POST, s3.HttpMethods.PUT],
           allowedHeaders: ['*'],
           exposedHeaders: ['ETag'],
           maxAge: 3600,

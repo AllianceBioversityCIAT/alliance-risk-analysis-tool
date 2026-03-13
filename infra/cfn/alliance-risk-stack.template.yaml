@@ -249,6 +249,7 @@ Resources:
               - "*"
             AllowedMethods:
               - GET
+              - POST
               - PUT
             AllowedHeaders:
               - "*"
