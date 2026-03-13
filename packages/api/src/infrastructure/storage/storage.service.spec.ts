@@ -7,6 +7,9 @@ jest.mock('@aws-sdk/client-s3');
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: jest.fn().mockResolvedValue('https://s3.example.com/presigned-url'),
 }));
+jest.mock('@aws-sdk/s3-presigned-post', () => ({
+  createPresignedPost: jest.fn().mockResolvedValue({ url: 'https://s3.example.com/presigned-post', fields: {} }),
+}));
 
 describe('StorageService', () => {
   let service: StorageService;
@@ -49,11 +52,12 @@ describe('StorageService', () => {
 
   describe('generatePresignedUploadUrl', () => {
     it('should return a presigned URL', async () => {
-      const url = await service.generatePresignedUploadUrl(
+      const result = await service.generatePresignedUploadUrl(
         'assessments/123/documents/456/plan.pdf',
         'application/pdf',
+        1024,
       );
-      expect(url).toBe('https://s3.example.com/presigned-url');
+      expect(result.url).toBe('https://s3.example.com/presigned-post');
     });
   });
 

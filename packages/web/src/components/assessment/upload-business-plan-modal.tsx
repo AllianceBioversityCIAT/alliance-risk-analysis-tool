@@ -221,14 +221,14 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
       try {
         updateFile(i, { phase: 'uploading', uploadProgress: 0, errorMessage: null });
 
-        const { presignedUrl, documentId } = await requestUploadUrl({
+        const { presignedPost, documentId } = await requestUploadUrl({
           assessmentId,
           fileName: tf.selectedFile.name,
           mimeType: tf.selectedFile.mimeType,
           fileSize: tf.selectedFile.size,
         });
 
-        await uploadToS3(presignedUrl, tf.selectedFile, (pct) => {
+        await uploadToS3(presignedPost, tf.selectedFile, (pct) => {
           updateFile(i, { uploadProgress: pct });
         });
 
@@ -381,7 +381,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
 // ─── S3 XHR upload helper ────────────────────────────────────────────────────
 
 async function uploadToS3(
-  presignedUrl: string,
+  presignedPost: { url: string; fields: Record<string, string> },
   selectedFile: SelectedFile,
   onProgress: (pct: number) => void,
 ): Promise<void> {
@@ -407,8 +407,14 @@ async function uploadToS3(
     xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
     xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
 
-    xhr.open('PUT', presignedUrl);
-    xhr.setRequestHeader('Content-Type', selectedFile.mimeType);
-    xhr.send(selectedFile.file);
+    const formData = new FormData();
+    Object.entries(presignedPost.fields).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+    formData.append('file', selectedFile.file);
+
+    xhr.open('POST', presignedPost.url);
+    // Do not set Content-Type header manually when using FormData
+    xhr.send(formData);
   });
 }
