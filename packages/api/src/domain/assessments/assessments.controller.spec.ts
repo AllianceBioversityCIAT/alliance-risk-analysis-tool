@@ -97,7 +97,7 @@ describe('AssessmentsController', () => {
   });
 
   describe('requestUploadUrl', () => {
-    it('should return a presigned upload URL', async () => {
+    it('should return a presigned POST payload', async () => {
       const dto = { fileName: 'plan.pdf', mimeType: 'application/pdf', fileSize: 1024 };
       const result = await controller.requestUploadUrl('assess-1', dto, mockUser);
       expect(result.presignedPost.url).toBeTruthy();
