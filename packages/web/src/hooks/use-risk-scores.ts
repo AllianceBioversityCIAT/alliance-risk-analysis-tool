@@ -2,23 +2,22 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import type { RiskScoreResponse, AssessmentCommentResponse } from '@alliance-risk/shared';
 
-interface RiskScoresResponse {
-  data: RiskScoreResponse[];
-  overallScore: number;
-  overallLevel: string;
+interface UseRiskScoresOptions {
+  refetchInterval?: number | false;
 }
 
-export function useRiskScores(assessmentId: string) {
-  return useQuery<RiskScoresResponse>({
+export function useRiskScores(assessmentId: string, options: UseRiskScoresOptions = {}) {
+  return useQuery<RiskScoreResponse[]>({
     queryKey: ['risk-scores', assessmentId],
     queryFn: async () => {
-      const response = await apiClient.get<RiskScoresResponse>(
+      const response = await apiClient.get<RiskScoreResponse[]>(
         `/api/assessments/${assessmentId}/risk-scores`,
       );
       return response.data;
     },
     staleTime: 2 * 60 * 1000,
     enabled: !!assessmentId,
+    refetchInterval: options.refetchInterval,
   });
 }
 

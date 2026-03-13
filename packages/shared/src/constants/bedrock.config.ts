@@ -29,8 +29,16 @@ export const BEDROCK_MODELS: Record<
   },
   [AgentSection.RISK_ANALYSIS]: {
     modelId: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+    /** Score 7 categories × 5 subcategories with narratives and recommendations. */
+    maxTokens: 12288,
+    /** Slightly higher than gap-detector (0.2) for richer narrative generation. */
+    temperature: 0.3,
   },
   [AgentSection.REPORT_GENERATION]: {
     modelId: 'us.anthropic.claude-sonnet-4-5-20250929-v1:0',
+    /** Executive summary + strengths/weaknesses synthesis. */
+    maxTokens: 8192,
+    /** Higher temperature for more creative report writing. */
+    temperature: 0.4,
   },
 };

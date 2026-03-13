@@ -241,11 +241,12 @@ export class GapDetectionHandler implements JobHandler {
       // Fall through to next strategy
     }
 
-    // Strategy 3: Regex extract first { ... } JSON block
-    const match = output.match(/\{[\s\S]*\}/);
-    if (match) {
+    // Strategy 3: Extract first { ... } JSON block (string-based, no regex)
+    const firstBrace = output.indexOf('{');
+    const lastBrace = output.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace > firstBrace) {
       try {
-        const parsed = JSON.parse(match[0]) as GapDetectionAIResponse;
+        const parsed = JSON.parse(output.substring(firstBrace, lastBrace + 1)) as GapDetectionAIResponse;
         if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
       } catch {
         // Fall through

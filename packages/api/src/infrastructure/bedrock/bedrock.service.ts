@@ -28,7 +28,7 @@ export class BedrockService {
   constructor(private readonly configService: ConfigService) {
     this.client = new BedrockRuntimeClient({
       region: this.configService.get<string>('AWS_REGION') ?? 'us-east-1',
-      requestHandler: { requestTimeout: 120_000 }, // 2-minute timeout per request
+      requestHandler: { requestTimeout: 300_000 }, // 5-minute timeout (risk analysis generates ~8K tokens)
     });
 
     this.circuitBreaker = new CircuitBreaker({

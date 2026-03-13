@@ -40,6 +40,7 @@
     "jsonwebtoken": "^9.0.3",
     "jwks-rsa": "^3.2.2",
     "mammoth": "^1.11.0",
+    "pdfkit": "^0.17.2",
     "pg": "^8.18.0",
     "prisma": "^7.4.1",
     "reflect-metadata": "^0.2.0",
@@ -56,6 +57,7 @@
     "@types/jest": "^29.5.2",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.0.0",
+    "@types/pdfkit": "^0.17.5",
     "@types/supertest": "^7.2.0",
     "@types/turndown": "^5.0.6",
     "@typescript-eslint/eslint-plugin": "^6.0.0",
@@ -84,8 +86,21 @@
       "^.+\\.(t|j)s$": "ts-jest"
     },
     "collectCoverageFrom": [
-      "**/*.(t|j)s"
+      "**/*.(t|j)s",
+      "!**/*.module.(t|j)s",
+      "!**/main.ts",
+      "!**/worker.ts",
+      "!**/lambda.ts",
+      "!**/configure-app.ts"
     ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 40,
+        "functions": 60,
+        "lines": 55,
+        "statements": 55
+      }
+    },
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

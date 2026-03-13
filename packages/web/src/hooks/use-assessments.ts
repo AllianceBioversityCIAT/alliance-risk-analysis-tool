@@ -61,7 +61,11 @@ export function useAssessments(filters: AssessmentFilters = {}) {
   });
 }
 
-export function useAssessment(id: string | null) {
+interface UseAssessmentOptions {
+  refetchInterval?: number | false;
+}
+
+export function useAssessment(id: string | null, options: UseAssessmentOptions = {}) {
   return useQuery<AssessmentDetail>({
     queryKey: ['assessment', id],
     queryFn: async () => {
@@ -70,6 +74,7 @@ export function useAssessment(id: string | null) {
     },
     enabled: !!id,
     staleTime: 2 * 60 * 1000,
+    refetchInterval: options.refetchInterval,
   });
 }
 

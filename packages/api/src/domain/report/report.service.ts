@@ -37,6 +37,14 @@ export class ReportService {
     const overallScore = assessment.overallRiskScore ?? 0;
     const overallLevel = assessment.overallRiskLevel ?? 'LOW';
 
+    // Build executive summary from category narratives if available
+    const narratives = riskScores.filter((s) => s.narrative).map((s) => s.narrative);
+    const executiveSummary = narratives.length > 0
+      ? `Risk assessment for ${assessment.companyName} has been completed with an overall risk score of ${overallScore} (${overallLevel}). ` +
+        `The analysis evaluated 7 risk categories across 35 indicators. ` +
+        narratives.slice(0, 3).join(' ')
+      : `Risk assessment for ${assessment.companyName} has been completed with an overall risk score of ${overallScore} (${overallLevel}).`;
+
     return {
       assessment: {
         id: assessment.id,
@@ -53,7 +61,7 @@ export class ReportService {
         updatedAt: assessment.updatedAt.toISOString(),
         createdAt: assessment.createdAt.toISOString(),
       },
-      executiveSummary: `Risk assessment for ${assessment.companyName} has been completed with an overall risk score of ${overallScore}.`,
+      executiveSummary,
       overallScore,
       overallLevel: overallLevel as unknown as import('@alliance-risk/shared').RiskLevel,
       categories: riskScores.map((s) => ({
