@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, useEffect, memo } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -86,6 +86,13 @@ const GapFieldCard = memo(function GapFieldCard({
   const [isSaving, setIsSaving] = useState(false);
   const [isFocused, setIsFocused] = useState(false);
   const [showReasoning, setShowReasoning] = useState(false);
+
+  // Sync editValue when currentValue changes externally (e.g. server response after save)
+  useEffect(() => {
+    if (!isFocused) {
+      setEditValue(currentValue ?? '');
+    }
+  }, [currentValue, isFocused]);
 
   const isDirty = editValue !== (currentValue ?? '');
   const isEditing = isFocused || isDirty;

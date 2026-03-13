@@ -79,10 +79,11 @@ export function useUpdateGapFields(assessmentId: string) {
             data: old.data.map((field) => {
               const update = updates.find((u) => u.id === field.id);
               if (update) {
-                  return {
+                return {
                   ...field,
                   correctedValue: update.correctedValue,
-                  status: GapFieldStatus.VERIFIED,
+                  // Keep current status — server will determine actual status after validation
+                  status: field.status === GapFieldStatus.MISSING ? GapFieldStatus.VERIFIED : field.status,
                 };
               }
               return field;

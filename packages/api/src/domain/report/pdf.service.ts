@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit');
 import type { ReportResponse, SubcategoryScore } from '@alliance-risk/shared';
 
