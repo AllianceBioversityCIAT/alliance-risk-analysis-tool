@@ -122,7 +122,7 @@ describe('AssessmentsService', () => {
   });
 
   describe('requestUploadUrl', () => {
-    it('should create document record and return presigned URL', async () => {
+    it('should create document record and return presigned POST', async () => {
       mockPrisma.assessmentDocument.create.mockResolvedValue({ id: 'doc-1', s3Key: '' });
       const result = await service.requestUploadUrl(
         'assess-1',
