@@ -25,7 +25,7 @@ export class StorageService {
    * Generate a presigned POST object for uploading a file to S3.
    * Key convention: assessments/{assessmentId}/documents/{documentId}/{fileName}
    */
-  async generatePresignedUploadUrl(
+  async generatePresignedUploadPost(
     key: string,
     contentType: string,
     maxSize: number,
@@ -43,6 +43,19 @@ export class StorageService {
       },
       Expires: expiresIn,
     });
+  }
+
+  /**
+   * @deprecated Use {@link generatePresignedUploadPost} instead.
+   * Alias that delegates to {@link generatePresignedUploadPost}.
+   */
+  async generatePresignedUploadUrl(
+    key: string,
+    contentType: string,
+    maxSize: number,
+    expiresIn: number = 3600,
+  ): Promise<{ url: string; fields: Record<string, string> }> {
+    return this.generatePresignedUploadPost(key, contentType, maxSize, expiresIn);
   }
 
   /**
