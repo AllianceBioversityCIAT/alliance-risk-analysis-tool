@@ -55,7 +55,7 @@ import { useJobPolling } from '@/hooks/use-job-polling';
 import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { useMergedContent } from '@/hooks/use-merged-content';
 import { useMultiDocumentStatus } from '@/hooks/use-multi-document-status';
-import { GapFieldStatus, JobStatus } from '@alliance-risk/shared';
+import { AssessmentStatus, GapFieldStatus, JobStatus } from '@alliance-risk/shared';
 import type { GapFieldResponse, InvalidField } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -178,7 +178,7 @@ export default function GapDetectorClient() {
   const handleSaveDraft = useCallback(async () => {
     if (!id) return;
     try {
-      await updateAssessment({ id, data: { status: 'DRAFT' } });
+      await updateAssessment({ id, data: { status: AssessmentStatus.DRAFT } });
       sileo.success({ title: 'Draft saved' });
     } catch (err) {
       sileo.error({
