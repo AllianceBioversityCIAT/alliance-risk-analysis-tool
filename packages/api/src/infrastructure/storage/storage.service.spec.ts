@@ -51,7 +51,7 @@ describe('StorageService', () => {
   });
 
   describe('generatePresignedUploadUrl', () => {
-    it('should return a presigned URL', async () => {
+    it('should return a presigned POST object', async () => {
       const result = await service.generatePresignedUploadUrl(
         'assessments/123/documents/456/plan.pdf',
         'application/pdf',
