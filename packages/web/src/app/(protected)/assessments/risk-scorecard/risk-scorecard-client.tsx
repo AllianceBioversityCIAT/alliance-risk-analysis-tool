@@ -8,7 +8,9 @@ import { PipelineStepper } from '@/components/shared/pipeline-stepper';
 import { AssessmentPageShell } from '@/components/shared/assessment-page-shell';
 import { RiskScoreOverview } from '@/components/risk-scorecard/risk-score-overview';
 import { CategoryScoreCard } from '@/components/risk-scorecard/category-score-card';
-import { RecommendationRow } from '@/components/risk-scorecard/recommendation-row';
+import { RecommendationCategoryGroup } from '@/components/risk-scorecard/recommendation-category-group';
+import { RecommendationFilterBar } from '@/components/risk-scorecard/recommendation-filter-bar';
+import { getCategoryLabel } from '@/components/risk-scorecard/category-config';
 import { CommentPanel } from '@/components/risk-scorecard/comment-panel';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAssessment } from '@/hooks/use-assessments';
@@ -18,8 +20,9 @@ import {
   useAssessmentComments,
   useAddComment,
 } from '@/hooks/use-risk-scores';
-import { AssessmentStatus, RiskLevel } from '@alliance-risk/shared';
+import { AssessmentStatus, RiskLevel, RecommendationPriority } from '@alliance-risk/shared';
 import apiClient from '@/lib/api-client';
+import type { EnrichedRecommendation } from '@/components/risk-scorecard/recommendation-types';
 
 const POLL_INTERVAL = 5000; // 5 seconds
 
@@ -78,6 +81,7 @@ export default function RiskScorecardClient() {
   const id = searchParams.get('id');
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | RecommendationPriority>('ALL');
 
   useEffect(() => {
     if (!id) {
@@ -132,7 +136,38 @@ export default function RiskScorecardClient() {
 
   const isLoading = assessmentLoading || riskLoading;
   const scores = riskData ?? [];
-  const allRecommendations = scores.flatMap((s) => s.recommendations);
+  const allRecommendations: EnrichedRecommendation[] = scores.flatMap((s) =>
+    s.recommendations.map((rec) => ({
+      ...rec,
+      category: s.category,
+      categoryLabel: getCategoryLabel(s.category),
+      categoryScore: s.score,
+      categoryLevel: s.level as RiskLevel,
+    })),
+  );
+
+  const filteredRecommendations =
+    priorityFilter === 'ALL'
+      ? allRecommendations
+      : allRecommendations.filter((r) => r.priority === priorityFilter);
+
+  const filterCounts: Record<'ALL' | RecommendationPriority, number> = {
+    ALL: allRecommendations.length,
+    [RecommendationPriority.HIGH]: allRecommendations.filter((r) => r.priority === RecommendationPriority.HIGH).length,
+    [RecommendationPriority.MEDIUM]: allRecommendations.filter((r) => r.priority === RecommendationPriority.MEDIUM).length,
+    [RecommendationPriority.LOW]: allRecommendations.filter((r) => r.priority === RecommendationPriority.LOW).length,
+  };
+
+  // Group filtered recommendations by category (preserving scores order)
+  const groupedByCategory = scores
+    .map((s) => ({
+      category: s.category,
+      categoryLabel: getCategoryLabel(s.category),
+      score: s.score,
+      level: s.level as RiskLevel,
+      recommendations: filteredRecommendations.filter((r) => r.category === s.category),
+    }))
+    .filter((g) => g.recommendations.length > 0);
 
   const overallScore = assessment?.overallRiskScore ?? 0;
   const overallLevel = (assessment?.overallRiskLevel as RiskLevel) ?? RiskLevel.LOW;
@@ -206,22 +241,28 @@ export default function RiskScorecardClient() {
 
               {allRecommendations.length > 0 && (
                 <div>
-                  <h2 className="text-base font-semibold text-foreground mb-3">
-                    Key Recommendations ({allRecommendations.length})
-                  </h2>
-                  <div className="space-y-2">
-                    {[...allRecommendations]
-                      .sort((a, b) => {
-                        const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-                        return (order[a.priority as keyof typeof order] ?? 2) - (order[b.priority as keyof typeof order] ?? 2);
-                      })
-                      .map((rec) => (
-                        <RecommendationRow
-                          key={rec.id}
-                          recommendation={rec}
-                          onSave={handleEditRecommendation}
-                        />
-                      ))}
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h2 className="text-base font-semibold text-foreground">
+                      Key Recommendations ({filteredRecommendations.length})
+                    </h2>
+                    <RecommendationFilterBar
+                      counts={filterCounts}
+                      active={priorityFilter}
+                      onChange={setPriorityFilter}
+                    />
+                  </div>
+                  <div className="space-y-6">
+                    {groupedByCategory.map((group) => (
+                      <RecommendationCategoryGroup
+                        key={group.category}
+                        category={group.category}
+                        categoryLabel={group.categoryLabel}
+                        score={group.score}
+                        level={group.level}
+                        recommendations={group.recommendations}
+                        onSave={handleEditRecommendation}
+                      />
+                    ))}
                   </div>
                 </div>
               )}

@@ -58,6 +58,10 @@ ok "API URL:        ${API_URL}"
 
 # ── Build ────────────────────────────────────────────────────────────────────
 
+log "Cleaning previous build output..."
+rm -rf "${OUT_DIR}"
+ok "Clean complete"
+
 log "Setting NEXT_PUBLIC_* environment variables from stack outputs..."
 export NEXT_PUBLIC_API_URL="${API_URL}"
 export NEXT_PUBLIC_COGNITO_USER_POOL_ID="${COGNITO_POOL_ID}"

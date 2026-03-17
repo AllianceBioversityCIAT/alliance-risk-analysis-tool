@@ -1,27 +1,12 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, Shield } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RiskLevel } from '@alliance-risk/shared';
 import type { RiskScoreResponse, SubcategoryScore } from '@alliance-risk/shared';
 import { LEVEL_CONFIG } from './risk-score-overview';
-
-// ─── Category label mapping ─────────────────────────────────────────────────
-
-const CATEGORY_LABELS: Record<string, string> = {
-  FINANCIAL: 'Financial',
-  CLIMATE_ENVIRONMENTAL: 'Climate & Environmental',
-  BEHAVIORAL: 'Behavioral',
-  OPERATIONAL: 'Operational',
-  MARKET: 'Market',
-  GOVERNANCE_LEGAL: 'Governance & Legal',
-  TECHNOLOGY_DATA: 'Technology & Data',
-};
-
-function categoryLabel(raw: string): string {
-  return CATEGORY_LABELS[raw] ?? raw.replace(/_/g, ' ');
-}
+import { getCategoryConfig } from './category-config';
 
 // ─── Subcategory Card ────────────────────────────────────────────────────────
 
@@ -91,7 +76,9 @@ interface CategoryScoreCardProps {
 export function CategoryScoreCard({ score }: Readonly<CategoryScoreCardProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const config = LEVEL_CONFIG[score.level];
-  const label = categoryLabel(score.category);
+  const catConfig = getCategoryConfig(score.category);
+  const CategoryIcon = catConfig.icon;
+  const label = catConfig.label;
 
   return (
     <div
@@ -109,7 +96,7 @@ export function CategoryScoreCard({ score }: Readonly<CategoryScoreCardProps>) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-2">
             <div className="flex items-center gap-2 min-w-0">
-              <Shield className={cn('h-4 w-4 shrink-0', config.color)} />
+              <CategoryIcon className={cn('h-4 w-4 shrink-0', config.color)} />
               <p className="text-sm font-bold text-foreground truncate">{label}</p>
             </div>
             <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0', config.color, config.bg)}>
