@@ -304,6 +304,7 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-*"
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/moonshotai.kimi-k2*"
               - Effect: Allow
                 Action:
                   - textract:StartDocumentAnalysis
@@ -393,6 +394,7 @@ Resources:
                 Resource:
                   - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/anthropic.claude-*"
                   - !Sub "arn:${AWS::Partition}:bedrock:${AWS::Region}:${AWS::AccountId}:inference-profile/us.anthropic.claude-*"
+                  - !Sub "arn:${AWS::Partition}:bedrock:*::foundation-model/moonshotai.kimi-k2*"
               - Effect: Allow
                 Action:
                   - textract:StartDocumentAnalysis

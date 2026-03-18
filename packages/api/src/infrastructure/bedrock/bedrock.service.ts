@@ -1,7 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   BedrockRuntimeClient,
-  InvokeModelCommand,
+  ConverseCommand,
+  type Message,
+  type SystemContentBlock,
+  type InferenceConfiguration,
 } from '@aws-sdk/client-bedrock-runtime';
 import { ConfigService } from '@nestjs/config';
 import type { PromptPreviewRequest, PromptPreviewResponse } from '@alliance-risk/shared';
@@ -39,32 +42,37 @@ export class BedrockService {
     });
   }
 
+  /**
+   * Model-agnostic invocation via the Bedrock Converse API.
+   * Works with any model on Bedrock (Claude, Kimi, Llama, Mistral, etc.)
+   * without needing model-specific request/response formats.
+   */
   async invokeModel(params: InvokeModelParams): Promise<{ output: string; tokensUsed: number; processingTime: number }> {
     const startedAt = Date.now();
 
-    this.logger.log(`Invoking Bedrock model: ${params.modelId}`);
+    this.logger.log(`Invoking Bedrock model via Converse API: ${params.modelId}`);
 
-    const body = JSON.stringify({
-      anthropic_version: 'bedrock-2023-05-31',
-      max_tokens: params.maxTokens ?? 4096,
-      system: params.systemPrompt,
-      messages: [
-        { role: 'user', content: params.userPrompt },
-      ],
+    const system: SystemContentBlock[] = [{ text: params.systemPrompt }];
+
+    const messages: Message[] = [
+      { role: 'user', content: [{ text: params.userPrompt }] },
+    ];
+
+    const inferenceConfig: InferenceConfiguration = {
+      maxTokens: params.maxTokens ?? 4096,
       ...(params.temperature !== undefined && { temperature: params.temperature }),
-      ...(params.topP !== undefined && { top_p: params.topP }),
-      ...(params.topK !== undefined && { top_k: params.topK }),
-    });
+      ...(params.topP !== undefined && { topP: params.topP }),
+    };
 
     const response = await this.circuitBreaker.execute(() =>
       withRetry(
         () =>
           this.client.send(
-            new InvokeModelCommand({
+            new ConverseCommand({
               modelId: params.modelId,
-              contentType: 'application/json',
-              accept: 'application/json',
-              body: Buffer.from(body),
+              system,
+              messages,
+              inferenceConfig,
             }),
           ),
         {
@@ -76,24 +84,21 @@ export class BedrockService {
       ),
     );
 
-    const responseBody = JSON.parse(
-      Buffer.from(response.body).toString('utf-8'),
-    ) as {
-      content: Array<{ type: string; text: string }>;
-      usage?: { input_tokens: number; output_tokens: number };
-    };
-
     const output =
-      responseBody.content
-        ?.filter((c) => c.type === 'text')
-        .map((c) => c.text)
+      response.output?.message?.content
+        ?.filter((block) => 'text' in block)
+        .map((block) => block.text ?? '')
         .join('') ?? '';
 
     const tokensUsed =
-      (responseBody.usage?.input_tokens ?? 0) +
-      (responseBody.usage?.output_tokens ?? 0);
+      (response.usage?.inputTokens ?? 0) +
+      (response.usage?.outputTokens ?? 0);
 
     const processingTime = Date.now() - startedAt;
+
+    this.logger.log(
+      `Converse response: ${tokensUsed} tokens, ${processingTime}ms, output ${output.length} chars`,
+    );
 
     return { output, tokensUsed, processingTime };
   }

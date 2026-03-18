@@ -217,40 +217,104 @@ export class GapDetectionHandler implements JobHandler {
     }
   }
 
-  // ─── JSON Parsing (3-Strategy Defensive) ─────────────────────────────────────
+  // ─── JSON Parsing (5-Strategy Defensive) ─────────────────────────────────────
+
+  private tryParseGapResponse(text: string): GapDetectionAIResponse | null {
+    try {
+      const parsed = JSON.parse(text) as GapDetectionAIResponse;
+      if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
+    } catch {
+      // Not valid JSON
+    }
+    return null;
+  }
+
+  private stripMarkdownFences(output: string): string {
+    return output
+      .replace(/^\s*```(?:json)?\s*\n?/gm, '')
+      .replace(/\n?\s*```\s*$/gm, '')
+      .trim();
+  }
+
+  private countUnclosedDelimiters(text: string): { braces: number; brackets: number } {
+    let braces = 0;
+    let brackets = 0;
+    let inString = false;
+    let escape = false;
+    for (const ch of text) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') braces++;
+      else if (ch === '}') braces--;
+      else if (ch === '[') brackets++;
+      else if (ch === ']') brackets--;
+    }
+    return { braces, brackets };
+  }
+
+  private repairTruncatedJson(jsonText: string): GapDetectionAIResponse | null {
+    let { braces, brackets } = this.countUnclosedDelimiters(jsonText);
+    if (braces <= 0 && brackets <= 0) return null;
+
+    this.logger.warn(
+      `Attempting to repair truncated JSON (${braces} unclosed braces, ${brackets} unclosed brackets)`,
+    );
+
+    // Remove incomplete trailing field (partial string value, dangling key, etc.)
+    let repaired = jsonText.replace(/,\s*"[^"]*"?\s*:?\s*[^,\]}]*$/, '');
+    // Also handle a trailing incomplete object inside an array
+    repaired = repaired.replace(/,\s*\{[^}]*$/, '');
+
+    while (brackets > 0) { repaired += ']'; brackets--; }
+    while (braces > 0) { repaired += '}'; braces--; }
+
+    const result = this.tryParseGapResponse(repaired);
+    if (result) {
+      this.logger.warn(`Repaired truncated JSON — got ${result.fields.length} fields (some may be partial)`);
+    }
+    return result;
+  }
 
   private parseAIResponse(output: string): GapDetectionAIResponse {
     // Strategy 1: Direct JSON.parse
-    try {
-      const parsed = JSON.parse(output) as GapDetectionAIResponse;
-      if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
-    } catch {
-      // Fall through to next strategy
-    }
+    const direct = this.tryParseGapResponse(output);
+    if (direct) return direct;
 
-    // Strategy 2: Strip markdown code fences (```json ... ```)
-    try {
-      const stripped = output
-        .replace(/^```(?:json)?\s*\n?/m, '')
-        .replace(/\n?```\s*$/m, '');
-      const parsed = JSON.parse(stripped) as GapDetectionAIResponse;
-      if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
-    } catch {
-      // Fall through to next strategy
-    }
+    // Strategy 2: Strip markdown code fences (handles leading whitespace)
+    const stripped = this.tryParseGapResponse(this.stripMarkdownFences(output));
+    if (stripped) return stripped;
 
-    // Strategy 3: Extract first { ... } JSON block (string-based, no regex)
+    // Strategy 3: Extract first { ... } JSON block
     const firstBrace = output.indexOf('{');
     const lastBrace = output.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace > firstBrace) {
-      try {
-        const parsed = JSON.parse(output.substring(firstBrace, lastBrace + 1)) as GapDetectionAIResponse;
-        if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
-      } catch {
-        // Fall through
-      }
+      const jsonBlock = output.substring(firstBrace, lastBrace + 1);
+      const extracted = this.tryParseGapResponse(jsonBlock);
+      if (extracted) return extracted;
     }
 
+    // Strategy 4: Repair truncated JSON (model ran out of tokens)
+    if (firstBrace !== -1) {
+      const jsonBlock = output.substring(firstBrace);
+      const repaired = this.repairTruncatedJson(jsonBlock);
+      if (repaired) return repaired;
+    }
+
+    // Strategy 5: Repair after stripping fences (handles ` ```json\n{...` truncated)
+    const strippedText = this.stripMarkdownFences(output);
+    const strippedFirstBrace = strippedText.indexOf('{');
+    if (strippedFirstBrace !== -1) {
+      const repaired = this.repairTruncatedJson(strippedText.substring(strippedFirstBrace));
+      if (repaired) return repaired;
+    }
+
+    this.logger.error(
+      `All JSON parse strategies failed. Output length: ${output.length}, ` +
+      `starts with: ${JSON.stringify(output.substring(0, 100))}, ` +
+      `ends with: ${JSON.stringify(output.substring(output.length - 100))}`,
+    );
     throw new Error(`Failed to parse Bedrock response as JSON. Output preview: ${output.substring(0, 200)}`);
   }
 
