@@ -1,6 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
-import { UpdateRecommendationDto } from './dto';
+import { JobsService } from '../../platform/jobs/jobs.service';
+import { UpdateRecommendationDto, UpdateAnalystCommentDto } from './dto';
+import { JobType } from '@alliance-risk/shared';
+import { RISK_ANALYSIS_CONFIG } from './risk-analysis.config';
+import type { CategoryDefinition } from './risk-analysis.config';
 import type { RiskScore, Recommendation } from '@prisma/client';
 
 export type RiskScoreWithRecommendations = RiskScore & {
@@ -9,7 +13,10 @@ export type RiskScoreWithRecommendations = RiskScore & {
 
 @Injectable()
 export class RiskAnalysisService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly jobsService: JobsService,
+  ) {}
 
   private async validateOwnership(assessmentId: string, userId: string): Promise<void> {
     const assessment = await this.prisma.assessment.findUnique({
@@ -56,5 +63,70 @@ export class RiskAnalysisService {
         editedText: dto.text,
       },
     });
+  }
+
+  async updateAnalystComment(
+    assessmentId: string,
+    scoreId: string,
+    dto: UpdateAnalystCommentDto,
+    userId: string,
+  ): Promise<RiskScore> {
+    await this.validateOwnership(assessmentId, userId);
+
+    const riskScore = await this.prisma.riskScore.findUnique({
+      where: { id: scoreId },
+    });
+
+    if (!riskScore) throw new NotFoundException('Risk score not found');
+    if (riskScore.assessmentId !== assessmentId) {
+      throw new ForbiddenException('Risk score does not belong to this assessment');
+    }
+
+    return this.prisma.riskScore.update({
+      where: { id: scoreId },
+      data: { analystComment: dto.comment },
+    });
+  }
+
+  async resyncCategory(
+    assessmentId: string,
+    category: string,
+    userId: string,
+  ): Promise<{ jobId: string }> {
+    await this.validateOwnership(assessmentId, userId);
+
+    // Validate category is one of the 7 valid values
+    const validCategories = (RISK_ANALYSIS_CONFIG.categories as unknown as CategoryDefinition[])
+      .map((c) => c.category);
+    if (!validCategories.includes(category as typeof validCategories[number])) {
+      throw new BadRequestException(`Invalid category: ${category}. Must be one of: ${validCategories.join(', ')}`);
+    }
+
+    // Check for existing pending/processing resync job for this assessment+category
+    const existingJob = await this.prisma.job.findFirst({
+      where: {
+        type: 'RECALCULATE_CATEGORY' as unknown as import('@prisma/client').$Enums.JobType,
+        status: { in: ['PENDING', 'PROCESSING'] },
+        input: {
+          path: ['assessmentId'],
+          equals: assessmentId,
+        },
+      },
+    });
+
+    if (existingJob) {
+      const existingInput = existingJob.input as { category?: string };
+      if (existingInput.category === category) {
+        throw new BadRequestException('A resync is already in progress for this category');
+      }
+    }
+
+    const jobId = await this.jobsService.create(
+      JobType.RECALCULATE_CATEGORY,
+      { assessmentId, category },
+      userId,
+    );
+
+    return { jobId };
   }
 }

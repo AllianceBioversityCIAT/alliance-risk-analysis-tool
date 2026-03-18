@@ -8,6 +8,7 @@ import type { CategoryDefinition } from '../../../domain/risk-analysis/risk-anal
 
 interface RiskAnalysisInput {
   assessmentId: string;
+  category?: string;
 }
 
 interface RiskAnalysisResult {
@@ -59,7 +60,12 @@ export class RiskAnalysisHandler implements JobHandler {
   ) {}
 
   async execute(input: RiskAnalysisInput): Promise<RiskAnalysisResult> {
-    this.logger.log(`Running risk analysis for assessment: ${input.assessmentId}`);
+    const isSingleCategory = !!input.category;
+    this.logger.log(
+      isSingleCategory
+        ? `Resyncing category ${input.category} for assessment: ${input.assessmentId}`
+        : `Running risk analysis for assessment: ${input.assessmentId}`,
+    );
 
     // 1. Verify assessment exists (throws if not found)
     await this.prisma.assessment.findUniqueOrThrow({
@@ -119,8 +125,14 @@ export class RiskAnalysisHandler implements JobHandler {
       throw new Error('No active risk_analysis prompt found in database. Run seed first.');
     }
 
-    // 6. Build category definitions for prompt injection
-    const categoriesText = (RISK_ANALYSIS_CONFIG.categories as unknown as CategoryDefinition[])
+    // 6. Determine target categories
+    const allCategories = RISK_ANALYSIS_CONFIG.categories as unknown as CategoryDefinition[];
+    const targetCategories = isSingleCategory
+      ? allCategories.filter((c) => c.category === input.category)
+      : allCategories;
+
+    // 6b. Build category definitions for prompt injection
+    const categoriesText = targetCategories
       .map((cat) => {
         const subs = cat.subcategories.map((s) => `  - ${s.name}: ${s.indicator}`).join('\n');
         return `${cat.label} (${cat.category}):\n${subs}`;
@@ -136,13 +148,15 @@ export class RiskAnalysisHandler implements JobHandler {
       .replace(/\{\{document_content\}\}/g, documentContent)
       .replace(/\{\{categories\}\}/g, categoriesText);
 
-    // 7b. Update progress: data gathered, prompt built — about to call Bedrock
-    await this.prisma.assessment.update({
-      where: { id: input.assessmentId },
-      data: { progress: 55 },
-    });
+    // 7b. Update progress only for full runs
+    if (!isSingleCategory) {
+      await this.prisma.assessment.update({
+        where: { id: input.assessmentId },
+        data: { progress: 55 },
+      });
+    }
 
-    // 8. Invoke Bedrock with IGAD config
+    // 8. Invoke Bedrock
     let bedrockTokensUsed = 0;
     let parsed: RiskAnalysisAIResponse;
 
@@ -161,11 +175,13 @@ export class RiskAnalysisHandler implements JobHandler {
         `Bedrock risk analysis complete. Tokens: ${tokensUsed}, Output length: ${output.length} chars`,
       );
 
-      // 8b. Update progress: Bedrock responded, now parsing + storing
-      await this.prisma.assessment.update({
-        where: { id: input.assessmentId },
-        data: { progress: 75 },
-      });
+      // 8b. Update progress only for full runs
+      if (!isSingleCategory) {
+        await this.prisma.assessment.update({
+          where: { id: input.assessmentId },
+          data: { progress: 75 },
+        });
+      }
 
       // 9. Parse JSON response (3-strategy defensive parsing)
       parsed = this.parseAIResponse(output);
@@ -174,32 +190,49 @@ export class RiskAnalysisHandler implements JobHandler {
       this.logger.error(
         `Bedrock invocation or parsing failed for assessment ${input.assessmentId}: ${(error as Error).message}`,
       );
-      // Fallback: create default scores
+      if (isSingleCategory) {
+        throw error; // Don't create fallback for single-category resync
+      }
       return this.createFallbackScores(input.assessmentId);
     }
 
-    // 10. Delete existing recommendations for this assessment (idempotency)
-    const existingScores = await this.prisma.riskScore.findMany({
-      where: { assessmentId: input.assessmentId },
-      select: { id: true },
-    });
-    if (existingScores.length > 0) {
-      await this.prisma.recommendation.deleteMany({
-        where: { riskScoreId: { in: existingScores.map((s) => s.id) } },
+    // 10. Delete existing recommendations for target categories only
+    if (isSingleCategory) {
+      const targetScore = await this.prisma.riskScore.findUnique({
+        where: {
+          assessmentId_category: {
+            assessmentId: input.assessmentId,
+            category: input.category! as import('@prisma/client').$Enums.RiskCategory,
+          },
+        },
+        select: { id: true },
       });
+      if (targetScore) {
+        await this.prisma.recommendation.deleteMany({
+          where: { riskScoreId: targetScore.id },
+        });
+      }
+    } else {
+      const existingScores = await this.prisma.riskScore.findMany({
+        where: { assessmentId: input.assessmentId },
+        select: { id: true },
+      });
+      if (existingScores.length > 0) {
+        await this.prisma.recommendation.deleteMany({
+          where: { riskScoreId: { in: existingScores.map((s) => s.id) } },
+        });
+      }
     }
 
-    // 11. Upsert 7 RiskScore records + create Recommendations
+    // 11. Upsert RiskScore records + create Recommendations for target categories
     const categoryMap = new Map(parsed.categories.map((c) => [c.category, c]));
-    let totalScore = 0;
     let categoriesScored = 0;
 
-    for (const catDef of RISK_ANALYSIS_CONFIG.categories as unknown as CategoryDefinition[]) {
+    for (const catDef of targetCategories) {
       const aiCat = categoryMap.get(catDef.category);
 
       const score = this.clampScore(aiCat?.score ?? 50);
       const level = this.scoreToLevel(score);
-      totalScore += score;
       categoriesScored++;
 
       // Build subcategories with defaults for missing ones
@@ -256,20 +289,35 @@ export class RiskAnalysisHandler implements JobHandler {
       }
     }
 
-    // 12. Compute overall score
-    const overallScore = Math.round(totalScore / categoriesScored);
+    // 12. Compute overall score (always from all 7 categories in DB)
+    const allScores = await this.prisma.riskScore.findMany({
+      where: { assessmentId: input.assessmentId },
+      select: { score: true },
+    });
+    const totalScore = allScores.reduce((sum, s) => sum + s.score, 0);
+    const overallScore = Math.round(totalScore / allScores.length);
     const overallLevel = this.scoreToLevel(overallScore);
 
-    // 13. Update assessment
-    await this.prisma.assessment.update({
-      where: { id: input.assessmentId },
-      data: {
-        status: 'COMPLETE',
-        progress: 90,
-        overallRiskScore: overallScore,
-        overallRiskLevel: overallLevel,
-      },
-    });
+    // 13. Update assessment — only set status/progress for full runs
+    if (isSingleCategory) {
+      await this.prisma.assessment.update({
+        where: { id: input.assessmentId },
+        data: {
+          overallRiskScore: overallScore,
+          overallRiskLevel: overallLevel,
+        },
+      });
+    } else {
+      await this.prisma.assessment.update({
+        where: { id: input.assessmentId },
+        data: {
+          status: 'COMPLETE',
+          progress: 90,
+          overallRiskScore: overallScore,
+          overallRiskLevel: overallLevel,
+        },
+      });
+    }
 
     this.logger.log(
       `Risk analysis complete for ${input.assessmentId}. Overall: ${overallScore} (${overallLevel}). Categories: ${categoriesScored}`,

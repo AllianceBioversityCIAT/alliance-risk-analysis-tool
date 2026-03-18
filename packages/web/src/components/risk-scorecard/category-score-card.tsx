@@ -1,12 +1,16 @@
 'use client';
 
-import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import { ChevronDown, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { RiskLevel } from '@alliance-risk/shared';
+import { RiskLevel, JobStatus } from '@alliance-risk/shared';
 import type { RiskScoreResponse, SubcategoryScore } from '@alliance-risk/shared';
 import { LEVEL_CONFIG } from './risk-score-overview';
 import { getCategoryConfig } from './category-config';
+import { useUpdateAnalystComment, useResyncCategory } from '@/hooks/use-risk-scores';
+import { useJobPolling } from '@/hooks/use-job-polling';
+import { useQueryClient } from '@tanstack/react-query';
+import { sileo } from 'sileo';
 
 // ─── Subcategory Card ────────────────────────────────────────────────────────
 
@@ -71,14 +75,69 @@ function SubcategoryCard({ sub }: Readonly<{ sub: SubcategoryScore }>) {
 
 interface CategoryScoreCardProps {
   score: RiskScoreResponse;
+  assessmentId: string;
+  onResyncStateChange?: (category: string, isResyncing: boolean) => void;
 }
 
-export function CategoryScoreCard({ score }: Readonly<CategoryScoreCardProps>) {
+export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: Readonly<CategoryScoreCardProps>) {
   const [isExpanded, setIsExpanded] = useState(false);
   const config = LEVEL_CONFIG[score.level];
   const catConfig = getCategoryConfig(score.category);
   const CategoryIcon = catConfig.icon;
   const label = catConfig.label;
+
+  // Analyst comment state
+  const [commentText, setCommentText] = useState(score.analystComment ?? '');
+  const commentRef = useRef(commentText);
+  commentRef.current = commentText;
+  const { mutateAsync: updateComment } = useUpdateAnalystComment(assessmentId);
+
+  // Keep local state in sync with server data
+  useEffect(() => {
+    setCommentText(score.analystComment ?? '');
+  }, [score.analystComment]);
+
+  const handleCommentBlur = useCallback(async () => {
+    const trimmed = commentRef.current.trim();
+    const original = score.analystComment ?? '';
+    if (trimmed === original) return;
+    try {
+      await updateComment({ scoreId: score.id, comment: trimmed });
+      sileo.success({ title: 'Commentary saved' });
+    } catch {
+      sileo.error({ title: 'Failed to save commentary' });
+    }
+  }, [score.id, score.analystComment, updateComment]);
+
+  // Resync state
+  const queryClient = useQueryClient();
+  const { mutateAsync: resync } = useResyncCategory(assessmentId);
+  const { status: jobStatus, error: jobError, isProcessing, startPolling, reset } = useJobPolling();
+
+  const handleResync = useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const { jobId } = await resync(score.category);
+      startPolling(jobId);
+      onResyncStateChange?.(score.category, true);
+    } catch {
+      sileo.error({ title: 'Failed to start resync' });
+    }
+  }, [resync, score.category, startPolling, onResyncStateChange]);
+
+  // Handle job completion/failure
+  useEffect(() => {
+    if (jobStatus === JobStatus.COMPLETED) {
+      queryClient.invalidateQueries({ queryKey: ['risk-scores', assessmentId] });
+      sileo.success({ title: 'Category resynced', description: `${label} has been recalculated.` });
+      onResyncStateChange?.(score.category, false);
+      reset();
+    } else if (jobStatus === JobStatus.FAILED) {
+      sileo.error({ title: 'Resync failed', description: jobError ?? 'Unknown error' });
+      onResyncStateChange?.(score.category, false);
+      reset();
+    }
+  }, [jobStatus, jobError, queryClient, assessmentId, label, reset, score.category, onResyncStateChange]);
 
   return (
     <div
@@ -99,9 +158,23 @@ export function CategoryScoreCard({ score }: Readonly<CategoryScoreCardProps>) {
               <CategoryIcon className={cn('h-4 w-4 shrink-0', config.color)} />
               <p className="text-sm font-bold text-foreground truncate">{label}</p>
             </div>
-            <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full border shrink-0', config.color, config.bg)}>
-              {config.label}
-            </span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleResync}
+                disabled={isProcessing}
+                className={cn(
+                  'p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors',
+                  isProcessing && 'cursor-not-allowed opacity-50',
+                )}
+                title="Resync this category"
+              >
+                <RefreshCw className={cn('h-3.5 w-3.5', isProcessing && 'animate-spin')} />
+              </button>
+              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full border', config.color, config.bg)}>
+                {config.label}
+              </span>
+            </div>
           </div>
 
           {/* Score bar */}
@@ -152,6 +225,21 @@ export function CategoryScoreCard({ score }: Readonly<CategoryScoreCardProps>) {
               </div>
             </div>
           )}
+
+          {/* Analyst Commentary */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">
+              Analyst Commentary
+            </p>
+            <textarea
+              className="w-full rounded-lg border border-border bg-muted/20 p-3 text-sm text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 resize-y min-h-[80px]"
+              placeholder="Add expert commentary for this category..."
+              value={commentText}
+              onChange={(e) => setCommentText(e.target.value)}
+              onBlur={handleCommentBlur}
+              rows={3}
+            />
+          </div>
         </div>
       )}
     </div>

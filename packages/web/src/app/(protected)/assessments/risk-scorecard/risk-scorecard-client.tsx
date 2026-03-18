@@ -1,7 +1,7 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { MessageSquare, FileText, Loader2, Check, Database, BarChart3, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PipelineStepper } from '@/components/shared/pipeline-stepper';
@@ -12,6 +12,7 @@ import { RecommendationCategoryGroup } from '@/components/risk-scorecard/recomme
 import { RecommendationFilterBar } from '@/components/risk-scorecard/recommendation-filter-bar';
 import { getCategoryLabel } from '@/components/risk-scorecard/category-config';
 import { CommentPanel } from '@/components/risk-scorecard/comment-panel';
+import { RiskMatrixDialog } from '@/components/risk-scorecard/risk-matrix-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAssessment } from '@/hooks/use-assessments';
 import {
@@ -82,6 +83,17 @@ export default function RiskScorecardClient() {
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | RecommendationPriority>('ALL');
+  const resyncingCategoriesRef = useRef(new Set<string>());
+  const [hasActiveResync, setHasActiveResync] = useState(false);
+
+  const handleResyncStateChange = useCallback((category: string, isResyncing: boolean) => {
+    if (isResyncing) {
+      resyncingCategoriesRef.current.add(category);
+    } else {
+      resyncingCategoriesRef.current.delete(category);
+    }
+    setHasActiveResync(resyncingCategoriesRef.current.size > 0);
+  }, []);
 
   useEffect(() => {
     if (!id) {
@@ -176,8 +188,11 @@ export default function RiskScorecardClient() {
     scores.length === 0 &&
     assessment?.status === AssessmentStatus.ANALYZING;
 
+  const reportDisabled = isGeneratingReport || isAnalyzing || hasActiveResync;
+
   const actionButtons = !isLoading && scores.length > 0 ? (
     <>
+      <RiskMatrixDialog />
       <Button
         variant="outline"
         onClick={() => setCommentPanelOpen(true)}
@@ -186,7 +201,7 @@ export default function RiskScorecardClient() {
         <MessageSquare className="h-4 w-4" />
         Comments {comments.length > 0 && `(${comments.length})`}
       </Button>
-      <Button onClick={handleGenerateReport} disabled={isGeneratingReport} className="gap-1.5">
+      <Button onClick={handleGenerateReport} disabled={reportDisabled} className="gap-1.5">
         {isGeneratingReport ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
@@ -233,7 +248,12 @@ export default function RiskScorecardClient() {
                   <h2 className="text-base font-semibold text-foreground mb-3">Risk Categories</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {scores.map((score) => (
-                      <CategoryScoreCard key={score.id} score={score} />
+                      <CategoryScoreCard
+                        key={score.id}
+                        score={score}
+                        assessmentId={id}
+                        onResyncStateChange={handleResyncStateChange}
+                      />
                     ))}
                   </div>
                 </div>

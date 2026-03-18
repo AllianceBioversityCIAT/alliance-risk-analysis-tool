@@ -26,6 +26,7 @@ export interface RiskScoreResponse {
   subcategories: SubcategoryScore[];
   evidence: string | null;
   narrative: string | null;
+  analystComment: string | null;
   recommendations: RecommendationResponse[];
 }
 

@@ -259,6 +259,7 @@ export class PdfService {
       this.renderCategoryScoreBadge(doc, category);
       this.renderCategoryNarrative(doc, category);
       this.renderCategoryEvidence(doc, category);
+      this.renderAnalystCommentary(doc, category);
       this.renderCategorySubcategories(doc, category);
       this.renderCategoryRecommendations(doc, category);
     }
@@ -302,6 +303,55 @@ export class PdfService {
       .fillColor(this.colors.textLight)
       .text(category.evidence, { align: 'justify', lineGap: 2 });
     doc.moveDown(1);
+  }
+
+  private renderAnalystCommentary(
+    doc: PDFKit.PDFDocument,
+    category: ReportResponse['categories'][number],
+  ): void {
+    if (!category.analystComment) return;
+
+    this.renderSectionHeading(doc, 'Analyst Commentary');
+
+    const boxX = 50;
+    const boxWidth = doc.page.width - 100;
+    const textX = boxX + 12;
+    const textWidth = boxWidth - 24;
+
+    // Measure text height
+    const textHeight = doc.heightOfString(category.analystComment, {
+      width: textWidth,
+      lineGap: 3,
+    });
+    const boxHeight = textHeight + 16;
+
+    // Check page overflow
+    if (doc.y + boxHeight + 10 > doc.page.height - 60) {
+      doc.addPage();
+    }
+
+    const boxY = doc.y;
+
+    // Green-tinted background
+    doc.rect(boxX, boxY, boxWidth, boxHeight).fill('#F0FDF4');
+
+    // Left accent border
+    doc.rect(boxX, boxY, 3, boxHeight).fill('#16A34A');
+
+    // Italic commentary text
+    doc
+      .font('Helvetica-Oblique')
+      .fontSize(10)
+      .fillColor('#15803D')
+      .text(category.analystComment, textX, boxY + 8, {
+        width: textWidth,
+        lineGap: 3,
+      });
+
+    // Reset font
+    doc.font('Helvetica');
+
+    doc.y = boxY + boxHeight + 8;
   }
 
   private renderCategorySubcategories(

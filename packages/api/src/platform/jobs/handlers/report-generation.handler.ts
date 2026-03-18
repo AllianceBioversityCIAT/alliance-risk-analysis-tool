@@ -158,6 +158,7 @@ export class ReportGenerationHandler implements JobHandler {
         subcategories: (s.subcategories as unknown as import('@alliance-risk/shared').SubcategoryScore[]) ?? [],
         evidence: s.evidence,
         narrative: s.narrative,
+        analystComment: s.analystComment,
         recommendations: s.recommendations.map((r) => ({
           id: r.id,
           text: r.text,

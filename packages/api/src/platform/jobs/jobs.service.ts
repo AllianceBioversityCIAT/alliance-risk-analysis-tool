@@ -154,6 +154,8 @@ export class JobsService {
         result = await this.riskAnalysisHandler.execute(job.input as unknown as Parameters<RiskAnalysisHandler['execute']>[0]);
       } else if (job.type === JobType.REPORT_GENERATION) {
         result = await this.reportGenerationHandler.execute(job.input as unknown as Parameters<ReportGenerationHandler['execute']>[0]);
+      } else if (job.type === JobType.RECALCULATE_CATEGORY) {
+        result = await this.riskAnalysisHandler.execute(job.input as unknown as Parameters<RiskAnalysisHandler['execute']>[0]);
       } else {
         throw new Error(`No handler registered for job type: ${job.type}`);
       }
