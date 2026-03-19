@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-03-19 - [CRITICAL] Denial of Wallet via Unrestricted S3 Uploads
+**Vulnerability:** File uploads were implemented using `PutObjectCommand` presigned URLs. This method does not support S3-level condition enforcement (like `content-length-range`), allowing malicious users to upload arbitrarily large files directly to S3, bypassing backend validation entirely and causing Denial of Wallet or Denial of Service.
+**Learning:** Backend validation alone is insufficient for direct-to-S3 uploads because the actual upload bypasses the backend. Limits must be enforced at the S3 level.
+**Prevention:** Always use `createPresignedPost` (POST requests) instead of `PutObjectCommand` (PUT requests) for file uploads to S3. Pass explicit `Conditions` such as `content-length-range` and `eq $Content-Type` when generating the presigned data to enforce strict limits before the file is accepted by the bucket.
