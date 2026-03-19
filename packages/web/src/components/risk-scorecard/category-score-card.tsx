@@ -164,14 +164,14 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
                 onClick={handleResync}
                 disabled={isProcessing}
                 className={cn(
-                  'p-1 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors',
+                  'p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-transparent hover:border-primary/20',
                   isProcessing && 'cursor-not-allowed opacity-50',
                 )}
                 title="Resync this category"
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', isProcessing && 'animate-spin')} />
               </button>
-              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-full border', config.color, config.bg)}>
+              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-md border shadow-sm', config.color, config.bg)}>
                 {config.label}
               </span>
             </div>
@@ -200,12 +200,15 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
 
       {/* Expanded content */}
       {isExpanded && (
-        <div className="px-5 pb-5 space-y-4">
+        <div className="px-5 pb-5 pt-2 space-y-5 border-t border-border/50 mt-1">
           {/* Evidence summary */}
           {score.evidence && (
-            <div className="rounded-lg bg-muted/30 p-3">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">Evidence Summary</p>
-              <p className="text-xs text-foreground/80 leading-relaxed">{score.evidence}</p>
+            <div className="rounded-lg bg-muted/30 p-4 border border-border/40 shadow-sm">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 flex items-center gap-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-primary/60"></span>
+                Evidence Summary
+              </p>
+              <p className="text-sm text-foreground/90 leading-relaxed">{score.evidence}</p>
             </div>
           )}
 

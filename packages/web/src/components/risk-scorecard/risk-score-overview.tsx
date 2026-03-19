@@ -19,35 +19,39 @@ export function RiskScoreOverview({ overallScore, overallLevel }: RiskScoreOverv
   const config = LEVEL_CONFIG[overallLevel];
 
   return (
-    <div className={cn('rounded-xl border p-6 flex items-center gap-6', config.bg)}>
+    <div className="relative overflow-hidden rounded-xl border bg-card p-6 flex items-center gap-6 shadow-sm">
+      <div className={cn('absolute left-0 top-0 bottom-0 w-1.5', config.barColor)} />
+
       {/* Score circle */}
-      <div className="flex flex-col items-center justify-center h-24 w-24 rounded-full border-4 border-current shrink-0"
+      <div className={cn("flex flex-col items-center justify-center h-24 w-24 rounded-full border-[3px] shrink-0", config.color)}
         style={{ borderColor: 'currentColor' }}
       >
-        <span className={cn('text-4xl font-bold leading-none', config.color)}>{overallScore}</span>
-        <span className={cn('text-xs font-medium mt-0.5', config.color)}>/ 100</span>
+        <span className="text-4xl font-bold leading-none tracking-tight">{overallScore}</span>
+        <span className="text-xs font-semibold mt-0.5 opacity-80">/ 100</span>
       </div>
 
       {/* Text + gauge */}
       <div className="flex-1 min-w-0">
-        <p className="text-lg font-bold text-foreground">Overall Risk Score</p>
-        <span className={cn('inline-block mt-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border', config.color, config.bg)}>
-          {config.label}
-        </span>
+        <div className="flex items-center gap-3">
+          <p className="text-lg font-bold text-foreground tracking-tight">Overall Risk Score</p>
+          <span className={cn('px-2.5 py-0.5 rounded-md text-xs font-semibold border', config.color, config.bg)}>
+            {config.label}
+          </span>
+        </div>
 
         {/* Gauge bar */}
-        <div className="mt-3 h-2 w-full rounded-full bg-muted overflow-hidden">
+        <div className="mt-4 h-2 w-full rounded-full bg-muted/60 overflow-hidden">
           <div
-            className={cn('h-full rounded-full transition-all', config.barColor)}
+            className={cn('h-full rounded-full transition-all duration-1000 ease-out', config.barColor)}
             style={{ width: `${overallScore}%` }}
           />
         </div>
-        <div className="flex justify-between mt-1 text-xs text-muted-foreground">
-          <span>0</span>
-          <span>25</span>
-          <span>50</span>
-          <span>75</span>
-          <span>100</span>
+        <div className="flex justify-between mt-1.5 text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+          <span>Min (0)</span>
+          <span>Low (25)</span>
+          <span>Moderate (50)</span>
+          <span>High (75)</span>
+          <span>Critical (100)</span>
         </div>
       </div>
     </div>

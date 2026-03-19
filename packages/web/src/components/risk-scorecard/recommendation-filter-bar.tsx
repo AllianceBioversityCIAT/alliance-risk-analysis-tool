@@ -15,26 +15,26 @@ const FILTER_OPTIONS: { value: FilterValue; label: string; activeColor: string; 
   {
     value: 'ALL',
     label: 'All',
-    activeColor: 'bg-foreground text-background',
-    inactiveColor: 'bg-muted/50 text-muted-foreground hover:bg-muted',
+    activeColor: 'bg-foreground text-background shadow-sm ring-1 ring-foreground/20',
+    inactiveColor: 'bg-muted/30 text-muted-foreground border-border hover:bg-muted/80 hover:text-foreground',
   },
   {
     value: RecommendationPriority.HIGH,
     label: 'High',
-    activeColor: 'bg-orange-600 text-white',
-    inactiveColor: 'bg-orange-50 text-orange-700 border-orange-200 hover:bg-orange-100',
+    activeColor: 'bg-orange-600 text-white shadow-sm ring-1 ring-orange-600/20',
+    inactiveColor: 'bg-orange-50/50 text-orange-700 border-orange-200/50 hover:bg-orange-100/80',
   },
   {
     value: RecommendationPriority.MEDIUM,
     label: 'Medium',
-    activeColor: 'bg-yellow-500 text-white',
-    inactiveColor: 'bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100',
+    activeColor: 'bg-yellow-500 text-white shadow-sm ring-1 ring-yellow-500/20',
+    inactiveColor: 'bg-yellow-50/50 text-yellow-700 border-yellow-200/50 hover:bg-yellow-100/80',
   },
   {
     value: RecommendationPriority.LOW,
     label: 'Low',
-    activeColor: 'bg-green-600 text-white',
-    inactiveColor: 'bg-green-50 text-green-700 border-green-200 hover:bg-green-100',
+    activeColor: 'bg-green-600 text-white shadow-sm ring-1 ring-green-600/20',
+    inactiveColor: 'bg-green-50/50 text-green-700 border-green-200/50 hover:bg-green-100/80',
   },
 ];
 
