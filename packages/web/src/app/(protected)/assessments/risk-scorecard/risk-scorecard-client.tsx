@@ -101,7 +101,8 @@ export default function RiskScorecardClient() {
     }
   }, [id, router]);
 
-  const [isAnalyzing, setIsAnalyzing] = useState(true);
+  // Start as false — only poll once we confirm status is ANALYZING with no scores
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '', {
     refetchInterval: isAnalyzing ? POLL_INTERVAL : false,

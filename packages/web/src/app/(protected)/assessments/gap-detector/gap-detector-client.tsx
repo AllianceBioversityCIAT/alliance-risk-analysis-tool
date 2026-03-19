@@ -727,7 +727,7 @@ export default function GapDetectorClient() {
                 )}
 
                 {/* Empty state — AI analysis in progress (pipeline stepper) */}
-                {fields.length === 0 && (
+                {fields.length === 0 && assessment?.status !== AssessmentStatus.ACTION_REQUIRED && assessment?.status !== AssessmentStatus.COMPLETE && (
                   <PipelineStepper
                     title="Gap Analysis in Progress"
                     subtitle="This typically takes 30–60 seconds"
