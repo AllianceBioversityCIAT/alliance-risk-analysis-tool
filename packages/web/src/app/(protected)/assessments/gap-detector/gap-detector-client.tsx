@@ -535,8 +535,8 @@ export default function GapDetectorClient() {
 
       {/* ─── Main Content (Split Pane) ───────────────────────────────────────────── */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-        {isLoading ? (
-          /* ─── Enhanced Loading State ────────────────────────────────────────── */
+        {isLoading && (assessment?.status === AssessmentStatus.DRAFT || assessment?.status === AssessmentStatus.ANALYZING || !assessment) ? (
+          /* ─── Analysis Loading State — only during actual processing ─────────── */
           <div className="flex-1 flex items-center justify-center p-6">
             <div className="w-full max-w-md bg-card rounded-xl border border-border shadow-sm p-6">
               <div className="flex flex-col items-center text-center mb-5">
@@ -602,6 +602,16 @@ export default function GapDetectorClient() {
                   Building fields
                 </span>
               </div>
+            </div>
+          </div>
+        ) : isLoading ? (
+          /* ─── Simple skeleton — data is cached/loading for completed assessment ── */
+          <div className="flex-1 p-6">
+            <div className="space-y-4 max-w-2xl mx-auto">
+              <Skeleton className="h-10 w-full rounded-lg" />
+              <Skeleton className="h-32 w-full rounded-lg" />
+              <Skeleton className="h-32 w-full rounded-lg" />
+              <Skeleton className="h-32 w-full rounded-lg" />
             </div>
           </div>
         ) : (
