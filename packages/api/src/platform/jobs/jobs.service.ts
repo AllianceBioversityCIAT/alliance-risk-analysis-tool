@@ -217,8 +217,15 @@ export class JobsService {
           }
         }
       } else {
-        // Reset to PENDING for retry
-        await this.updateStatus(jobId, JobStatus.PENDING);
+        // Reset to PENDING for retry — persist the last error for debugging
+        await this.prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: 'PENDING' as JobStatusPrisma,
+            error: `Attempt ${attempts}/${maxAttempts} failed: ${errorMsg}`,
+          },
+        });
+        this.logger.log(`Job ${jobId} reset to PENDING for retry (attempt ${attempts}/${maxAttempts})`);
       }
     }
   }

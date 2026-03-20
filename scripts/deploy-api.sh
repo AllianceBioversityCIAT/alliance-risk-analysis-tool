@@ -364,6 +364,28 @@ for dep in "${TRANSITIVE_DEPS[@]}"; do
   copy_from_pnpm_store "${dep}" && log "    ${dep}" || true
 done
 
+# ── Copy pdfkit font data files ──────────────────────────────────────────────
+# pdfkit is bundled inline by esbuild, but it loads .afm font metric files and
+# an ICC profile at runtime via fs.readFileSync(__dirname + '/data/...').
+# esbuild replaces __dirname with the output directory, so we copy the data
+# files to dist/src/data/ to match the bundled path.
+log "  pdfkit font data files..."
+PDFKIT_STORE_DIR=$(find "${PNPM_STORE}" -maxdepth 1 -name "pdfkit@*" -type d | head -1)
+if [[ -n "${PDFKIT_STORE_DIR}" ]]; then
+  PDFKIT_DATA="${PDFKIT_STORE_DIR}/node_modules/pdfkit/js/data"
+  if [[ -d "${PDFKIT_DATA}" ]]; then
+    mkdir -p "${TEMP_DIR}/dist/src/data"
+    cp "${PDFKIT_DATA}"/*.afm "${TEMP_DIR}/dist/src/data/"
+    cp "${PDFKIT_DATA}"/*.icc "${TEMP_DIR}/dist/src/data/" 2>/dev/null || true
+    DATA_COUNT=$(ls "${TEMP_DIR}/dist/src/data/" | wc -l | tr -d ' ')
+    ok "Copied ${DATA_COUNT} pdfkit data files to dist/src/data/"
+  else
+    log "  WARNING: pdfkit data directory not found"
+  fi
+else
+  log "  WARNING: pdfkit not found in pnpm store"
+fi
+
 # ── Cleanup external packages ────────────────────────────────────────────────
 
 log "Cleaning up external packages..."
