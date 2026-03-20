@@ -1,8 +1,8 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useCallback, useEffect } from 'react';
-import { Printer, Download, Link2, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { Printer, Download, Link2, Loader2, BarChart3 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -12,12 +12,15 @@ import { AssessmentTopBar } from '@/components/shared/assessment-top-bar';
 import { ReportLayout } from '@/components/report/report-layout';
 import { ReportSection } from '@/components/report/report-section';
 import { RadarChart } from '@/components/report/radar-chart';
-import { SubcategoryChartSwitcher } from '@/components/report/subcategory-chart-switcher';
+import { SubcategoryBarChart } from '@/components/report/subcategory-bar-chart';
 import { FinancialRevenueChart } from '@/components/report/financial-revenue-chart';
 import { FinancialCostChart } from '@/components/report/financial-cost-chart';
+import { ReportConfigurationDialog } from '@/components/risk-scorecard/report-configuration-dialog';
 import { useReport, useGeneratePdf } from '@/hooks/use-report';
 import { useAssessment } from '@/hooks/use-assessments';
 import { useJobPolling } from '@/hooks/use-job-polling';
+import { JobStatus } from '@alliance-risk/shared';
+import type { ReportConfig } from '@alliance-risk/shared';
 import type { TocItem } from '@/components/report/report-toc-sidebar';
 import { LEVEL_CONFIG } from '@/components/risk-scorecard/risk-score-overview';
 
@@ -25,6 +28,7 @@ export default function ReportClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const id = searchParams.get('id');
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
 
   useEffect(() => {
     if (!id) {
@@ -34,21 +38,35 @@ export default function ReportClient() {
 
   const { data: report, isLoading } = useReport(id ?? '');
   const { mutateAsync: generatePdf, isPending: generatingPdf } = useGeneratePdf(id ?? '');
-  const { startPolling, result: jobResult, isProcessing: pdfProcessing } = useJobPolling();
+  const {
+    startPolling,
+    result: jobResult,
+    status: jobStatus,
+    error: jobError,
+    isProcessing: pdfProcessing,
+    reset: resetJob,
+  } = useJobPolling();
   const { data: assessment } = useAssessment(id ?? '');
 
   const handlePrint = useCallback(() => {
     window.print();
   }, []);
 
-  const handleDownloadPdf = useCallback(async () => {
-    const result = await generatePdf();
-    if (result.jobId) {
-      startPolling(result.jobId);
-    } else if (result.downloadUrl) {
-      window.open(result.downloadUrl, '_blank');
+  const handleGenerateWithConfig = useCallback(async (config: ReportConfig) => {
+    if (!id) return;
+    setConfigDialogOpen(false);
+    try {
+      const response = await generatePdf(config);
+      if (response.jobId) {
+        startPolling(response.jobId);
+        sileo.info({ title: 'PDF generation started', description: 'This typically takes 30-60 seconds.' });
+      } else if (response.downloadUrl) {
+        window.open(response.downloadUrl, '_blank');
+      }
+    } catch {
+      sileo.error({ title: 'Failed to start PDF generation' });
     }
-  }, [generatePdf, startPolling]);
+  }, [id, generatePdf, startPolling]);
 
   const handleShare = useCallback(() => {
     navigator.clipboard.writeText(window.location.href).then(() => {
@@ -56,13 +74,18 @@ export default function ReportClient() {
     });
   }, []);
 
-  // Open download URL when job polling completes
+  // Handle job completion/failure
   const pdfDownloadUrl = (jobResult as { downloadUrl?: string } | null)?.downloadUrl;
   useEffect(() => {
-    if (pdfDownloadUrl) {
+    if (jobStatus === JobStatus.COMPLETED && pdfDownloadUrl) {
+      sileo.success({ title: 'PDF ready', description: 'Your download should start automatically.' });
       window.open(pdfDownloadUrl, '_blank');
+      resetJob();
+    } else if (jobStatus === JobStatus.FAILED) {
+      sileo.error({ title: 'PDF generation failed', description: jobError ?? 'Please try again.' });
+      resetJob();
     }
-  }, [pdfDownloadUrl]);
+  }, [jobStatus, pdfDownloadUrl, jobError, resetJob]);
 
   if (!id) return null;
 
@@ -81,7 +104,7 @@ export default function ReportClient() {
         label: sub.name,
       })),
     })),
-    ...(report?.financialMetrics && report?.reportConfig?.includeFinancialCharts
+    ...(report?.financialMetrics
       ? [{ id: 'financial-overview', label: 'Financial Overview' }]
       : []),
   ];
@@ -90,7 +113,7 @@ export default function ReportClient() {
   const headerSection = (
     <>
       {/* Breadcrumb */}
-      <div className="flex items-center gap-2 px-4 pt-3 pb-2 print:hidden">
+      <div className="flex items-center gap-2 px-4 pt-3 pb-2 print:hidden shrink-0">
         <SidebarTrigger className="shrink-0" />
         <BreadcrumbTrail
           items={[
@@ -103,7 +126,7 @@ export default function ReportClient() {
 
       {/* Teal sub-header */}
       {reportAssessment && (
-        <div className="print:hidden">
+        <div className="print:hidden shrink-0">
           <AssessmentTopBar
             name={reportAssessment.name}
             shortId={reportAssessment.id?.substring(0, 8).toUpperCase() ?? ''}
@@ -117,9 +140,9 @@ export default function ReportClient() {
 
   if (isLoading) {
     return (
-      <div className="flex flex-col min-h-0 flex-1 overflow-y-auto">
+      <div className="flex flex-col min-h-0 flex-1">
         {headerSection}
-        <div className="flex-1 p-6 max-w-4xl mx-auto w-full space-y-4">
+        <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full space-y-4">
           <div>
             <h1 className="text-xl font-bold text-foreground">Full Report</h1>
             <p className="text-sm text-muted-foreground mt-1">
@@ -137,9 +160,9 @@ export default function ReportClient() {
 
   if (!report) {
     return (
-      <div className="flex flex-col min-h-0 flex-1 overflow-y-auto">
+      <div className="flex flex-col min-h-0 flex-1">
         {headerSection}
-        <div className="flex-1 p-6 max-w-4xl mx-auto w-full">
+        <div className="flex-1 overflow-y-auto p-6 max-w-4xl mx-auto w-full">
           <div className="mb-8">
             <h1 className="text-xl font-bold text-foreground">Full Report</h1>
             <p className="text-sm text-muted-foreground mt-1">
@@ -158,9 +181,10 @@ export default function ReportClient() {
 
   const fullAssessment = report.assessment;
   const levelConfig = LEVEL_CONFIG[report.overallLevel];
+  const isPdfBusy = generatingPdf || pdfProcessing;
 
   return (
-    <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
+    <div className="flex flex-col min-h-0 flex-1">
       {headerSection}
 
       <ReportLayout
@@ -175,9 +199,23 @@ export default function ReportClient() {
                 <Printer className="h-4 w-4" />
                 Print
               </Button>
-              <Button variant="outline" size="sm" onClick={handleDownloadPdf} disabled={generatingPdf || pdfProcessing} className="gap-1.5">
-                {(generatingPdf || pdfProcessing) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                {pdfProcessing ? 'Generating...' : 'Download PDF'}
+              <Button
+                size="sm"
+                onClick={() => setConfigDialogOpen(true)}
+                disabled={isPdfBusy}
+                className="gap-1.5"
+              >
+                {isPdfBusy ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Generating PDF...
+                  </>
+                ) : (
+                  <>
+                    <Download className="h-4 w-4" />
+                    Download PDF
+                  </>
+                )}
               </Button>
               <Button variant="outline" size="sm" onClick={handleShare} className="gap-1.5">
                 <Link2 className="h-4 w-4" />
@@ -253,17 +291,20 @@ export default function ReportClient() {
                 <p className="text-sm text-foreground leading-relaxed mb-4">{cat.narrative}</p>
               )}
 
-              {/* Subcategory chart */}
-              {report.reportConfig?.includeSubcategoryCharts && cat.subcategories.length > 0 && (
-                <div className="mb-4">
-                  <SubcategoryChartSwitcher
-                    subcategories={cat.subcategories}
-                    chartType={report.reportConfig.subcategoryChartType}
-                  />
+              {/* Subcategory chart — always visible in web preview */}
+              {cat.subcategories.length > 0 && (
+                <div className="mb-5 rounded-xl border border-border/60 bg-muted/10 p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <BarChart3 className="h-4 w-4 text-primary" />
+                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Subcategory Scores
+                    </p>
+                  </div>
+                  <SubcategoryBarChart subcategories={cat.subcategories} />
                 </div>
               )}
 
-              {/* Subcategory table */}
+              {/* Subcategory detail table */}
               {cat.subcategories.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-left">
@@ -315,8 +356,9 @@ export default function ReportClient() {
             </ReportSection>
           );
         })}
-        {/* Financial Overview */}
-        {report.financialMetrics && report.reportConfig?.includeFinancialCharts && (
+
+        {/* Financial Overview — when data exists */}
+        {report.financialMetrics && (
           <ReportSection id="financial-overview" heading="Financial Overview">
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {report.financialMetrics.revenue.length > 0 && (
@@ -332,6 +374,14 @@ export default function ReportClient() {
           </ReportSection>
         )}
       </ReportLayout>
+
+      {/* PDF Configuration Dialog */}
+      <ReportConfigurationDialog
+        open={configDialogOpen}
+        onOpenChange={setConfigDialogOpen}
+        onGenerate={handleGenerateWithConfig}
+        isGenerating={isPdfBusy}
+      />
 
       {/* Print styles */}
       <style jsx global>{`

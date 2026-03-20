@@ -10,7 +10,7 @@ interface ReportLayoutProps {
 
 export function ReportLayout({ tocItems, children, toolbar }: ReportLayoutProps) {
   return (
-    <div className="flex flex-col min-h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Toolbar */}
       {toolbar && (
         <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-white print:hidden shrink-0">
@@ -19,14 +19,14 @@ export function ReportLayout({ tocItems, children, toolbar }: ReportLayoutProps)
       )}
 
       <div className="flex flex-1 min-h-0">
-        {/* Content */}
+        {/* Content — this is the scroll container */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-4xl mx-auto py-8 px-6 bg-card">
             {children}
           </div>
         </div>
 
-        {/* TOC sidebar */}
+        {/* TOC sidebar — sits beside content, scrolls independently */}
         <ReportTocSidebar items={tocItems} />
       </div>
     </div>

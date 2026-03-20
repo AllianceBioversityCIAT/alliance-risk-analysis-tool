@@ -1,6 +1,6 @@
 import { useQuery, useMutation } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
-import type { ReportResponse } from '@alliance-risk/shared';
+import type { ReportResponse, ReportConfig } from '@alliance-risk/shared';
 
 export function useReport(assessmentId: string) {
   return useQuery<ReportResponse>({
@@ -18,9 +18,10 @@ export function useReport(assessmentId: string) {
 
 export function useGeneratePdf(assessmentId: string) {
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (config?: ReportConfig) => {
       const response = await apiClient.post<{ jobId: string; downloadUrl?: string }>(
         `/api/assessments/${assessmentId}/report/pdf`,
+        config ?? {},
       );
       return response.data;
     },

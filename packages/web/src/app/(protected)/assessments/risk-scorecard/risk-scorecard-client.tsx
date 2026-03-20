@@ -2,7 +2,7 @@
 
 import { useSearchParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { MessageSquare, FileText, Loader2, Check, Database, BarChart3, Brain } from 'lucide-react';
+import { MessageSquare, FileText, Check, Database, BarChart3, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PipelineStepper } from '@/components/shared/pipeline-stepper';
 import { AssessmentPageShell } from '@/components/shared/assessment-page-shell';
@@ -13,7 +13,6 @@ import { RecommendationFilterBar } from '@/components/risk-scorecard/recommendat
 import { getCategoryLabel } from '@/components/risk-scorecard/category-config';
 import { CommentPanel } from '@/components/risk-scorecard/comment-panel';
 import { RiskMatrixDialog } from '@/components/risk-scorecard/risk-matrix-dialog';
-import { ReportConfigurationDialog } from '@/components/risk-scorecard/report-configuration-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAssessment } from '@/hooks/use-assessments';
 import {
@@ -23,8 +22,6 @@ import {
   useAddComment,
 } from '@/hooks/use-risk-scores';
 import { AssessmentStatus, RiskLevel, RecommendationPriority } from '@alliance-risk/shared';
-import apiClient from '@/lib/api-client';
-import type { ReportConfig } from '@alliance-risk/shared';
 import type { EnrichedRecommendation } from '@/components/risk-scorecard/recommendation-types';
 
 const POLL_INTERVAL = 5000; // 5 seconds
@@ -83,8 +80,6 @@ export default function RiskScorecardClient() {
   const router = useRouter();
   const id = searchParams.get('id');
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
-  const [reportConfigOpen, setReportConfigOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | RecommendationPriority>('ALL');
   const resyncingCategoriesRef = useRef(new Set<string>());
   const [hasActiveResync, setHasActiveResync] = useState(false);
@@ -135,20 +130,9 @@ export default function RiskScorecardClient() {
     [editRec],
   );
 
-  const handleOpenReportConfig = useCallback(() => {
-    setReportConfigOpen(true);
-  }, []);
-
-  const handleGenerateWithConfig = useCallback(async (config: ReportConfig) => {
+  const handleViewReport = useCallback(() => {
     if (!id) return;
-    setIsGeneratingReport(true);
-    setReportConfigOpen(false);
-    try {
-      await apiClient.post(`/api/assessments/${id}/report/pdf`, config);
-      router.push(`/assessments/report?id=${id}`);
-    } catch {
-      setIsGeneratingReport(false);
-    }
+    router.push(`/assessments/report?id=${id}`);
   }, [id, router]);
 
   if (!id) return null;
@@ -197,7 +181,7 @@ export default function RiskScorecardClient() {
     scores.length === 0 &&
     assessment?.status === AssessmentStatus.ANALYZING;
 
-  const reportDisabled = isGeneratingReport || isAnalyzing || hasActiveResync;
+  const reportDisabled = isAnalyzing || hasActiveResync;
 
   const actionButtons = !isLoading && scores.length > 0 ? (
     <>
@@ -210,13 +194,9 @@ export default function RiskScorecardClient() {
         <MessageSquare className="h-4 w-4" />
         Comments {comments.length > 0 && `(${comments.length})`}
       </Button>
-      <Button onClick={handleOpenReportConfig} disabled={reportDisabled} className="gap-1.5">
-        {isGeneratingReport ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <FileText className="h-4 w-4" />
-        )}
-        Generate Report
+      <Button onClick={handleViewReport} disabled={reportDisabled} className="gap-1.5">
+        <FileText className="h-4 w-4" />
+        View Report
       </Button>
     </>
   ) : undefined;
@@ -324,12 +304,6 @@ export default function RiskScorecardClient() {
           />
         )}
 
-        <ReportConfigurationDialog
-          open={reportConfigOpen}
-          onOpenChange={setReportConfigOpen}
-          onGenerate={handleGenerateWithConfig}
-          isGenerating={isGeneratingReport}
-        />
       </AssessmentPageShell>
   );
 }
