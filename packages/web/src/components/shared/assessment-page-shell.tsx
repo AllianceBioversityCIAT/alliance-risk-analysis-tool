@@ -25,6 +25,8 @@ export interface AssessmentPageShellProps {
   className?: string;
   /** Whether to hide in print mode (breadcrumb + top bar). Default false. */
   printHidden?: boolean;
+  /** Whether the shell should handle scrolling of the children. Default true. */
+  scrollable?: boolean;
 }
 
 export function AssessmentPageShell({
@@ -37,6 +39,7 @@ export function AssessmentPageShell({
   children,
   className,
   printHidden = false,
+  scrollable = true,
 }: Readonly<AssessmentPageShellProps>) {
   const printClass = printHidden ? 'print:hidden' : '';
 
@@ -75,12 +78,18 @@ export function AssessmentPageShell({
         </div>
       </div>
 
-      {/* Scrollable Page Content */}
-      <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
-        <div className="pt-6">
+      {/* Page Content */}
+      {scrollable ? (
+        <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+          <div className="pt-6">
+            {children}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 flex flex-col min-h-0 bg-[#F8FAFC]">
           {children}
         </div>
-      </div>
+      )}
     </div>
   );
 }
