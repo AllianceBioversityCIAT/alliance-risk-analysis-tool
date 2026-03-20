@@ -21,6 +21,7 @@ import { JobStatus } from '@alliance-risk/shared';
 import type { ReportConfig } from '@alliance-risk/shared';
 import type { TocItem } from '@/components/report/report-toc-sidebar';
 import { LEVEL_CONFIG } from '@/components/risk-scorecard/risk-score-overview';
+import { getCategoryLabel } from '@/components/risk-scorecard/category-config';
 
 export default function ReportClient() {
   const searchParams = useSearchParams();
@@ -74,10 +75,20 @@ export default function ReportClient() {
 
   // Handle job completion/failure
   const pdfDownloadUrl = (jobResult as { downloadUrl?: string } | null)?.downloadUrl;
+  const [readyDownloadUrl, setReadyDownloadUrl] = useState<string | null>(null);
+
   useEffect(() => {
     if (jobStatus === JobStatus.COMPLETED && pdfDownloadUrl) {
+      // Trigger download via hidden anchor (window.open is blocked by popup blockers in useEffect)
+      const link = document.createElement('a');
+      link.href = pdfDownloadUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setReadyDownloadUrl(pdfDownloadUrl);
       sileo.success({ title: 'PDF ready', description: 'Your download should start automatically.' });
-      window.open(pdfDownloadUrl, '_blank');
       resetJob();
     } else if (jobStatus === JobStatus.FAILED) {
       sileo.error({ title: 'PDF generation failed', description: jobError ?? 'Please try again.' });
@@ -143,7 +154,7 @@ export default function ReportClient() {
     { id: 'risk-overview', label: 'Risk Overview' },
     ...(report?.categories ?? []).map((cat) => ({
       id: `category-${cat.category.toLowerCase().replace(/\s+/g, '-')}`,
-      label: cat.category,
+      label: getCategoryLabel(cat.category),
       subItems: cat.subcategories.map((sub) => ({
         id: `sub-${sub.name.toLowerCase().replace(/\s+/g, '-')}`,
         label: sub.name,
@@ -160,24 +171,37 @@ export default function ReportClient() {
         <Printer className="h-4 w-4" />
         Print
       </Button>
-      <Button
-        size="sm"
-        onClick={() => setConfigDialogOpen(true)}
-        disabled={isPdfBusy}
-        className="gap-1.5 shadow-sm"
-      >
-        {isPdfBusy ? (
-          <>
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Generating...
-          </>
-        ) : (
-          <>
+      {readyDownloadUrl ? (
+        <Button
+          size="sm"
+          asChild
+          className="gap-1.5 shadow-sm"
+        >
+          <a href={readyDownloadUrl} target="_blank" rel="noopener noreferrer">
             <Download className="h-4 w-4" />
             Download PDF
-          </>
-        )}
-      </Button>
+          </a>
+        </Button>
+      ) : (
+        <Button
+          size="sm"
+          onClick={() => setConfigDialogOpen(true)}
+          disabled={isPdfBusy}
+          className="gap-1.5 shadow-sm"
+        >
+          {isPdfBusy ? (
+            <>
+              <Loader2 className="h-4 w-4 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Download className="h-4 w-4" />
+              Download PDF
+            </>
+          )}
+        </Button>
+      )}
       <Button variant="outline" size="sm" onClick={handleShare} className="gap-1.5 shadow-sm">
         <Link2 className="h-4 w-4" />
         Share
@@ -233,7 +257,7 @@ export default function ReportClient() {
                     const catConfig = LEVEL_CONFIG[cat.level];
                     return (
                       <div key={cat.id} className="flex items-center justify-between gap-2">
-                        <span className="text-sm text-foreground">{cat.category}</span>
+                        <span className="text-sm text-foreground">{getCategoryLabel(cat.category)}</span>
                         <div className="flex items-center gap-2">
                           <div className="h-1.5 w-16 rounded-full bg-muted overflow-hidden">
                             <div className={`h-full rounded-full ${catConfig.barColor}`} style={{ width: `${cat.score}%` }} />
@@ -255,7 +279,7 @@ export default function ReportClient() {
               <ReportSection
                 key={cat.id}
                 id={sectionId}
-                heading={cat.category}
+                heading={getCategoryLabel(cat.category)}
                 score={cat.score}
                 level={cat.level}
               >
