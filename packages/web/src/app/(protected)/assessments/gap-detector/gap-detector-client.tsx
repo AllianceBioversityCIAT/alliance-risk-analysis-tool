@@ -636,10 +636,10 @@ export default function GapDetectorClient() {
               />
             }
             fieldsPanel={
-              <div className="p-5">
+              <div className="flex flex-col h-full bg-[#F8FAFC]">
                 {/* Validation alert banner */}
                 {showValidationBanner && needsAttentionCount > 0 && (
-                  <div className="mb-4 flex items-start gap-3 px-4 py-3 rounded-lg bg-amber-50 border border-amber-200">
+                  <div className="mx-5 mt-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 shadow-sm">
                     <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-amber-900">
@@ -660,151 +660,156 @@ export default function GapDetectorClient() {
                   </div>
                 )}
 
-                {/* Filter pill tabs */}
+                {/* Sticky Action Bar */}
                 {fields.length > 0 && (
-                  <div className="flex items-center gap-2 mb-5">
-                    <button
-                      type="button"
-                      onClick={() => setActiveFilter('all')}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
-                        activeFilter === 'all'
-                          ? 'bg-foreground text-background'
-                          : 'bg-muted text-muted-foreground hover:bg-muted/80',
-                      )}
-                    >
-                      All ({total})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveFilter('attention')}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
-                        activeFilter === 'attention'
-                          ? 'bg-amber-500 text-white'
-                          : needsAttentionCount > 0
-                            ? 'bg-amber-100 text-amber-800 hover:bg-amber-200'
-                            : 'bg-muted text-muted-foreground hover:bg-muted/80',
-                      )}
-                    >
-                      Needs Attention ({needsAttentionCount})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveFilter('verified')}
-                      className={cn(
-                        'px-3 py-1.5 rounded-full text-xs font-medium transition-colors',
-                        activeFilter === 'verified'
-                          ? 'bg-emerald-500 text-white'
-                          : 'bg-muted text-muted-foreground hover:bg-muted/80',
-                      )}
-                    >
-                      Verified ({verifiedCount})
-                    </button>
-                  </div>
-                )}
-
-                {/* Category groups */}
-                <div className="space-y-4">
-                  {groups.map(({ category, fields: catFields }) => (
-                    <GapCategoryGroup
-                      key={category}
-                      category={category}
-                      fields={catFields.map((f) => ({
-                        id: f.id,
-                        field: f.field,
-                        label: f.label,
-                        currentValue: f.correctedValue ?? f.extractedValue,
-                        extractedValue: f.extractedValue,
-                        status: f.status as GapFieldStatus,
-                        isMandatory: f.isMandatory,
-                        confidence: f.confidence,
-                        aiReasoning: f.aiReasoning,
-                        validationFeedback: f.validationFeedback,
-                        onUpdate: handleUpdateField,
-                        onFieldFocus: handleFieldFocus,
-                      }))}
-                    />
-                  ))}
-                </div>
-
-                {/* Empty filter state */}
-                {fields.length > 0 && filteredFields.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-12 text-center">
-                    <CheckCircle2 className="h-8 w-8 text-emerald-500 mb-3" />
-                    <p className="text-sm font-medium text-foreground">
-                      {activeFilter === 'attention' ? 'No fields need attention' : 'No verified fields yet'}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {activeFilter === 'attention'
-                        ? 'All fields are verified. You can proceed to analyze risks.'
-                        : 'Complete the fields above to see them here.'}
-                    </p>
-                  </div>
-                )}
-
-                {/* Empty state — AI analysis in progress (pipeline stepper) */}
-                {fields.length === 0 && assessment?.status !== AssessmentStatus.ACTION_REQUIRED && assessment?.status !== AssessmentStatus.COMPLETE && (
-                  <PipelineStepper
-                    title="Gap Analysis in Progress"
-                    subtitle="This typically takes 30–60 seconds"
-                    steps={GAP_PIPELINE_STEPS}
-                    activeStepIndex={getGapActiveStep(docsProcessing, documents)}
-                    footer={documents.length > 0 ? (
-                      <div className="flex flex-wrap items-center gap-2">
-                        {documents.map((doc) => (
-                          <span
-                            key={doc.id}
-                            className={cn(
-                              'inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border',
-                              doc.status === 'PARSED'
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : doc.status === 'PARSING'
-                                  ? 'bg-blue-50 text-blue-700 border-blue-200'
-                                  : 'bg-gray-50 text-gray-600 border-gray-200',
-                            )}
-                          >
-                            <FileIcon mimeType={doc.mimeType} className="h-2.5 w-2.5" />
-                            {doc.fileName.length > 20 ? doc.fileName.substring(0, 17) + '...' : doc.fileName}
-                          </span>
-                        ))}
+                  <div className="sticky top-0 z-10 bg-[#F8FAFC]/95 backdrop-blur supports-[backdrop-filter]:bg-[#F8FAFC]/60 border-b border-border/50 px-5 py-4 mb-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                      {/* Filter pill tabs */}
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setActiveFilter('all')}
+                          className={cn(
+                            'px-3.5 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all shadow-sm ring-1',
+                            activeFilter === 'all'
+                              ? 'bg-foreground text-background ring-foreground/20'
+                              : 'bg-card text-muted-foreground ring-border hover:bg-muted/80',
+                          )}
+                        >
+                          All ({total})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveFilter('attention')}
+                          className={cn(
+                            'px-3.5 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all shadow-sm ring-1',
+                            activeFilter === 'attention'
+                              ? 'bg-amber-500 text-white ring-amber-500/20'
+                              : needsAttentionCount > 0
+                                ? 'bg-amber-50 text-amber-800 ring-amber-200 hover:bg-amber-100'
+                                : 'bg-card text-muted-foreground ring-border hover:bg-muted/80',
+                          )}
+                        >
+                          Needs Attention ({needsAttentionCount})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setActiveFilter('verified')}
+                          className={cn(
+                            'px-3.5 py-1.5 rounded-md text-[11px] font-bold uppercase tracking-wider transition-all shadow-sm ring-1',
+                            activeFilter === 'verified'
+                              ? 'bg-emerald-500 text-white ring-emerald-500/20'
+                              : 'bg-card text-muted-foreground ring-border hover:bg-muted/80',
+                          )}
+                        >
+                          Verified ({verifiedCount})
+                        </button>
                       </div>
-                    ) : undefined}
-                  />
-                )}
 
-                {/* Analyze Risks button */}
-                {fields.length > 0 && (
-                  <div className="mt-6 pt-4">
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span className="block w-full">
-                            <Button
-                              className="w-full h-11"
-                              disabled={!allMandatoryComplete || isReAnalyzing || isValidating}
-                              onClick={handleAnalyzeRisks}
-                            >
-                              {isReAnalyzing ? (
-                                <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-                              ) : isValidating ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              ) : (
-                                <BarChart3 className="mr-2 h-4 w-4" />
-                              )}
-                              {isReAnalyzing ? 'Re-analyzing...' : isValidating ? 'Validating fields...' : 'Analyze Risks'}
-                            </Button>
-                          </span>
-                        </TooltipTrigger>
-                        {!allMandatoryComplete && !isReAnalyzing && (
-                          <TooltipContent>
-                            <p>Fill all mandatory fields to continue.</p>
-                          </TooltipContent>
-                        )}
-                      </Tooltip>
-                    </TooltipProvider>
+                      {/* Analyze Risks button */}
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span>
+                              <Button
+                                className="shadow-sm"
+                                disabled={!allMandatoryComplete || isReAnalyzing || isValidating}
+                                onClick={handleAnalyzeRisks}
+                              >
+                                {isReAnalyzing ? (
+                                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                ) : isValidating ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                  <BarChart3 className="mr-2 h-4 w-4" />
+                                )}
+                                {isReAnalyzing ? 'Re-analyzing...' : isValidating ? 'Validating fields...' : 'Analyze Risks'}
+                              </Button>
+                            </span>
+                          </TooltipTrigger>
+                          {!allMandatoryComplete && !isReAnalyzing && (
+                            <TooltipContent>
+                              <p>Fill all mandatory fields to continue.</p>
+                            </TooltipContent>
+                          )}
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
                   </div>
                 )}
+
+                <div className="px-5 pb-8">
+                  {/* Category groups */}
+                  <div className="space-y-4">
+                    {groups.map(({ category, fields: catFields }) => (
+                      <GapCategoryGroup
+                        key={category}
+                        category={category}
+                        fields={catFields.map((f) => ({
+                          id: f.id,
+                          field: f.field,
+                          label: f.label,
+                          currentValue: f.correctedValue ?? f.extractedValue,
+                          extractedValue: f.extractedValue,
+                          status: f.status as GapFieldStatus,
+                          isMandatory: f.isMandatory,
+                          confidence: f.confidence,
+                          aiReasoning: f.aiReasoning,
+                          validationFeedback: f.validationFeedback,
+                          onUpdate: handleUpdateField,
+                          onFieldFocus: handleFieldFocus,
+                        }))}
+                      />
+                    ))}
+                  </div>
+
+                  {/* Empty filter state */}
+                  {fields.length > 0 && filteredFields.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-16 text-center">
+                      <CheckCircle2 className="h-10 w-10 text-emerald-500 mb-4" />
+                      <p className="text-base font-bold text-foreground">
+                        {activeFilter === 'attention' ? 'No fields need attention' : 'No verified fields yet'}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1.5">
+                        {activeFilter === 'attention'
+                          ? 'All fields are verified. You can proceed to analyze risks.'
+                          : 'Complete the fields above to see them here.'}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Empty state — AI analysis in progress (pipeline stepper) */}
+                  {fields.length === 0 && assessment?.status !== AssessmentStatus.ACTION_REQUIRED && assessment?.status !== AssessmentStatus.COMPLETE && (
+                    <div className="mt-5">
+                      <PipelineStepper
+                        title="Gap Analysis in Progress"
+                        subtitle="This typically takes 30–60 seconds"
+                        steps={GAP_PIPELINE_STEPS}
+                        activeStepIndex={getGapActiveStep(docsProcessing, documents)}
+                        footer={documents.length > 0 ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {documents.map((doc) => (
+                              <span
+                                key={doc.id}
+                                className={cn(
+                                  'inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-md border shadow-sm',
+                                  doc.status === 'PARSED'
+                                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                    : doc.status === 'PARSING'
+                                      ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                      : 'bg-card text-muted-foreground border-border',
+                                )}
+                              >
+                                <FileIcon mimeType={doc.mimeType} className="h-3 w-3" />
+                                {doc.fileName.length > 20 ? doc.fileName.substring(0, 17) + '...' : doc.fileName}
+                              </span>
+                            ))}
+                          </div>
+                        ) : undefined}
+                      />
+                    </div>
+                  )}
+                </div>
               </div>
             }
           />
