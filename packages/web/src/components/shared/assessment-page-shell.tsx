@@ -41,39 +41,46 @@ export function AssessmentPageShell({
   const printClass = printHidden ? 'print:hidden' : '';
 
   return (
-    <div className={`flex flex-col min-h-0 flex-1 overflow-y-auto ${className ?? ''}`}>
-      {/* Breadcrumb bar */}
-      <div className={`flex items-center gap-2 px-4 pt-3 pb-2 ${printClass}`}>
-        <SidebarTrigger className="shrink-0" />
-        <BreadcrumbTrail items={breadcrumbs} />
-      </div>
-
-      {/* Teal sub-header */}
-      {assessment && (
-        <div className={printClass}>
-          <AssessmentTopBar
-            name={assessment.name}
-            shortId={assessment.id.substring(0, 8).toUpperCase()}
-            progress={assessment.progress ?? 0}
-            status={assessment.status}
-          />
+    <div className={`flex flex-col h-full overflow-hidden ${className ?? ''}`}>
+      {/* Fixed Header Area */}
+      <div className="flex-none bg-background z-10 border-b pb-4">
+        {/* Breadcrumb bar */}
+        <div className={`flex items-center gap-2 px-4 pt-3 pb-2 ${printClass}`}>
+          <SidebarTrigger className="shrink-0" />
+          <BreadcrumbTrail items={breadcrumbs} />
         </div>
-      )}
 
-      {/* Page heading */}
-      <div className="px-6 pt-4 pb-3">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-bold text-foreground">{title}</h1>
-            <p className="text-sm text-muted-foreground mt-1">{description}</p>
-            {titleExtra}
+        {/* Teal sub-header */}
+        {assessment && (
+          <div className={printClass}>
+            <AssessmentTopBar
+              name={assessment.name}
+              shortId={assessment.id.substring(0, 8).toUpperCase()}
+              progress={assessment.progress ?? 0}
+              status={assessment.status}
+            />
           </div>
-          {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+        )}
+
+        {/* Page heading */}
+        <div className="px-6 pt-5">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-2xl font-bold text-foreground tracking-tight">{title}</h1>
+              <p className="text-sm text-muted-foreground mt-1.5">{description}</p>
+              {titleExtra}
+            </div>
+            {actions && <div className="flex items-center gap-2 shrink-0">{actions}</div>}
+          </div>
         </div>
       </div>
 
-      {/* Page content */}
-      {children}
+      {/* Scrollable Page Content */}
+      <div className="flex-1 overflow-y-auto bg-[#F8FAFC]">
+        <div className="pt-6">
+          {children}
+        </div>
+      </div>
     </div>
   );
 }
