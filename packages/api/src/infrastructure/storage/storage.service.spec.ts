@@ -7,6 +7,12 @@ jest.mock('@aws-sdk/client-s3');
 jest.mock('@aws-sdk/s3-request-presigner', () => ({
   getSignedUrl: jest.fn().mockResolvedValue('https://s3.example.com/presigned-url'),
 }));
+jest.mock('@aws-sdk/s3-presigned-post', () => ({
+  createPresignedPost: jest.fn().mockResolvedValue({
+    url: 'https://s3.example.com/presigned-post',
+    fields: { key: 'test', 'x-amz-signature': 'sig' }
+  }),
+}));
 
 describe('StorageService', () => {
   let service: StorageService;
@@ -48,12 +54,13 @@ describe('StorageService', () => {
   });
 
   describe('generatePresignedUploadUrl', () => {
-    it('should return a presigned URL', async () => {
-      const url = await service.generatePresignedUploadUrl(
+    it('should return a presigned URL and fields', async () => {
+      const { url, fields } = await service.generatePresignedUploadUrl(
         'assessments/123/documents/456/plan.pdf',
         'application/pdf',
       );
-      expect(url).toBe('https://s3.example.com/presigned-url');
+      expect(url).toBe('https://s3.example.com/presigned-post');
+      expect(fields).toEqual({ key: 'test', 'x-amz-signature': 'sig' });
     });
   });
 

@@ -176,7 +176,7 @@ export function useRequestUploadUrl() {
       mimeType: string;
       fileSize: number;
     }) => {
-      const response = await apiClient.post<{ presignedUrl: string; documentId: string }>(
+      const response = await apiClient.post<{ presignedUrl: string; fields: Record<string, string>; documentId: string }>(
         `/api/assessments/${assessmentId}/documents`,
         { fileName, mimeType, fileSize },
       );

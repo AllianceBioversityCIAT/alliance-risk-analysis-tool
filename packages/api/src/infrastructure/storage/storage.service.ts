@@ -5,8 +5,14 @@ import {
   DeleteObjectCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { createPresignedPost } from '@aws-sdk/s3-presigned-post';
 import { PutObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import type { Readable } from 'stream';
+
+export interface PresignedPostData {
+  url: string;
+  fields: Record<string, string>;
+}
 
 @Injectable()
 export class StorageService {
@@ -21,21 +27,29 @@ export class StorageService {
   }
 
   /**
-   * Generate a presigned URL for uploading a file to S3.
+   * Generate a presigned POST for uploading a file to S3.
    * Key convention: assessments/{assessmentId}/documents/{documentId}/{fileName}
+   * Limits upload size directly on S3 to prevent Denial of Wallet attacks.
    */
   async generatePresignedUploadUrl(
     key: string,
     contentType: string,
     expiresIn: number = 3600,
-  ): Promise<string> {
-    const command = new PutObjectCommand({
+  ): Promise<PresignedPostData> {
+    const { url, fields } = await createPresignedPost(this.s3Client, {
       Bucket: this.bucketName,
       Key: key,
-      ContentType: contentType,
+      Conditions: [
+        ['content-length-range', 0, 26214400], // max 25MB
+        ['eq', '$Content-Type', contentType]
+      ],
+      Fields: {
+        'Content-Type': contentType,
+      },
+      Expires: expiresIn,
     });
 
-    return getSignedUrl(this.s3Client, command, { expiresIn });
+    return { url, fields };
   }
 
   /**

@@ -58,7 +58,10 @@ const mockPrisma = {
 
 const mockStorage = {
   buildDocumentKey: jest.fn().mockReturnValue('assessments/assess-1/documents/doc-1/plan.pdf'),
-  generatePresignedUploadUrl: jest.fn().mockResolvedValue('https://s3.example.com/upload'),
+  generatePresignedUploadUrl: jest.fn().mockResolvedValue({
+    url: 'https://s3.example.com/upload',
+    fields: { key: 'test' },
+  }),
 };
 
 const mockJobs = {
@@ -130,6 +133,7 @@ describe('AssessmentsService', () => {
         'user-1',
       );
       expect(result.presignedUrl).toBeTruthy();
+      expect(result.fields).toBeDefined();
       expect(result.documentId).toBe('doc-1');
     });
 
@@ -145,6 +149,7 @@ describe('AssessmentsService', () => {
         'user-1',
       );
       expect(result.presignedUrl).toBeTruthy();
+      expect(result.fields).toBeDefined();
       expect(result.documentId).toBe('doc-2');
     });
 

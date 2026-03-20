@@ -28,7 +28,7 @@ const mockService = {
   findOne: jest.fn().mockResolvedValue(mockAssessment),
   update: jest.fn().mockResolvedValue(mockAssessment),
   delete: jest.fn().mockResolvedValue(undefined),
-  requestUploadUrl: jest.fn().mockResolvedValue({ presignedUrl: 'https://s3.example.com/upload', documentId: 'doc-1' }),
+  requestUploadUrl: jest.fn().mockResolvedValue({ presignedUrl: 'https://s3.example.com/upload', fields: { key: 'test' }, documentId: 'doc-1' }),
   triggerParseDocument: jest.fn().mockResolvedValue('job-1'),
   addComment: jest.fn().mockResolvedValue({ id: 'comment-1', content: 'Test comment' }),
   getComments: jest.fn().mockResolvedValue([]),
@@ -97,10 +97,11 @@ describe('AssessmentsController', () => {
   });
 
   describe('requestUploadUrl', () => {
-    it('should return a presigned upload URL', async () => {
+    it('should return a presigned upload URL and fields', async () => {
       const dto = { fileName: 'plan.pdf', mimeType: 'application/pdf', fileSize: 1024 };
       const result = await controller.requestUploadUrl('assess-1', dto, mockUser);
       expect(result.presignedUrl).toBeTruthy();
+      expect(result.fields).toBeDefined();
       expect(result.documentId).toBeTruthy();
     });
   });

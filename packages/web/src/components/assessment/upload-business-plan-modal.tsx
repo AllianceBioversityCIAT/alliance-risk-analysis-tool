@@ -221,14 +221,14 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
       try {
         updateFile(i, { phase: 'uploading', uploadProgress: 0, errorMessage: null });
 
-        const { presignedUrl, documentId } = await requestUploadUrl({
+        const { presignedUrl, fields, documentId } = await requestUploadUrl({
           assessmentId,
           fileName: tf.selectedFile.name,
           mimeType: tf.selectedFile.mimeType,
           fileSize: tf.selectedFile.size,
         });
 
-        await uploadToS3(presignedUrl, tf.selectedFile, (pct) => {
+        await uploadToS3(presignedUrl, fields, tf.selectedFile, (pct) => {
           updateFile(i, { uploadProgress: pct });
         });
 
@@ -382,6 +382,7 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
 
 async function uploadToS3(
   presignedUrl: string,
+  fields: Record<string, string>,
   selectedFile: SelectedFile,
   onProgress: (pct: number) => void,
 ): Promise<void> {
@@ -407,8 +408,14 @@ async function uploadToS3(
     xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
     xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
 
-    xhr.open('PUT', presignedUrl);
-    xhr.setRequestHeader('Content-Type', selectedFile.mimeType);
-    xhr.send(selectedFile.file);
+    xhr.open('POST', presignedUrl);
+
+    const formData = new FormData();
+    Object.entries(fields).forEach(([key, value]) => {
+      formData.append(key, value);
+    });
+    formData.append('file', selectedFile.file);
+
+    xhr.send(formData);
   });
 }
