@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit');
-import type { ReportResponse, SubcategoryScore } from '@alliance-risk/shared';
+import type { ReportResponse, SubcategoryScore, ReportConfig } from '@alliance-risk/shared';
 
 export interface ReportExtras {
   strengths?: string[];
@@ -33,7 +33,7 @@ export class PdfService {
   /**
    * Generate a professional PDF report buffer from risk analysis data.
    */
-  async generate(report: ReportResponse, extras?: ReportExtras): Promise<Buffer> {
+  async generate(report: ReportResponse, extras?: ReportExtras, reportConfig?: ReportConfig): Promise<Buffer> {
     this.logger.log(`Generating PDF for assessment: ${report.assessment.id}`);
 
     return new Promise((resolve, reject) => {
@@ -52,17 +52,28 @@ export class PdfService {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
 
+      // When reportConfig is undefined, render everything (backward compat)
+      const cfg = reportConfig;
+
       this.renderTitlePage(doc, report);
       this.renderExecutiveSummary(doc, report, extras);
       this.renderOverallScoreSummary(doc, report);
-      this.renderCategoryDetails(doc, report);
-      this.renderRecommendations(doc, report);
+
+      if (!cfg || cfg.includeCategoryDetails) {
+        this.renderCategoryDetails(doc, report);
+      }
+
+      if (!cfg || cfg.includeRecommendations) {
+        this.renderRecommendations(doc, report);
+      }
 
       if (extras?.strengths?.length || extras?.weaknesses?.length) {
         this.renderStrengthsWeaknesses(doc, extras);
       }
 
-      this.renderMethodology(doc);
+      if (!cfg || cfg.includeMethodology) {
+        this.renderMethodology(doc);
+      }
 
       doc.end();
     });

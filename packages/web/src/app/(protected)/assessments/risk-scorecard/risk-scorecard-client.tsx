@@ -13,6 +13,7 @@ import { RecommendationFilterBar } from '@/components/risk-scorecard/recommendat
 import { getCategoryLabel } from '@/components/risk-scorecard/category-config';
 import { CommentPanel } from '@/components/risk-scorecard/comment-panel';
 import { RiskMatrixDialog } from '@/components/risk-scorecard/risk-matrix-dialog';
+import { ReportConfigurationDialog } from '@/components/risk-scorecard/report-configuration-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAssessment } from '@/hooks/use-assessments';
 import {
@@ -23,6 +24,7 @@ import {
 } from '@/hooks/use-risk-scores';
 import { AssessmentStatus, RiskLevel, RecommendationPriority } from '@alliance-risk/shared';
 import apiClient from '@/lib/api-client';
+import type { ReportConfig } from '@alliance-risk/shared';
 import type { EnrichedRecommendation } from '@/components/risk-scorecard/recommendation-types';
 
 const POLL_INTERVAL = 5000; // 5 seconds
@@ -82,6 +84,7 @@ export default function RiskScorecardClient() {
   const id = searchParams.get('id');
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
   const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [reportConfigOpen, setReportConfigOpen] = useState(false);
   const [priorityFilter, setPriorityFilter] = useState<'ALL' | RecommendationPriority>('ALL');
   const resyncingCategoriesRef = useRef(new Set<string>());
   const [hasActiveResync, setHasActiveResync] = useState(false);
@@ -132,11 +135,16 @@ export default function RiskScorecardClient() {
     [editRec],
   );
 
-  const handleGenerateReport = useCallback(async () => {
+  const handleOpenReportConfig = useCallback(() => {
+    setReportConfigOpen(true);
+  }, []);
+
+  const handleGenerateWithConfig = useCallback(async (config: ReportConfig) => {
     if (!id) return;
     setIsGeneratingReport(true);
+    setReportConfigOpen(false);
     try {
-      await apiClient.post(`/api/assessments/${id}/report/pdf`);
+      await apiClient.post(`/api/assessments/${id}/report/pdf`, config);
       router.push(`/assessments/report?id=${id}`);
     } catch {
       setIsGeneratingReport(false);
@@ -202,7 +210,7 @@ export default function RiskScorecardClient() {
         <MessageSquare className="h-4 w-4" />
         Comments {comments.length > 0 && `(${comments.length})`}
       </Button>
-      <Button onClick={handleGenerateReport} disabled={reportDisabled} className="gap-1.5">
+      <Button onClick={handleOpenReportConfig} disabled={reportDisabled} className="gap-1.5">
         {isGeneratingReport ? (
           <Loader2 className="h-4 w-4 animate-spin" />
         ) : (
@@ -315,6 +323,13 @@ export default function RiskScorecardClient() {
             onClick={() => setCommentPanelOpen(false)}
           />
         )}
+
+        <ReportConfigurationDialog
+          open={reportConfigOpen}
+          onOpenChange={setReportConfigOpen}
+          onGenerate={handleGenerateWithConfig}
+          isGenerating={isGeneratingReport}
+        />
       </AssessmentPageShell>
   );
 }

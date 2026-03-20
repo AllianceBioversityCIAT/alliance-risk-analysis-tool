@@ -32,7 +32,15 @@ export type {
   RecommendationResponse,
   AssessmentCommentResponse,
 } from './types/risk-score.types';
-export type { ReportResponse } from './types/report.types';
+export type {
+  ReportResponse,
+  ReportConfig,
+  SubcategoryChartType,
+  FinancialMetrics,
+  FinancialRevenueEntry,
+  FinancialCostEntry,
+  FinancialMargins,
+} from './types/report.types';
 export type {
   DocumentInfo,
   UploadUrlResponse,

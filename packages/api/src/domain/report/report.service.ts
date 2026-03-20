@@ -3,6 +3,7 @@ import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
 import { JobType } from '@alliance-risk/shared';
 import type { ReportResponse } from '@alliance-risk/shared';
+import type { ReportConfigDto } from './dto/report-config.dto';
 
 @Injectable()
 export class ReportService {
@@ -85,11 +86,22 @@ export class ReportService {
     };
   }
 
-  async generatePdf(assessmentId: string, userId: string): Promise<{ jobId: string }> {
+  async generatePdf(assessmentId: string, userId: string, configDto?: ReportConfigDto): Promise<{ jobId: string }> {
     await this.validateOwnership(assessmentId, userId);
+    // Normalize DTO optional fields to ReportConfig defaults
+    const reportConfig = configDto ? {
+      includeRadarChart: configDto.includeRadarChart ?? true,
+      includeCategoryDetails: configDto.includeCategoryDetails ?? true,
+      includeSubcategoryCharts: configDto.includeSubcategoryCharts ?? false,
+      subcategoryChartType: configDto.subcategoryChartType ?? 'bar' as const,
+      includeFinancialCharts: configDto.includeFinancialCharts ?? false,
+      includeRecommendations: configDto.includeRecommendations ?? true,
+      includeEvidenceTraces: configDto.includeEvidenceTraces ?? false,
+      includeMethodology: configDto.includeMethodology ?? true,
+    } : undefined;
     const jobId = await this.jobsService.create(
       JobType.REPORT_GENERATION,
-      { assessmentId },
+      { assessmentId, reportConfig },
       userId,
     );
     return { jobId };

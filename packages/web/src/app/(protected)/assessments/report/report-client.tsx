@@ -12,6 +12,9 @@ import { AssessmentTopBar } from '@/components/shared/assessment-top-bar';
 import { ReportLayout } from '@/components/report/report-layout';
 import { ReportSection } from '@/components/report/report-section';
 import { RadarChart } from '@/components/report/radar-chart';
+import { SubcategoryChartSwitcher } from '@/components/report/subcategory-chart-switcher';
+import { FinancialRevenueChart } from '@/components/report/financial-revenue-chart';
+import { FinancialCostChart } from '@/components/report/financial-cost-chart';
 import { useReport, useGeneratePdf } from '@/hooks/use-report';
 import { useAssessment } from '@/hooks/use-assessments';
 import { useJobPolling } from '@/hooks/use-job-polling';
@@ -78,6 +81,9 @@ export default function ReportClient() {
         label: sub.name,
       })),
     })),
+    ...(report?.financialMetrics && report?.reportConfig?.includeFinancialCharts
+      ? [{ id: 'financial-overview', label: 'Financial Overview' }]
+      : []),
   ];
 
   // Common header (always visible, even during loading)
@@ -154,7 +160,7 @@ export default function ReportClient() {
   const levelConfig = LEVEL_CONFIG[report.overallLevel];
 
   return (
-    <>
+    <div className="flex flex-col min-h-0 flex-1 overflow-hidden">
       {headerSection}
 
       <ReportLayout
@@ -247,6 +253,16 @@ export default function ReportClient() {
                 <p className="text-sm text-foreground leading-relaxed mb-4">{cat.narrative}</p>
               )}
 
+              {/* Subcategory chart */}
+              {report.reportConfig?.includeSubcategoryCharts && cat.subcategories.length > 0 && (
+                <div className="mb-4">
+                  <SubcategoryChartSwitcher
+                    subcategories={cat.subcategories}
+                    chartType={report.reportConfig.subcategoryChartType}
+                  />
+                </div>
+              )}
+
               {/* Subcategory table */}
               {cat.subcategories.length > 0 && (
                 <div className="overflow-x-auto">
@@ -299,6 +315,22 @@ export default function ReportClient() {
             </ReportSection>
           );
         })}
+        {/* Financial Overview */}
+        {report.financialMetrics && report.reportConfig?.includeFinancialCharts && (
+          <ReportSection id="financial-overview" heading="Financial Overview">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {report.financialMetrics.revenue.length > 0 && (
+                <FinancialRevenueChart data={report.financialMetrics.revenue} />
+              )}
+              {report.financialMetrics.costs.length > 0 && (
+                <FinancialCostChart
+                  data={report.financialMetrics.costs}
+                  margins={report.financialMetrics.margins}
+                />
+              )}
+            </div>
+          </ReportSection>
+        )}
       </ReportLayout>
 
       {/* Print styles */}
@@ -309,6 +341,6 @@ export default function ReportClient() {
           body { background: white; }
         }
       `}</style>
-    </>
+    </div>
   );
 }

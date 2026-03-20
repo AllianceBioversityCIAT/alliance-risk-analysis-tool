@@ -5,10 +5,11 @@ import { StorageService } from '../../../infrastructure/storage/storage.service'
 import { PdfService } from '../../../domain/report/pdf.service';
 import type { JobHandler } from '../job-handler.interface';
 import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
-import type { ReportResponse } from '@alliance-risk/shared';
+import type { ReportResponse, ReportConfig, FinancialMetrics } from '@alliance-risk/shared';
 
 interface ReportGenerationInput {
   assessmentId: string;
+  reportConfig?: ReportConfig;
 }
 
 interface ReportGenerationResult {
@@ -130,7 +131,16 @@ export class ReportGenerationHandler implements JobHandler {
       };
     }
 
-    // 5. Build ReportResponse for PDF generation
+    // 5. Extract financial metrics if requested
+    let financialMetrics: FinancialMetrics | undefined;
+    if (input.reportConfig?.includeFinancialCharts) {
+      financialMetrics = await this.extractFinancialMetrics(input.assessmentId, bedrockTokensUsed);
+      if (financialMetrics) {
+        bedrockTokensUsed += 500; // approximate tokens for financial extraction
+      }
+    }
+
+    // 6. Build ReportResponse for PDF generation
     const reportData: ReportResponse = {
       assessment: {
         id: assessment.id,
@@ -171,24 +181,26 @@ export class ReportGenerationHandler implements JobHandler {
         category: s.category,
         score: s.score,
       })),
+      financialMetrics,
+      reportConfig: input.reportConfig,
     };
 
-    // 6. Generate PDF
+    // 7. Generate PDF
     const pdfBuffer = await this.pdfService.generate(reportData, {
       strengths: reportAI.strengths,
       weaknesses: reportAI.weaknesses,
       keyFindings: reportAI.keyFindings,
-    });
+    }, input.reportConfig);
 
-    // 7. Upload PDF to S3
+    // 8. Upload PDF to S3
     const reportId = `report-${crypto.randomUUID()}`;
     const pdfKey = this.storageService.buildReportKey(input.assessmentId, reportId);
     await this.storageService.uploadBuffer(pdfKey, pdfBuffer, 'application/pdf');
 
-    // 8. Generate presigned download URL
+    // 9. Generate presigned download URL
     const downloadUrl = await this.storageService.generatePresignedDownloadUrl(pdfKey);
 
-    // 9. Update assessment progress
+    // 10. Update assessment progress
     await this.prisma.assessment.update({
       where: { id: input.assessmentId },
       data: { progress: 100 },
@@ -202,6 +214,95 @@ export class ReportGenerationHandler implements JobHandler {
       downloadUrl,
       bedrockTokensUsed,
     };
+  }
+
+  // ─── Financial Metrics Extraction ────────────────────────────────────────
+
+  private async extractFinancialMetrics(
+    assessmentId: string,
+    _currentTokens: number,
+  ): Promise<FinancialMetrics | undefined> {
+    try {
+      // Fetch merged document content from completed parse jobs
+      const parseJobs = await this.prisma.job.findMany({
+        where: {
+          type: 'PARSE_DOCUMENT',
+          status: 'COMPLETED',
+          input: { path: ['assessmentId'], equals: assessmentId },
+        },
+        orderBy: { completedAt: 'asc' },
+      });
+
+      if (parseJobs.length === 0) return undefined;
+
+      const mergedContent = parseJobs
+        .map((job) => {
+          const extraction = job.result as { markdownContent?: string; textContent?: string } | null;
+          const jobInput = job.input as { fileName?: string };
+          const content = extraction?.markdownContent || extraction?.textContent || '';
+          return content ? `--- ${jobInput?.fileName ?? 'Unknown'} ---\n${content}` : '';
+        })
+        .filter(Boolean)
+        .join('\n\n')
+        .substring(0, 50000);
+
+      const rgModel = BEDROCK_MODELS[AgentSection.REPORT_GENERATION];
+      const { output } = await this.bedrock.invokeModel({
+        modelId: rgModel.modelId,
+        systemPrompt: 'You are a financial data extraction specialist. Extract structured financial metrics from documents. Return ONLY valid JSON.',
+        userPrompt: `Extract financial metrics from the following documents. Return a JSON object with this exact structure:
+{
+  "revenue": [{"year": 2024, "amount": 1000000, "currency": "USD"}],
+  "costs": [{"category": "Operations", "amount": 500000}],
+  "margins": {"gross": 0.45, "operating": 0.20}
+}
+
+If no financial data is found, return: {"revenue": [], "costs": [], "margins": {"gross": null, "operating": null}}
+
+Documents:
+${mergedContent}`,
+        temperature: 0.1,
+        maxTokens: 2000,
+      });
+
+      return this.parseFinancialMetrics(output);
+    } catch (error) {
+      this.logger.warn(`Financial metrics extraction failed: ${(error as Error).message}`);
+      return undefined;
+    }
+  }
+
+  private parseFinancialMetrics(output: string): FinancialMetrics | undefined {
+    // 3-strategy defensive JSON parsing
+    const strategies = [
+      () => JSON.parse(output),
+      () => JSON.parse(output.replace(/^```(?:json)?\s*\n?/m, '').replace(/\n?```\s*$/m, '')),
+      () => {
+        const first = output.indexOf('{');
+        const last = output.lastIndexOf('}');
+        if (first !== -1 && last > first) return JSON.parse(output.substring(first, last + 1));
+        throw new Error('No JSON block found');
+      },
+    ];
+
+    for (const strategy of strategies) {
+      try {
+        const parsed = strategy();
+        return {
+          revenue: Array.isArray(parsed.revenue) ? parsed.revenue : [],
+          costs: Array.isArray(parsed.costs) ? parsed.costs : [],
+          margins: {
+            gross: parsed.margins?.gross ?? null,
+            operating: parsed.margins?.operating ?? null,
+          },
+        };
+      } catch {
+        // Fall through to next strategy
+      }
+    }
+
+    this.logger.warn(`Failed to parse financial metrics. Output: ${output.substring(0, 200)}`);
+    return undefined;
   }
 
   // ─── JSON Parsing (3-Strategy Defensive) ─────────────────────────────────

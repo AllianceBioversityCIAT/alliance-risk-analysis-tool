@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { ChevronDown, RefreshCw } from 'lucide-react';
+import { ChevronDown, RefreshCw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { RiskLevel, JobStatus } from '@alliance-risk/shared';
 import type { RiskScoreResponse, SubcategoryScore } from '@alliance-risk/shared';
@@ -139,11 +139,19 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
     }
   }, [jobStatus, jobError, queryClient, assessmentId, label, reset, score.category, onResyncStateChange]);
 
+  const isHighRisk = score.level === RiskLevel.HIGH;
+  const isCritical = score.level === RiskLevel.CRITICAL;
+
   return (
     <div
       className={cn(
         'bg-card border rounded-xl overflow-hidden shadow-sm transition-all',
-        isExpanded ? 'border-border col-span-full' : 'border-border',
+        isExpanded ? 'col-span-full' : '',
+        isCritical
+          ? 'border-destructive border-2 ring-2 ring-destructive/20'
+          : isHighRisk
+            ? 'border-orange-400 border-2'
+            : 'border-border',
       )}
     >
       {/* Card header */}
@@ -171,7 +179,14 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
               >
                 <RefreshCw className={cn('h-3.5 w-3.5', isProcessing && 'animate-spin')} />
               </button>
-              <span className={cn('text-xs font-semibold px-2 py-0.5 rounded-md border shadow-sm', config.color, config.bg)}>
+              {(isHighRisk || isCritical) && (
+                <AlertTriangle className={cn('h-3.5 w-3.5', isCritical ? 'text-destructive' : 'text-orange-500')} />
+              )}
+              <span className={cn(
+                'text-xs font-semibold px-2 py-0.5 rounded-md border shadow-sm',
+                config.color, config.bg,
+                isCritical && 'animate-pulse',
+              )}>
                 {config.label}
               </span>
             </div>

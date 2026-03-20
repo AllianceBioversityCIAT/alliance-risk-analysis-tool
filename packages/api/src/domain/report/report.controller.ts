@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Param, ParseUUIDPipe } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, ParseUUIDPipe } from '@nestjs/common';
 import { ReportService } from './report.service';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import type { UserClaims } from '../../common/guards/jwt-auth.guard';
+import { ReportConfigDto } from './dto/report-config.dto';
 
 @Controller('assessments/:id/report')
 export class ReportController {
@@ -19,7 +20,8 @@ export class ReportController {
   generatePdf(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentUser() user: UserClaims,
+    @Body() config?: ReportConfigDto,
   ) {
-    return this.reportService.generatePdf(id, user.userId);
+    return this.reportService.generatePdf(id, user.userId, config);
   }
 }
