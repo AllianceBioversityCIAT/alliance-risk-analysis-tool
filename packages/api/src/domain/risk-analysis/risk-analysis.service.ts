@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { UpdateRecommendationDto } from './dto';
 import type { RiskScore, Recommendation } from '@prisma/client';
@@ -12,11 +12,10 @@ export class RiskAnalysisService {
   constructor(private readonly prisma: PrismaService) {}
 
   private async validateOwnership(assessmentId: string, userId: string): Promise<void> {
-    const assessment = await this.prisma.assessment.findUnique({
-      where: { id: assessmentId },
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, userId },
     });
     if (!assessment) throw new NotFoundException('Assessment not found');
-    if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
   }
 
   async findByAssessment(
@@ -44,9 +43,8 @@ export class RiskAnalysisService {
       include: { riskScore: true },
     });
 
-    if (!recommendation) throw new NotFoundException('Recommendation not found');
-    if (recommendation.riskScore.assessmentId !== assessmentId) {
-      throw new ForbiddenException('Recommendation does not belong to this assessment');
+    if (!recommendation || recommendation.riskScore.assessmentId !== assessmentId) {
+      throw new NotFoundException('Recommendation not found');
     }
 
     return this.prisma.recommendation.update({

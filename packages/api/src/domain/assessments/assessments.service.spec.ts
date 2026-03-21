@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { AssessmentsService } from './assessments.service';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
@@ -39,6 +39,7 @@ const mockPrisma = {
   assessment: {
     create: jest.fn().mockResolvedValue(mockAssessment),
     findMany: jest.fn().mockResolvedValue([mockAssessment]),
+    findFirst: jest.fn().mockResolvedValue(mockAssessment),
     findUnique: jest.fn().mockResolvedValue(mockAssessment),
     update: jest.fn().mockResolvedValue(mockAssessment),
     delete: jest.fn().mockResolvedValue(mockAssessment),
@@ -101,12 +102,13 @@ describe('AssessmentsService', () => {
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockPrisma.assessment.findUnique.mockResolvedValue(null);
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
       await expect(service.findOne('bad-id', 'user-1')).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException when user does not own assessment', async () => {
-      await expect(service.findOne('assess-1', 'other-user')).rejects.toThrow(ForbiddenException);
+    it('should throw NotFoundException when user does not own assessment (implicit)', async () => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('assess-1', 'other-user')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -122,6 +124,10 @@ describe('AssessmentsService', () => {
   });
 
   describe('requestUploadUrl', () => {
+    beforeEach(() => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
+    });
+
     it('should create document record and return presigned URL', async () => {
       mockPrisma.assessmentDocument.create.mockResolvedValue({ id: 'doc-1', s3Key: '' });
       const result = await service.requestUploadUrl(
@@ -161,6 +167,7 @@ describe('AssessmentsService', () => {
 
   describe('triggerParseDocument', () => {
     beforeEach(() => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
       mockPrisma.assessmentDocument.findUnique.mockResolvedValue(mockDocument);
       mockPrisma.assessmentDocument.update.mockResolvedValue({ ...mockDocument, status: 'UPLOADED' });
       mockJobs.create.mockResolvedValue('job-1');
