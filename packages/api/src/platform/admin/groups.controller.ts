@@ -16,6 +16,7 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import { CognitoService } from '../auth/cognito.service';
 import { AdminGuard } from '../../common/guards/admin.guard';
 
@@ -46,6 +47,7 @@ export class GroupsController {
    * POST /api/admin/users/:username/groups/:groupName
    * Adds a user to a Cognito group.
    */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Post('users/:username/groups/:groupName')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Add user to group', description: 'Adds a Cognito user to a group. Allowed groups: admin, user, viewer. Assigning the admin group grants full admin access to the API.' })
@@ -71,6 +73,7 @@ export class GroupsController {
    * DELETE /api/admin/users/:username/groups/:groupName
    * Removes a user from a Cognito group.
    */
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @Delete('users/:username/groups/:groupName')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Remove user from group', description: 'Removes a Cognito user from a group. Removing from the admin group revokes admin access immediately on the next token refresh.' })

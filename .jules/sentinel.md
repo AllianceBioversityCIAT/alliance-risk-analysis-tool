@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-03-12 - Missing Rate Limit on Admin Group Management
+**Vulnerability:** The admin `groups.controller.ts` endpoints for adding and removing users from groups lacked rate limiting (`@Throttle`), leaving the API vulnerable to brute-force group assignments (e.g., mass-assigning 'admin' roles) by a compromised admin account.
+**Learning:** All state-changing administrative endpoints, particularly those concerning authorization and roles, must be explicitly rate-limited. Relying solely on the global rate limiter or role-based access control is insufficient defense-in-depth against compromised highly privileged accounts.
+**Prevention:** Ensure `@Throttle` is consistently applied to all sensitive operations in admin controllers.
