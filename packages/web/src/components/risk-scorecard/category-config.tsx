@@ -30,9 +30,17 @@ const CATEGORY_CONFIG: Record<string, CategoryConfig> = {
 const DEFAULT_CONFIG: CategoryConfig = { label: '', icon: Shield };
 
 export function getCategoryConfig(raw: string): CategoryConfig {
-  const config = CATEGORY_CONFIG[raw];
+  if (!raw) return DEFAULT_CONFIG;
+  const normalized = raw.toUpperCase().trim();
+  const config = CATEGORY_CONFIG[normalized];
   if (config) return config;
-  return { ...DEFAULT_CONFIG, label: raw.replace(/_/g, ' ') };
+
+  const fallbackLabel = raw
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+
+  return { ...DEFAULT_CONFIG, label: fallbackLabel };
 }
 
 export function getCategoryLabel(raw: string): string {
