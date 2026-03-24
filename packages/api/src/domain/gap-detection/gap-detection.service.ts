@@ -5,7 +5,7 @@ import { BedrockService } from '../../infrastructure/bedrock/bedrock.service';
 import { JobType } from '@alliance-risk/shared';
 import type { InvalidField } from '@alliance-risk/shared';
 import { UpdateGapFieldsDto } from './dto';
-import { GAP_VALIDATION_CONFIG, FIELD_DESCRIPTIONS, GAP_DETECTION_CONFIG } from './gap-detection.config';
+import { GAP_VALIDATION_CONFIG, FIELD_DESCRIPTIONS } from './gap-detection.config';
 
 
 @Injectable()

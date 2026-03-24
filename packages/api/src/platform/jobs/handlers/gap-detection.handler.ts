@@ -291,7 +291,6 @@ export class GapDetectionHandler implements JobHandler {
     const existingFields = await this.prisma.gapField.findMany({
       where: { assessmentId },
     });
-    const fieldMap = new Map(existingFields.map((f) => [f.field, f]));
     const responseMap = new Map(response.fields.map((f) => [f.field, f]));
 
     const updates = existingFields.map((existing) => {

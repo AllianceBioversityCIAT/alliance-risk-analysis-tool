@@ -14,7 +14,13 @@
 **Vulnerability:** The admin `resetPassword` endpoint (`/api/admin/users/:username/reset-password`) did not have rate limiting (`@Throttle`), leaving it vulnerable to abuse and potential DoS by a compromised admin account spamming resets.
 **Learning:** Admin endpoints, even when authenticated and protected by strict roles, should be rate-limited, especially those performing sensitive operations like resetting passwords.
 **Prevention:** Ensure `@Throttle` is applied to sensitive admin operations as defense-in-depth, even when protected by role-based access control.
+
 ## 2026-03-11 - [CRITICAL] Unauthenticated SQL Execution in Worker Lambda
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-03-12 - Prevent IDOR in Resource Fetching
+**Vulnerability:** Using `findUnique` directly with user-provided IDs without checking ownership can lead to Insecure Direct Object Reference (IDOR), exposing other users' data.
+**Learning:** To prevent IDOR and existence leakage, endpoints must verify record ownership at the database level using `findFirst` with compound conditions (e.g., `where: { id, userId }`) instead of `findUnique`.
+**Prevention:** Avoid fetching with `findUnique` followed by an in-memory ownership check. Use `findFirst` to enforce ownership filtering at the query level.

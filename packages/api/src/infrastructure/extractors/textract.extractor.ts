@@ -16,7 +16,9 @@ export class TextractExtractor implements DocumentExtractor {
   async extract(
     s3Bucket: string,
     s3Key: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _mimeType: string,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     _fileName: string,
   ): Promise<ExtractionResult> {
     const result = await this.textract.analyzeDocument(s3Bucket, s3Key);
