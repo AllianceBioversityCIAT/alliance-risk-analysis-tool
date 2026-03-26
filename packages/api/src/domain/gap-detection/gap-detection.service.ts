@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
 import { BedrockService } from '../../infrastructure/bedrock/bedrock.service';
@@ -19,11 +19,11 @@ export class GapDetectionService {
   ) {}
 
   private async validateOwnership(assessmentId: string, userId: string): Promise<void> {
-    const assessment = await this.prisma.assessment.findUnique({
-      where: { id: assessmentId },
+    // SECURITY: Use findFirst to prevent IDOR and resource enumeration
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, userId },
     });
     if (!assessment) throw new NotFoundException('Assessment not found');
-    if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
   }
 
   async findByAssessment(assessmentId: string, userId: string) {
