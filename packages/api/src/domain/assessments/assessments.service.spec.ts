@@ -40,6 +40,7 @@ const mockPrisma = {
     create: jest.fn().mockResolvedValue(mockAssessment),
     findMany: jest.fn().mockResolvedValue([mockAssessment]),
     findUnique: jest.fn().mockResolvedValue(mockAssessment),
+    findFirst: jest.fn().mockResolvedValue(mockAssessment),
     update: jest.fn().mockResolvedValue(mockAssessment),
     delete: jest.fn().mockResolvedValue(mockAssessment),
     count: jest.fn().mockResolvedValue(1),
@@ -81,6 +82,7 @@ describe('AssessmentsService', () => {
     service = module.get<AssessmentsService>(AssessmentsService);
     jest.clearAllMocks();
     mockPrisma.assessment.findUnique.mockResolvedValue(mockAssessment);
+    mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
   });
 
   describe('create', () => {
@@ -96,17 +98,17 @@ describe('AssessmentsService', () => {
 
   describe('findOne', () => {
     it('should return assessment when user owns it', async () => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
       const result = await service.findOne('assess-1', 'user-1');
       expect(result).toEqual(mockAssessment);
+      expect(mockPrisma.assessment.findFirst).toHaveBeenCalledWith({
+        where: { id: 'assess-1', userId: 'user-1' },
+      });
     });
 
-    it('should throw NotFoundException when not found', async () => {
-      mockPrisma.assessment.findUnique.mockResolvedValue(null);
+    it('should throw NotFoundException when not found or user does not own it', async () => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
       await expect(service.findOne('bad-id', 'user-1')).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw ForbiddenException when user does not own assessment', async () => {
-      await expect(service.findOne('assess-1', 'other-user')).rejects.toThrow(ForbiddenException);
     });
   });
 
