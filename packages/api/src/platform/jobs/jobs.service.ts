@@ -88,14 +88,13 @@ export class JobsService {
    * Poll job status. Validates ownership.
    */
   async findOne(id: string, userId: string): Promise<Job> {
-    const job = await this.prisma.job.findUnique({ where: { id } });
+    // SECURITY: Use findFirst with compound conditions to prevent IDOR and existence leakage
+    const job = await this.prisma.job.findFirst({
+      where: { id, createdById: userId },
+    });
 
     if (!job) {
       throw new NotFoundException(`Job ${id} not found`);
-    }
-
-    if (job.createdById !== userId) {
-      throw new ForbiddenException('You do not own this job');
     }
 
     return job;
