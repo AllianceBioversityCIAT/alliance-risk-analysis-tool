@@ -131,7 +131,7 @@ export class RiskAnalysisHandler implements JobHandler {
     const systemPrompt = prompt.systemPrompt
       .replace(/\{\{categories\}\}/g, categoriesText);
 
-    let userPrompt = prompt.userPromptTemplate
+    const userPrompt = prompt.userPromptTemplate
       .replace(/\{\{business_data\}\}/g, businessData + additionalContext)
       .replace(/\{\{document_content\}\}/g, documentContent)
       .replace(/\{\{categories\}\}/g, categoriesText);
