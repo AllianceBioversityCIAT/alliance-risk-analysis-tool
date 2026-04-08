@@ -154,6 +154,8 @@ export class JobsService {
         result = await this.riskAnalysisHandler.execute(job.input as unknown as Parameters<RiskAnalysisHandler['execute']>[0]);
       } else if (job.type === JobType.REPORT_GENERATION) {
         result = await this.reportGenerationHandler.execute(job.input as unknown as Parameters<ReportGenerationHandler['execute']>[0]);
+      } else if (job.type === JobType.RECALCULATE_CATEGORY) {
+        result = await this.riskAnalysisHandler.execute(job.input as unknown as Parameters<RiskAnalysisHandler['execute']>[0]);
       } else {
         throw new Error(`No handler registered for job type: ${job.type}`);
       }
@@ -215,8 +217,15 @@ export class JobsService {
           }
         }
       } else {
-        // Reset to PENDING for retry
-        await this.updateStatus(jobId, JobStatus.PENDING);
+        // Reset to PENDING for retry — persist the last error for debugging
+        await this.prisma.job.update({
+          where: { id: jobId },
+          data: {
+            status: 'PENDING' as JobStatusPrisma,
+            error: `Attempt ${attempts}/${maxAttempts} failed: ${errorMsg}`,
+          },
+        });
+        this.logger.log(`Job ${jobId} reset to PENDING for retry (attempt ${attempts}/${maxAttempts})`);
       }
     }
   }

@@ -5,7 +5,7 @@ import { BedrockService } from '../../infrastructure/bedrock/bedrock.service';
 import { JobType } from '@alliance-risk/shared';
 import type { InvalidField } from '@alliance-risk/shared';
 import { UpdateGapFieldsDto } from './dto';
-import { GAP_VALIDATION_CONFIG, FIELD_DESCRIPTIONS, GAP_DETECTION_CONFIG } from './gap-detection.config';
+import { GAP_VALIDATION_CONFIG, FIELD_DESCRIPTIONS } from './gap-detection.config';
 
 
 @Injectable()
@@ -40,7 +40,7 @@ export class GapDetectionService {
     const allMandatoryComplete =
       mandatoryFields.length > 0 &&
       mandatoryFields.every(
-        (f) => f.status === 'VERIFIED' || f.correctedValue || f.extractedValue,
+        (f) => f.status === 'VERIFIED' && (f.correctedValue || f.extractedValue),
       );
 
     return { data: fields, total, verifiedCount, missingCount, allMandatoryComplete };

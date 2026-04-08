@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { AvatarInitials } from '@/components/shared/avatar-initials';
 import { useAuth } from '@/providers/auth-provider';
+import { useAssessment } from '@/hooks/use-assessments';
 import { cn } from '@/lib/utils';
 
 const navItems = [
@@ -77,6 +78,17 @@ export function AppSidebar() {
   // Show assessment workflow when inside an assessment page with an id
   const assessmentId = searchParams.get('id');
   const isInAssessment = pathname.startsWith('/assessments/') && !!assessmentId;
+  const { data: assessment } = useAssessment(isInAssessment ? assessmentId : null);
+
+  // Determine step completion from actual assessment data
+  const stepCompleted = [
+    // Step 1 (Gap Detector): done when risk scores exist
+    !!assessment?.overallRiskScore,
+    // Step 2 (Risk Scorecard): done when risk scores exist
+    !!assessment?.overallRiskScore,
+    // Step 3 (Full Report): done when progress reaches 100
+    assessment?.progress === 100,
+  ];
 
   return (
     <Sidebar
@@ -196,10 +208,7 @@ export function AppSidebar() {
                 {assessmentWorkflowItems.map((step, index) => {
                   const stepHref = `${step.path}?id=${assessmentId}`;
                   const isStepActive = pathname === step.path;
-                  const currentStepIndex = assessmentWorkflowItems.findIndex(
-                    (s) => pathname === s.path,
-                  );
-                  const isCompleted = currentStepIndex > index;
+                  const isCompleted = stepCompleted[index];
 
                   return (
                     <SidebarMenuItem key={step.path}>
@@ -231,14 +240,14 @@ export function AppSidebar() {
                             <div
                               className={cn(
                                 'h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0',
-                                isStepActive
-                                  ? 'bg-white text-[#008F8F]'
-                                  : isCompleted
-                                    ? 'bg-emerald-400 text-white'
+                                isCompleted
+                                  ? 'bg-emerald-400 text-white'
+                                  : isStepActive
+                                    ? 'bg-white text-[#008F8F]'
                                     : 'bg-white/20 text-white/60',
                               )}
                             >
-                              {index + 1}
+                              {isCompleted ? '✓' : index + 1}
                             </div>
                           )}
                           <span className="ml-3 text-sm font-medium">{step.label}</span>

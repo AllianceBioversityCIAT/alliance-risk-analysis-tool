@@ -55,7 +55,7 @@ export function ReportTocSidebar({ items }: ReportTocSidebarProps) {
   }
 
   return (
-    <nav className="w-64 shrink-0 border-l border-border bg-card sticky top-0 h-screen overflow-y-auto py-6 px-4 hidden lg:block">
+    <nav className="w-64 shrink-0 border-l border-border bg-card overflow-y-auto py-6 px-4 hidden lg:block print:hidden">
       <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-4 px-2">
         Contents
       </p>

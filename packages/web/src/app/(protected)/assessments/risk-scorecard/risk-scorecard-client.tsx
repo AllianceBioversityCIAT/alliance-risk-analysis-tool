@@ -1,15 +1,18 @@
 'use client';
 
 import { useSearchParams, useRouter } from 'next/navigation';
-import { useEffect, useState, useCallback } from 'react';
-import { MessageSquare, FileText, Loader2, Check, Database, BarChart3, Brain } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { MessageSquare, FileText, Check, Database, BarChart3, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { PipelineStepper } from '@/components/shared/pipeline-stepper';
 import { AssessmentPageShell } from '@/components/shared/assessment-page-shell';
 import { RiskScoreOverview } from '@/components/risk-scorecard/risk-score-overview';
 import { CategoryScoreCard } from '@/components/risk-scorecard/category-score-card';
-import { RecommendationRow } from '@/components/risk-scorecard/recommendation-row';
+import { RecommendationCategoryGroup } from '@/components/risk-scorecard/recommendation-category-group';
+import { RecommendationFilterBar } from '@/components/risk-scorecard/recommendation-filter-bar';
+import { getCategoryLabel } from '@/components/risk-scorecard/category-config';
 import { CommentPanel } from '@/components/risk-scorecard/comment-panel';
+import { RiskMatrixDialog } from '@/components/risk-scorecard/risk-matrix-dialog';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAssessment } from '@/hooks/use-assessments';
 import {
@@ -18,8 +21,8 @@ import {
   useAssessmentComments,
   useAddComment,
 } from '@/hooks/use-risk-scores';
-import { AssessmentStatus, RiskLevel } from '@alliance-risk/shared';
-import apiClient from '@/lib/api-client';
+import { AssessmentStatus, RiskLevel, RecommendationPriority } from '@alliance-risk/shared';
+import type { EnrichedRecommendation } from '@/components/risk-scorecard/recommendation-types';
 
 const POLL_INTERVAL = 5000; // 5 seconds
 
@@ -77,7 +80,18 @@ export default function RiskScorecardClient() {
   const router = useRouter();
   const id = searchParams.get('id');
   const [commentPanelOpen, setCommentPanelOpen] = useState(false);
-  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [priorityFilter, setPriorityFilter] = useState<'ALL' | RecommendationPriority>('ALL');
+  const resyncingCategoriesRef = useRef(new Set<string>());
+  const [hasActiveResync, setHasActiveResync] = useState(false);
+
+  const handleResyncStateChange = useCallback((category: string, isResyncing: boolean) => {
+    if (isResyncing) {
+      resyncingCategoriesRef.current.add(category);
+    } else {
+      resyncingCategoriesRef.current.delete(category);
+    }
+    setHasActiveResync(resyncingCategoriesRef.current.size > 0);
+  }, []);
 
   useEffect(() => {
     if (!id) {
@@ -85,7 +99,8 @@ export default function RiskScorecardClient() {
     }
   }, [id, router]);
 
-  const [isAnalyzing, setIsAnalyzing] = useState(true);
+  // Start as false — only poll once we confirm status is ANALYZING with no scores
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '', {
     refetchInterval: isAnalyzing ? POLL_INTERVAL : false,
@@ -115,15 +130,9 @@ export default function RiskScorecardClient() {
     [editRec],
   );
 
-  const handleGenerateReport = useCallback(async () => {
+  const handleViewReport = useCallback(() => {
     if (!id) return;
-    setIsGeneratingReport(true);
-    try {
-      await apiClient.post(`/api/assessments/${id}/report/pdf`);
-      router.push(`/assessments/report?id=${id}`);
-    } catch {
-      setIsGeneratingReport(false);
-    }
+    router.push(`/assessments/report?id=${id}`);
   }, [id, router]);
 
   if (!id) return null;
@@ -132,7 +141,38 @@ export default function RiskScorecardClient() {
 
   const isLoading = assessmentLoading || riskLoading;
   const scores = riskData ?? [];
-  const allRecommendations = scores.flatMap((s) => s.recommendations);
+  const allRecommendations: EnrichedRecommendation[] = scores.flatMap((s) =>
+    s.recommendations.map((rec) => ({
+      ...rec,
+      category: s.category,
+      categoryLabel: getCategoryLabel(s.category),
+      categoryScore: s.score,
+      categoryLevel: s.level as RiskLevel,
+    })),
+  );
+
+  const filteredRecommendations =
+    priorityFilter === 'ALL'
+      ? allRecommendations
+      : allRecommendations.filter((r) => r.priority === priorityFilter);
+
+  const filterCounts: Record<'ALL' | RecommendationPriority, number> = {
+    ALL: allRecommendations.length,
+    [RecommendationPriority.HIGH]: allRecommendations.filter((r) => r.priority === RecommendationPriority.HIGH).length,
+    [RecommendationPriority.MEDIUM]: allRecommendations.filter((r) => r.priority === RecommendationPriority.MEDIUM).length,
+    [RecommendationPriority.LOW]: allRecommendations.filter((r) => r.priority === RecommendationPriority.LOW).length,
+  };
+
+  // Group filtered recommendations by category (preserving scores order)
+  const groupedByCategory = scores
+    .map((s) => ({
+      category: s.category,
+      categoryLabel: getCategoryLabel(s.category),
+      score: s.score,
+      level: s.level as RiskLevel,
+      recommendations: filteredRecommendations.filter((r) => r.category === s.category),
+    }))
+    .filter((g) => g.recommendations.length > 0);
 
   const overallScore = assessment?.overallRiskScore ?? 0;
   const overallLevel = (assessment?.overallRiskLevel as RiskLevel) ?? RiskLevel.LOW;
@@ -141,8 +181,11 @@ export default function RiskScorecardClient() {
     scores.length === 0 &&
     assessment?.status === AssessmentStatus.ANALYZING;
 
+  const reportDisabled = isAnalyzing || hasActiveResync;
+
   const actionButtons = !isLoading && scores.length > 0 ? (
     <>
+      <RiskMatrixDialog />
       <Button
         variant="outline"
         onClick={() => setCommentPanelOpen(true)}
@@ -151,13 +194,9 @@ export default function RiskScorecardClient() {
         <MessageSquare className="h-4 w-4" />
         Comments {comments.length > 0 && `(${comments.length})`}
       </Button>
-      <Button onClick={handleGenerateReport} disabled={isGeneratingReport} className="gap-1.5">
-        {isGeneratingReport ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : (
-          <FileText className="h-4 w-4" />
-        )}
-        Generate Report
+      <Button onClick={handleViewReport} disabled={reportDisabled} className="gap-1.5">
+        <FileText className="h-4 w-4" />
+        View Report
       </Button>
     </>
   ) : undefined;
@@ -198,7 +237,12 @@ export default function RiskScorecardClient() {
                   <h2 className="text-base font-semibold text-foreground mb-3">Risk Categories</h2>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {scores.map((score) => (
-                      <CategoryScoreCard key={score.id} score={score} />
+                      <CategoryScoreCard
+                        key={score.id}
+                        score={score}
+                        assessmentId={id}
+                        onResyncStateChange={handleResyncStateChange}
+                      />
                     ))}
                   </div>
                 </div>
@@ -206,22 +250,28 @@ export default function RiskScorecardClient() {
 
               {allRecommendations.length > 0 && (
                 <div>
-                  <h2 className="text-base font-semibold text-foreground mb-3">
-                    Key Recommendations ({allRecommendations.length})
-                  </h2>
-                  <div className="space-y-2">
-                    {[...allRecommendations]
-                      .sort((a, b) => {
-                        const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-                        return (order[a.priority as keyof typeof order] ?? 2) - (order[b.priority as keyof typeof order] ?? 2);
-                      })
-                      .map((rec) => (
-                        <RecommendationRow
-                          key={rec.id}
-                          recommendation={rec}
-                          onSave={handleEditRecommendation}
-                        />
-                      ))}
+                  <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+                    <h2 className="text-base font-semibold text-foreground">
+                      Key Recommendations ({filteredRecommendations.length})
+                    </h2>
+                    <RecommendationFilterBar
+                      counts={filterCounts}
+                      active={priorityFilter}
+                      onChange={setPriorityFilter}
+                    />
+                  </div>
+                  <div className="space-y-6">
+                    {groupedByCategory.map((group) => (
+                      <RecommendationCategoryGroup
+                        key={group.category}
+                        category={group.category}
+                        categoryLabel={group.categoryLabel}
+                        score={group.score}
+                        level={group.level}
+                        recommendations={group.recommendations}
+                        onSave={handleEditRecommendation}
+                      />
+                    ))}
                   </div>
                 </div>
               )}
@@ -253,6 +303,7 @@ export default function RiskScorecardClient() {
             onClick={() => setCommentPanelOpen(false)}
           />
         )}
+
       </AssessmentPageShell>
   );
 }

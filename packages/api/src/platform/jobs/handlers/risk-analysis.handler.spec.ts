@@ -205,7 +205,18 @@ describe('RiskAnalysisHandler', () => {
       userPromptTemplate: 'Analyze: {{business_data}} Documents: {{document_content}}',
     });
 
-    (prisma.riskScore.findMany as jest.Mock).mockResolvedValue([]);
+    (prisma.riskScore.findMany as jest.Mock).mockImplementation(async (args) => {
+      // When called with select: { id: true } → existing scores check (pre-delete)
+      if (args.select?.id) return [];
+      // When called with select: { score: true } → overall score re-calculation
+      if (args.select?.score) {
+        return [
+          { score: 45 }, { score: 60 }, { score: 35 },
+          { score: 50 }, { score: 40 }, { score: 30 }, { score: 55 },
+        ];
+      }
+      return [];
+    });
     (prisma.recommendation.deleteMany as jest.Mock).mockResolvedValue({ count: 0 });
     (prisma.riskScore.upsert as jest.Mock).mockImplementation(async (args) => ({
       id: `score-${args.where.assessmentId_category.category}`,
@@ -288,10 +299,16 @@ describe('RiskAnalysisHandler', () => {
 
   it('should delete existing recommendations before creating new ones (idempotency)', async () => {
     setupDefaultMocks();
-    (prisma.riskScore.findMany as jest.Mock).mockResolvedValue([
-      { id: 'existing-score-1' },
-      { id: 'existing-score-2' },
-    ]);
+    (prisma.riskScore.findMany as jest.Mock).mockImplementation(async (args) => {
+      if (args.select?.id) return [{ id: 'existing-score-1' }, { id: 'existing-score-2' }];
+      if (args.select?.score) {
+        return [
+          { score: 45 }, { score: 60 }, { score: 35 },
+          { score: 50 }, { score: 40 }, { score: 30 }, { score: 55 },
+        ];
+      }
+      return [];
+    });
     (bedrock.invokeModel as jest.Mock).mockResolvedValue({
       output: JSON.stringify(mockAIResponse),
       tokensUsed: 5000,

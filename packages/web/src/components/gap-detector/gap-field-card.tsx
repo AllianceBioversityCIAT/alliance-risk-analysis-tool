@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, memo } from 'react';
+import { useState, useCallback, useEffect, memo, useRef } from 'react';
 import {
   AlertTriangle,
   CheckCircle2,
@@ -13,8 +13,12 @@ import {
   ShoppingBag,
   Shield,
   Sparkles,
+  Pencil,
+  X,
+  Check,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { GapFieldStatus } from '@alliance-risk/shared';
 
@@ -66,6 +70,8 @@ interface GapFieldCardProps {
   validationFeedback?: string | null;
   onUpdate: (id: string, value: string, currentStatus?: GapFieldStatus) => Promise<void> | void;
   onFieldFocus?: (value: string | null) => void;
+  isExpanded?: boolean;
+  onToggleExpand?: (id: string) => void;
 }
 
 const GapFieldCard = memo(function GapFieldCard({
@@ -81,30 +87,55 @@ const GapFieldCard = memo(function GapFieldCard({
   validationFeedback,
   onUpdate,
   onFieldFocus,
+  isExpanded = false,
+  onToggleExpand,
 }: GapFieldCardProps) {
   const [editValue, setEditValue] = useState(currentValue ?? '');
   const [isSaving, setIsSaving] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
   const [showReasoning, setShowReasoning] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Focus textarea when expanded
+  useEffect(() => {
+    if (isExpanded) {
+      // Small timeout to allow transition to complete
+      setTimeout(() => {
+        textareaRef.current?.focus();
+        // Move cursor to end
+        const length = textareaRef.current?.value.length ?? 0;
+        textareaRef.current?.setSelectionRange(length, length);
+      }, 50);
+    } else {
+      // Sync editValue when collapsed to discard unsaved typing or pick up new server data
+      setEditValue(currentValue ?? '');
+      setShowReasoning(false);
+    }
+  }, [isExpanded, currentValue]);
+
+  // Sync editValue when currentValue changes externally (e.g. server response after save)
+  useEffect(() => {
+    if (!isExpanded) {
+      setEditValue(currentValue ?? '');
+    }
+  }, [currentValue, isExpanded]);
 
   const isDirty = editValue !== (currentValue ?? '');
-  const isEditing = isFocused || isDirty;
   const isMissing = status === GapFieldStatus.MISSING;
   const isPartial = status === GapFieldStatus.PARTIAL;
-  const isVerified = status === GapFieldStatus.VERIFIED && !isDirty;
+  const isVerified = status === GapFieldStatus.VERIFIED;
 
   const description = FIELD_DESCRIPTIONS[field];
 
   const handleSave = useCallback(async () => {
-    if (!editValue.trim()) return;
+    if (!editValue.trim() && isMandatory) return; // Prevent saving empty if mandatory (optional validation)
     setIsSaving(true);
     try {
       await onUpdate(id, editValue, status);
+      onToggleExpand?.(id); // Auto-collapse on successful save
     } finally {
       setIsSaving(false);
-      setIsFocused(false);
     }
-  }, [id, editValue, onUpdate, status]);
+  }, [id, editValue, isMandatory, onUpdate, status, onToggleExpand]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -112,168 +143,213 @@ const GapFieldCard = memo(function GapFieldCard({
         e.preventDefault();
         handleSave();
       }
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onToggleExpand?.(id);
+      }
     },
-    [isDirty, editValue, handleSave],
+    [isDirty, editValue, handleSave, onToggleExpand, id],
   );
 
-  // Left border color by state
-  const borderLeftColor = isMissing && !isEditing
-    ? 'border-l-red-500'
-    : isEditing
-      ? 'border-l-emerald-500'
-      : isVerified
-        ? 'border-l-emerald-500'
-        : 'border-l-amber-400';
+  const handleContainerClick = () => {
+    if (!isExpanded) {
+      onToggleExpand?.(id);
+      onFieldFocus?.(`${label} ${extractedValue ?? currentValue ?? ''}`);
+    }
+  };
 
-  // Show save icon when field needs action
-  const showSaveIcon = !isVerified || isDirty;
+  // Border color by state
+  const borderIndicatorColor = isMissing
+    ? 'bg-red-500'
+    : isPartial
+      ? 'bg-amber-400'
+      : 'bg-emerald-500';
+
+  const previewText = currentValue || extractedValue || 'No data found...';
 
   return (
     <div
       className={cn(
-        'rounded-lg border border-border/80 p-4 transition-all border-l-4 cursor-pointer hover:shadow-sm',
-        borderLeftColor,
-        isMissing && !isEditing && 'bg-red-50/40',
+        'relative rounded-xl border bg-card transition-all duration-200 overflow-hidden group',
+        isExpanded 
+          ? 'border-primary/30 shadow-md my-4' 
+          : 'border-border/60 hover:border-primary/30 hover:shadow-sm cursor-pointer',
       )}
-      onClick={() => onFieldFocus?.(`${label} ${extractedValue ?? currentValue ?? ''}`)}
+      onClick={handleContainerClick}
     >
-      {/* Label + Status badge */}
-      <div className="flex items-center gap-2 mb-1">
-        <span className="text-sm font-medium text-foreground">
-          {label}
-          {isMandatory && <span className="ml-0.5 text-destructive text-xs align-super">*</span>}
-        </span>
+      {/* Left indicator bar */}
+      <div className={cn('absolute left-0 top-0 bottom-0 w-1 transition-colors', borderIndicatorColor)} />
 
-        {/* Status badges */}
-        {isMissing && !isEditing && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-red-500 text-white">
-            <AlertTriangle className="h-3 w-3" />
-            MISSING DATA
-          </span>
-        )}
-        {isVerified && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500 text-white">
-            <CheckCircle2 className="h-3 w-3" />
-            VERIFIED
-          </span>
-        )}
-        {isEditing && (
-          <span className="text-[11px] font-semibold text-emerald-600">Editing...</span>
-        )}
-        {confidence != null && confidence > 0 && !isEditing && (
-          <span
-            className={cn(
-              'text-[10px] font-medium px-1.5 py-0.5 rounded',
-              confidence >= 0.8
-                ? 'text-green-700 bg-green-100'
-                : confidence >= 0.5
-                  ? 'text-yellow-700 bg-yellow-100'
-                  : 'text-red-700 bg-red-100',
+      {!isExpanded ? (
+        /* ─── Collapsed State (Inbox Row) ─────────────────────────────────────── */
+        <div className="flex items-center gap-3 py-3 px-4 pl-5">
+          <div className="flex items-center gap-2 shrink-0 w-1/3 min-w-[200px]">
+            {isMissing ? (
+              <AlertTriangle className="h-4 w-4 text-red-500 shrink-0" />
+            ) : isPartial ? (
+              <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
+            ) : (
+              <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
             )}
-          >
-            {Math.round(confidence * 100)}%
-          </span>
-        )}
-        {isPartial && !isEditing && (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500 text-white">
-            PARTIAL
-          </span>
-        )}
-      </div>
-
-      {/* Helper text — explains WHY this field matters */}
-      {description && (
-        <p className="text-xs text-muted-foreground mb-3 leading-relaxed">{description}</p>
-      )}
-
-      {/* AI Extraction — read-only block showing what AI found */}
-      {extractedValue && (
-        <div className="mb-3 px-3 py-2 bg-muted/40 rounded-md border-l-2 border-primary/30">
-          <div className="flex items-center gap-1 mb-0.5">
-            <Sparkles className="h-3 w-3 text-primary/70" />
-            <span className="text-[10px] font-semibold uppercase text-muted-foreground tracking-wide">AI Extracted</span>
+            <span className="text-sm font-semibold text-foreground truncate">
+              {label}
+              {isMandatory && <span className="ml-0.5 text-destructive text-xs align-super">*</span>}
+            </span>
           </div>
-          <p className="text-xs text-foreground/80 leading-relaxed line-clamp-3">{extractedValue}</p>
-        </div>
-      )}
 
-      {/* Textarea + Save icon */}
-      {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
-      <div className="flex items-start gap-2" onClick={(e) => e.stopPropagation()}>
-        <Textarea
-          value={editValue}
-          onChange={(e) => setEditValue(e.target.value)}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => !isDirty && setIsFocused(false)}
-          onKeyDown={handleKeyDown}
-          placeholder={
-            isMissing
-              ? 'Provide the missing information...'
-              : isPartial
-                ? 'Add more details to complete this field...'
-                : 'Correct or add to the AI extraction...'
-          }
-          className={cn(
-            'text-sm flex-1 min-h-[2.25rem] resize-none',
-            isMissing && !isEditing && 'border-red-200 focus-visible:ring-red-300',
+          <p className={cn(
+            'flex-1 text-sm truncate pr-8',
+            (!currentValue && !extractedValue) ? 'text-muted-foreground/60 italic' : 'text-muted-foreground'
+          )}>
+            {previewText}
+          </p>
+
+          {/* Hover Action */}
+          <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity flex items-center">
+             <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full text-muted-foreground hover:bg-muted" tabIndex={-1}>
+               <Pencil className="h-4 w-4" />
+             </Button>
+          </div>
+        </div>
+      ) : (
+        /* ─── Expanded State (Editor) ─────────────────────────────────────────── */
+        <div className="p-5 pl-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="flex items-center gap-2 mb-1.5">
+                {isMissing ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-red-100 text-red-700 border border-red-200 shadow-sm">
+                    <AlertTriangle className="h-3 w-3" />
+                    Missing Data
+                  </span>
+                ) : isPartial ? (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 border border-amber-200 shadow-sm">
+                    Partial
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200 shadow-sm">
+                    <CheckCircle2 className="h-3 w-3" />
+                    Verified
+                  </span>
+                )}
+                
+                {confidence != null && confidence > 0 && (
+                  <span
+                    className={cn(
+                      'text-[10px] font-bold px-1.5 py-0.5 rounded-md border shadow-sm',
+                      confidence >= 0.8
+                        ? 'text-green-700 bg-green-50 border-green-200'
+                        : confidence >= 0.5
+                          ? 'text-yellow-700 bg-yellow-50 border-yellow-200'
+                          : 'text-red-700 bg-red-50 border-red-200',
+                    )}
+                  >
+                    {Math.round(confidence * 100)}% Confident
+                  </span>
+                )}
+              </div>
+              <h3 className="text-base font-bold text-foreground tracking-tight">
+                {label}
+                {isMandatory && <span className="ml-1 text-destructive">*</span>}
+              </h3>
+              {description && (
+                <p className="text-sm text-muted-foreground mt-1">{description}</p>
+              )}
+            </div>
+
+            {/* Top right actions (Close) */}
+            <Button size="icon" variant="ghost" className="h-8 w-8 rounded-full shrink-0 text-muted-foreground hover:bg-muted" onClick={() => onToggleExpand?.(id)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+
+          {/* Validation feedback warning */}
+          {validationFeedback && isPartial && (
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-amber-50 border border-amber-200 shadow-sm">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="text-sm text-amber-800 leading-relaxed">{validationFeedback}</p>
+            </div>
           )}
-          disabled={isSaving}
-        />
-        {showSaveIcon && (
-          <button
-            type="button"
-            onClick={isDirty && editValue.trim() ? handleSave : undefined}
-            disabled={!isDirty || !editValue.trim() || isSaving}
-            title="Save changes (Ctrl+Enter)"
-            aria-label={`Save ${label}`}
-            className={cn(
-              'h-9 w-9 rounded-lg flex items-center justify-center shrink-0 transition-colors mt-0.5',
-              isDirty && editValue.trim()
-                ? 'bg-emerald-500 text-white hover:bg-emerald-600 cursor-pointer'
-                : isMissing || isPartial
-                  ? 'bg-red-100 text-red-400 cursor-default'
-                  : 'bg-muted text-muted-foreground cursor-default',
-            )}
-          >
-            <Save className="h-4 w-4" />
-          </button>
-        )}
-      </div>
 
-      {/* Validation feedback warning */}
-      {validationFeedback && isPartial && !isEditing && (
-        <div className="flex items-start gap-1.5 mt-2 px-2.5 py-2 rounded-md bg-amber-50 border border-amber-200">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-amber-800 leading-relaxed">{validationFeedback}</p>
-        </div>
-      )}
+          {/* AI Extraction — read-only block showing what AI found */}
+          {extractedValue && (
+            <div className="px-4 py-3 bg-muted/30 rounded-lg border border-border/60 shadow-sm">
+              <div className="flex items-center gap-1.5 mb-1.5">
+                <Sparkles className="h-3.5 w-3.5 text-primary/70" />
+                <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">AI Extracted</span>
+              </div>
+              <p className="text-sm text-foreground/90 leading-relaxed">{extractedValue}</p>
+            </div>
+          )}
 
-      {/* Save hint when editing */}
-      {isFocused && isDirty && (
-        <p className="text-[10px] text-muted-foreground mt-1.5 ml-0.5">
-          Press <kbd className="px-1 py-0.5 rounded bg-muted text-[10px] font-mono">Ctrl+Enter</kbd> to save
-        </p>
-      )}
-
-      {/* AI Reasoning expandable */}
-      {aiReasoning && (
-        <div className="mt-2.5">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setShowReasoning((prev) => !prev); }}
-            aria-expanded={showReasoning}
-            aria-label="Toggle AI reasoning"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ChevronDown
-              className={cn('h-3 w-3 transition-transform', showReasoning && 'rotate-180')}
+          {/* Editor Area */}
+          <div className="space-y-3">
+            <Textarea
+              ref={textareaRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder={
+                isMissing
+                  ? 'Provide the missing information...'
+                  : isPartial
+                    ? 'Add more details to complete this field...'
+                    : 'Correct or add to the AI extraction...'
+              }
+              className={cn(
+                'text-sm min-h-[5rem] resize-y rounded-lg shadow-inner focus-visible:ring-primary/50',
+                isMissing && !isDirty && 'border-red-200 focus-visible:ring-red-300 bg-red-50/20',
+              )}
+              disabled={isSaving}
             />
-            <span>AI Reasoning</span>
-          </button>
-          {showReasoning && (
-            <p className="text-xs text-muted-foreground bg-muted/50 rounded-md p-2.5 mt-1.5 leading-relaxed">
-              {aiReasoning}
-            </p>
+            
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  <kbd className="px-1.5 py-0.5 rounded-md bg-muted border border-border font-mono text-[10px] shadow-sm">Esc</kbd> to cancel
+                </p>
+                <p className="text-[11px] font-medium text-muted-foreground">
+                  <kbd className="px-1.5 py-0.5 rounded-md bg-muted border border-border font-mono text-[10px] shadow-sm">Ctrl+Enter</kbd> to save
+                </p>
+              </div>
+
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => onToggleExpand?.(id)} disabled={isSaving}>
+                  Cancel
+                </Button>
+                <Button 
+                  size="sm" 
+                  onClick={handleSave} 
+                  disabled={(!isDirty && !isMissing) || (!editValue.trim() && isMandatory) || isSaving}
+                  className="shadow-sm"
+                >
+                  <Save className="h-3.5 w-3.5 mr-1.5" />
+                  {isSaving ? 'Saving...' : 'Save'}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* AI Reasoning expandable */}
+          {aiReasoning && (
+            <div className="pt-2 border-t border-border/50">
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); setShowReasoning((prev) => !prev); }}
+                aria-expanded={showReasoning}
+                className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <ChevronDown
+                  className={cn('h-3.5 w-3.5 transition-transform', showReasoning && 'rotate-180')}
+                />
+                <span>View AI Reasoning</span>
+              </button>
+              {showReasoning && (
+                <div className="mt-2 p-3 bg-muted/40 rounded-lg border border-border/50 text-sm text-foreground/80 leading-relaxed shadow-sm">
+                  {aiReasoning}
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -285,7 +361,7 @@ const GapFieldCard = memo(function GapFieldCard({
 
 interface GapCategoryGroupProps {
   category: string;
-  fields: GapFieldCardProps[];
+  fields: Omit<GapFieldCardProps, 'isExpanded' | 'onToggleExpand'>[];
 }
 
 const GapCategoryGroupInner = function GapCategoryGroup({
@@ -293,24 +369,32 @@ const GapCategoryGroupInner = function GapCategoryGroup({
   fields,
 }: GapCategoryGroupProps) {
   const [isOpen, setIsOpen] = useState(true);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const Icon = CATEGORY_ICONS[category] ?? Briefcase;
   const displayName = CATEGORY_LABELS[category] ?? category;
 
+  const handleToggleExpand = useCallback((id: string) => {
+    setExpandedId((current) => (current === id ? null : id));
+  }, []);
+
   return (
-    <div className="border border-border rounded-xl overflow-hidden bg-card">
+    <div className="border border-border rounded-xl overflow-hidden bg-card shadow-sm">
       {/* Accordion header */}
       <button
         type="button"
         onClick={() => setIsOpen((o) => !o)}
         aria-expanded={isOpen}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors"
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-muted/30 transition-colors"
       >
-        <div className="flex items-center gap-2.5">
-          <div className="h-7 w-7 rounded-lg bg-primary/10 flex items-center justify-center">
+        <div className="flex items-center gap-3">
+          <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
             <Icon className="h-4 w-4 text-primary" />
           </div>
-          <span className="text-sm font-semibold text-foreground">{displayName}</span>
+          <span className="text-sm font-bold text-foreground tracking-tight">{displayName}</span>
+          <span className="ml-2 px-2 py-0.5 rounded-full bg-muted text-[11px] font-semibold text-muted-foreground">
+            {fields.length}
+          </span>
         </div>
         <ChevronUp
           className={cn(
@@ -322,9 +406,14 @@ const GapCategoryGroupInner = function GapCategoryGroup({
 
       {/* Fields */}
       {isOpen && (
-        <div className="px-4 pb-4 space-y-3">
+        <div className="px-5 pb-5 pt-1 space-y-2">
           {fields.map((field) => (
-            <GapFieldCard key={field.id} {...field} />
+            <GapFieldCard 
+              key={field.id} 
+              {...field} 
+              isExpanded={expandedId === field.id}
+              onToggleExpand={handleToggleExpand}
+            />
           ))}
         </div>
       )}

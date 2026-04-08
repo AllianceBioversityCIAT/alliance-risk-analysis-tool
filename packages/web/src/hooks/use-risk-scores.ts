@@ -37,6 +37,33 @@ export function useEditRecommendation(assessmentId: string) {
   });
 }
 
+export function useUpdateAnalystComment(assessmentId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({ scoreId, comment }: { scoreId: string; comment: string }) => {
+      await apiClient.patch(
+        `/api/assessments/${assessmentId}/risk-scores/${scoreId}/comment`,
+        { comment },
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['risk-scores', assessmentId] });
+    },
+  });
+}
+
+export function useResyncCategory(assessmentId: string) {
+  return useMutation({
+    mutationFn: async (category: string) => {
+      const response = await apiClient.post<{ jobId: string }>(
+        `/api/assessments/${assessmentId}/risk-scores/${category}/resync`,
+      );
+      return response.data;
+    },
+  });
+}
+
 export function useAssessmentComments(assessmentId: string) {
   return useQuery<AssessmentCommentResponse[]>({
     queryKey: ['assessment-comments', assessmentId],

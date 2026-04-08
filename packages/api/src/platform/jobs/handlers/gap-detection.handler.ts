@@ -42,8 +42,6 @@ interface GapDetectionAIResponse {
 @Injectable()
 export class GapDetectionHandler implements JobHandler {
   private readonly logger = new Logger(GapDetectionHandler.name);
-  /** Holds the merged Markdown from processUploadMode() for inclusion in result */
-  private _lastMergedMarkdown = '';
 
   constructor(
     private readonly prisma: PrismaService,
@@ -66,12 +64,14 @@ export class GapDetectionHandler implements JobHandler {
     }
 
     let bedrockTokensUsed = 0;
+    let mergedMarkdown = '';
 
     if (assessment.intakeMode === 'UPLOAD') {
-      bedrockTokensUsed = await this.processUploadMode(input.assessmentId, isReAnalyze);
+      const result = await this.processUploadMode(input.assessmentId, isReAnalyze);
+      bedrockTokensUsed = result.tokensUsed;
+      mergedMarkdown = result.mergedMarkdown;
     } else {
       // GUIDED_INTERVIEW or MANUAL_ENTRY: create skeleton fields without Bedrock
-      this._lastMergedMarkdown = '';
       if (!isReAnalyze) {
         await this.createSkeletonFields(input.assessmentId);
       }
@@ -91,13 +91,13 @@ export class GapDetectionHandler implements JobHandler {
       assessmentId: input.assessmentId,
       gapFieldsCreated: GAP_DETECTION_CONFIG.core10Fields.length,
       bedrockTokensUsed,
-      mergedMarkdown: this._lastMergedMarkdown,
+      mergedMarkdown,
     };
   }
 
   // ─── Upload Mode ─────────────────────────────────────────────────────────────
 
-  private async processUploadMode(assessmentId: string, isReAnalyze = false): Promise<number> {
+  private async processUploadMode(assessmentId: string, isReAnalyze = false): Promise<{ tokensUsed: number; mergedMarkdown: string }> {
     // 1. Fetch ALL completed PARSE_DOCUMENT jobs for this assessment
     const parseJobs = await this.prisma.job.findMany({
       where: {
@@ -111,8 +111,7 @@ export class GapDetectionHandler implements JobHandler {
     if (parseJobs.length === 0) {
       this.logger.warn(`No completed PARSE_DOCUMENT jobs found for assessment ${assessmentId}. Creating skeleton fields.`);
       await this.createSkeletonFields(assessmentId);
-      this._lastMergedMarkdown = '';
-      return 0;
+      return { tokensUsed: 0, mergedMarkdown: '' };
     }
 
     // 2. Merge all markdownContent with document separators
@@ -139,9 +138,6 @@ export class GapDetectionHandler implements JobHandler {
       );
       extractedText = extractedText.substring(0, GAP_DETECTION_CONFIG.maxInputCharacters);
     }
-
-    // Store for gap detection result
-    this._lastMergedMarkdown = extractedText;
 
     // 3. Retrieve active gap_detector prompt directly from DB
     //    (PromptsModule imports JobsModule creating a circular dependency, so we query Prisma directly)
@@ -205,54 +201,120 @@ export class GapDetectionHandler implements JobHandler {
         await this.createFieldsFromAIResponse(assessmentId, parsed);
       }
 
-      return tokensUsed;
+      return { tokensUsed, mergedMarkdown: extractedText };
     } catch (error) {
       // On Bedrock failure: create all-MISSING fields with error reasoning
       this.logger.error(
         `Bedrock invocation failed for assessment ${assessmentId}: ${(error as Error).message}`,
       );
-      this._lastMergedMarkdown = extractedText; // Preserve merged content even on Bedrock failure
       if (!isReAnalyze) {
         await this.createErrorFields(assessmentId, error);
+      } else {
+        // In re-analyze mode, log the error on existing fields so the user knows
+        this.logger.warn(`Re-analyze Bedrock failure for ${assessmentId} — existing fields preserved with no update`);
       }
-      return 0;
+      return { tokensUsed: 0, mergedMarkdown: extractedText };
     }
   }
 
-  // ─── JSON Parsing (3-Strategy Defensive) ─────────────────────────────────────
+  // ─── JSON Parsing (5-Strategy Defensive) ─────────────────────────────────────
+
+  private tryParseGapResponse(text: string): GapDetectionAIResponse | null {
+    try {
+      const parsed = JSON.parse(text) as GapDetectionAIResponse;
+      if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
+    } catch {
+      // Not valid JSON
+    }
+    return null;
+  }
+
+  private stripMarkdownFences(output: string): string {
+    return output
+      .replace(/^\s*```(?:json)?\s*\n?/gm, '')
+      .replace(/\n?\s*```\s*$/gm, '')
+      .trim();
+  }
+
+  private countUnclosedDelimiters(text: string): { braces: number; brackets: number } {
+    let braces = 0;
+    let brackets = 0;
+    let inString = false;
+    let escape = false;
+    for (const ch of text) {
+      if (escape) { escape = false; continue; }
+      if (ch === '\\') { escape = true; continue; }
+      if (ch === '"') { inString = !inString; continue; }
+      if (inString) continue;
+      if (ch === '{') braces++;
+      else if (ch === '}') braces--;
+      else if (ch === '[') brackets++;
+      else if (ch === ']') brackets--;
+    }
+    return { braces, brackets };
+  }
+
+  private repairTruncatedJson(jsonText: string): GapDetectionAIResponse | null {
+    let { braces, brackets } = this.countUnclosedDelimiters(jsonText);
+    if (braces <= 0 && brackets <= 0) return null;
+
+    this.logger.warn(
+      `Attempting to repair truncated JSON (${braces} unclosed braces, ${brackets} unclosed brackets)`,
+    );
+
+    // Remove incomplete trailing field (partial string value, dangling key, etc.)
+    let repaired = jsonText.replace(/,\s*"[^"]*"?\s*:?\s*[^,\]}]*$/, '');
+    // Also handle a trailing incomplete object inside an array
+    repaired = repaired.replace(/,\s*\{[^}]*$/, '');
+
+    while (brackets > 0) { repaired += ']'; brackets--; }
+    while (braces > 0) { repaired += '}'; braces--; }
+
+    const result = this.tryParseGapResponse(repaired);
+    if (result) {
+      this.logger.warn(`Repaired truncated JSON — got ${result.fields.length} fields (some may be partial)`);
+    }
+    return result;
+  }
 
   private parseAIResponse(output: string): GapDetectionAIResponse {
     // Strategy 1: Direct JSON.parse
-    try {
-      const parsed = JSON.parse(output) as GapDetectionAIResponse;
-      if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
-    } catch {
-      // Fall through to next strategy
-    }
+    const direct = this.tryParseGapResponse(output);
+    if (direct) return direct;
 
-    // Strategy 2: Strip markdown code fences (```json ... ```)
-    try {
-      const stripped = output
-        .replace(/^```(?:json)?\s*\n?/m, '')
-        .replace(/\n?```\s*$/m, '');
-      const parsed = JSON.parse(stripped) as GapDetectionAIResponse;
-      if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
-    } catch {
-      // Fall through to next strategy
-    }
+    // Strategy 2: Strip markdown code fences (handles leading whitespace)
+    const stripped = this.tryParseGapResponse(this.stripMarkdownFences(output));
+    if (stripped) return stripped;
 
-    // Strategy 3: Extract first { ... } JSON block (string-based, no regex)
+    // Strategy 3: Extract first { ... } JSON block
     const firstBrace = output.indexOf('{');
     const lastBrace = output.lastIndexOf('}');
     if (firstBrace !== -1 && lastBrace > firstBrace) {
-      try {
-        const parsed = JSON.parse(output.substring(firstBrace, lastBrace + 1)) as GapDetectionAIResponse;
-        if (parsed.fields && Array.isArray(parsed.fields)) return parsed;
-      } catch {
-        // Fall through
-      }
+      const jsonBlock = output.substring(firstBrace, lastBrace + 1);
+      const extracted = this.tryParseGapResponse(jsonBlock);
+      if (extracted) return extracted;
     }
 
+    // Strategy 4: Repair truncated JSON (model ran out of tokens)
+    if (firstBrace !== -1) {
+      const jsonBlock = output.substring(firstBrace);
+      const repaired = this.repairTruncatedJson(jsonBlock);
+      if (repaired) return repaired;
+    }
+
+    // Strategy 5: Repair after stripping fences (handles ` ```json\n{...` truncated)
+    const strippedText = this.stripMarkdownFences(output);
+    const strippedFirstBrace = strippedText.indexOf('{');
+    if (strippedFirstBrace !== -1) {
+      const repaired = this.repairTruncatedJson(strippedText.substring(strippedFirstBrace));
+      if (repaired) return repaired;
+    }
+
+    this.logger.error(
+      `All JSON parse strategies failed. Output length: ${output.length}, ` +
+      `starts with: ${JSON.stringify(output.substring(0, 100))}, ` +
+      `ends with: ${JSON.stringify(output.substring(output.length - 100))}`,
+    );
     throw new Error(`Failed to parse Bedrock response as JSON. Output preview: ${output.substring(0, 200)}`);
   }
 
@@ -291,7 +353,6 @@ export class GapDetectionHandler implements JobHandler {
     const existingFields = await this.prisma.gapField.findMany({
       where: { assessmentId },
     });
-    const fieldMap = new Map(existingFields.map((f) => [f.field, f]));
     const responseMap = new Map(response.fields.map((f) => [f.field, f]));
 
     const updates = existingFields.map((existing) => {
@@ -320,9 +381,9 @@ export class GapDetectionHandler implements JobHandler {
           aiReasoning: aiField.reasoning,
         },
       });
-    }).filter(Boolean);
+    }).filter((u): u is NonNullable<typeof u> => u !== null);
 
-    await this.prisma.$transaction(updates as any[]);
+    await this.prisma.$transaction(updates);
     this.logger.log(`Updated ${updates.length} gap fields from re-analysis for assessment ${assessmentId}`);
   }
 

@@ -1,1 +1,1 @@
-// Report DTOs - currently no input DTOs required
+export { ReportConfigDto } from './report-config.dto';
