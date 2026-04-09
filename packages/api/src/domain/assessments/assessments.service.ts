@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
@@ -81,9 +80,13 @@ export class AssessmentsService {
   }
 
   async findOne(id: string, userId: string): Promise<Assessment> {
-    const assessment = await this.prisma.assessment.findUnique({ where: { id } });
-    if (!assessment) throw new NotFoundException('Assessment not found');
-    if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
+    // SECURITY: Use findFirst with compound condition to prevent IDOR and existence leakage
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id, userId },
+    });
+    if (!assessment) {
+      throw new NotFoundException('Assessment not found');
+    }
     return assessment;
   }
 
@@ -219,8 +222,9 @@ export class AssessmentsService {
     await this.findOne(id, userId);
 
     // Fetch the document to get the s3Key
-    const document = await this.prisma.assessmentDocument.findUnique({
-      where: { id: documentId },
+    // SECURITY: Use findFirst with compound condition to prevent IDOR and existence leakage
+    const document = await this.prisma.assessmentDocument.findFirst({
+      where: { id: documentId, assessmentId: id },
     });
     if (!document) {
       throw new NotFoundException('Document not found');
@@ -339,11 +343,12 @@ export class AssessmentsService {
   ): Promise<void> {
     await this.findOne(assessmentId, userId); // Ownership check
 
-    const doc = await this.prisma.assessmentDocument.findUnique({
-      where: { id: documentId },
+    // SECURITY: Use findFirst with compound condition to prevent IDOR and existence leakage
+    const doc = await this.prisma.assessmentDocument.findFirst({
+      where: { id: documentId, assessmentId },
     });
 
-    if (!doc || doc.assessmentId !== assessmentId) {
+    if (!doc) {
       throw new NotFoundException('Document not found');
     }
 

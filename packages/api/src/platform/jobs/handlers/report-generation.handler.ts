@@ -134,7 +134,7 @@ export class ReportGenerationHandler implements JobHandler {
     // 5. Extract financial metrics if requested
     let financialMetrics: FinancialMetrics | undefined;
     if (input.reportConfig?.includeFinancialCharts) {
-      financialMetrics = await this.extractFinancialMetrics(input.assessmentId, bedrockTokensUsed);
+      financialMetrics = await this.extractFinancialMetrics(input.assessmentId);
       if (financialMetrics) {
         bedrockTokensUsed += 500; // approximate tokens for financial extraction
       }
@@ -220,7 +220,7 @@ export class ReportGenerationHandler implements JobHandler {
 
   private async extractFinancialMetrics(
     assessmentId: string,
-    _currentTokens: number,
+
   ): Promise<FinancialMetrics | undefined> {
     try {
       // Fetch merged document content from completed parse jobs

@@ -395,7 +395,7 @@ export class PdfService {
       let align: 'center' | 'left' | 'right' = 'center';
       const labelWidth = 70;
       const cosAngle = Math.cos((2 * Math.PI * i) / n - Math.PI / 2);
-      let lx = lp.x - labelWidth / 2;
+      const lx = lp.x - labelWidth / 2;
       if (cosAngle < -0.3) align = 'right';
       else if (cosAngle > 0.3) align = 'left';
       const ly = lp.y - 6;
