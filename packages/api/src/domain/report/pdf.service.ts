@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
 const PDFDocument = require('pdfkit');
-import type { ReportResponse, SubcategoryScore, ReportConfig } from '@alliance-risk/shared';
+import type { ReportResponse, SubcategoryScore, ReportConfig, FinancialMetrics, ActionPlanItem, ActionPlanTimeframe } from '@alliance-risk/shared';
 
 export interface ReportExtras {
   strengths?: string[];
@@ -41,9 +41,232 @@ const COLORS = {
   criticalBg: '#FEF2F2',
 } as const;
 
+interface PdfGenerationMetrics {
+  bufferedPageCount: number;
+  contentPageIndexes: number[];
+  footerPageIndexes: number[];
+  postFooterBufferedPageCount: number;
+}
+
+interface TitlePageLayoutMetrics {
+  companyNameBottom: number;
+  detailsBottom: number;
+  gaugeTop: number;
+  gaugeCenterY: number;
+  badgeBottom: number;
+}
+
+interface ExecutiveSummaryLayoutMetrics {
+  summaryTextHeight: number;
+  summaryBoxHeight: number;
+  summaryBoxBottom: number;
+  keyFindingsStartY: number | null;
+  paddingTop: number;
+  paddingBottom: number;
+}
+
+interface MethodologyLayoutMetrics {
+  introX: number;
+  introWidth: number;
+  scaleDescriptionX: number;
+  scaleDescriptionWidth: number;
+  paragraphX: number;
+  paragraphWidth: number;
+  finalCursorX: number;
+}
+
+interface TocEntry {
+  title: string;
+  pageIndex: number;
+  level: number;
+}
+
+interface TocLayoutMetrics {
+  tocPageIndex: number;
+  entries: Array<{
+    title: string;
+    pageIndex: number;
+    pageNumber: number;
+    level: number;
+  }>;
+}
+
+interface HeaderFooterLayoutMetrics {
+  contentPageTotal: number;
+  pages: Array<{
+    pageIndex: number;
+    headerRendered: boolean;
+    footerLabel: string;
+    footerText: string;
+  }>;
+}
+
+interface CategoryRecommendationLayoutMetrics {
+  recommendationRailWidth: number;
+  recommendationPadding: number;
+  radarBottomY: number;
+  overviewRowHeight: number;
+  subcategoryRowHeight: number;
+}
+
+interface CompanyProfileLayoutMetrics {
+  rowCount: number;
+  sectorIndustryValue: string;
+  companyTypeValue: string;
+  startPageIndex: number;
+}
+
+interface RiskHeatmapLayoutMetrics {
+  zoneLabels: string[];
+  points: Array<{
+    category: string;
+    shortLabel: string;
+    score: number;
+    x: number;
+    y: number;
+  }>;
+  gridStartX: number;
+  gridWidth: number;
+}
+
+interface FinancialOverviewLayoutMetrics {
+  startPageIndex: number;
+  renderedRevenueChart: boolean;
+  renderedCostChart: boolean;
+  renderedMarginsSummary: boolean;
+  revenuePointCount: number;
+  costBarCount: number;
+  grossMarginLabel: string;
+  operatingMarginLabel: string;
+}
+
+interface ActionPlanLayoutMetrics {
+  startPageIndex: number;
+  timeframeGroups: Array<{
+    timeframe: ActionPlanTimeframe;
+    count: number;
+  }>;
+}
+
+interface AppendixLayoutMetrics {
+  startPageIndex: number;
+  documentSourceCount: number;
+  gapSummaryCount: number;
+  evidenceCategoryCount: number;
+}
+
+interface DisclaimerLayoutMetrics {
+  startPageIndex: number;
+  sectionCount: number;
+  copyrightYear: number;
+}
+
+type TypographyStyle = {
+  size: number;
+  font: string;
+  color: string;
+  lineGap?: number;
+};
+
+export const TYPOGRAPHY = {
+  sectionTitle: { size: 22, font: 'Helvetica-Bold', color: COLORS.primary },
+  subsectionTitle: { size: 16, font: 'Helvetica-Bold', color: COLORS.primary },
+  heading3: { size: 13, font: 'Helvetica-Bold', color: COLORS.text },
+  body: { size: 10, font: 'Helvetica', color: COLORS.text, lineGap: 4 },
+  bodyStrong: { size: 10, font: 'Helvetica-Bold', color: COLORS.text, lineGap: 4 },
+  bodySmall: { size: 9, font: 'Helvetica', color: COLORS.text, lineGap: 3 },
+  bodySmallMuted: { size: 9, font: 'Helvetica', color: COLORS.textLight, lineGap: 3 },
+  caption: { size: 8, font: 'Helvetica', color: COLORS.textLight },
+  footer: { size: 7, font: 'Helvetica', color: COLORS.textMuted },
+  tocEntry: { size: 11, font: 'Helvetica', color: COLORS.text },
+  tocSection: { size: 12, font: 'Helvetica-Bold', color: COLORS.text },
+  titleEyebrow: { size: 11, font: 'Helvetica', color: COLORS.textLight },
+  titleBannerLabel: { size: 10, font: 'Helvetica', color: COLORS.accentLight },
+  titleBannerTitle: { size: 16, font: 'Helvetica', color: COLORS.white },
+  titleCompany: { size: 28, font: 'Helvetica', color: COLORS.text },
+  titleMeta: { size: 13, font: 'Helvetica', color: COLORS.textLight },
+  gaugeScore: { size: 42, font: 'Helvetica', color: COLORS.text },
+  gaugeLabel: { size: 11, font: 'Helvetica', color: COLORS.textLight },
+  label: { size: 10, font: 'Helvetica', color: COLORS.textLight },
+  badge: { size: 10, font: 'Helvetica', color: COLORS.white },
+  badgeSmall: { size: 9, font: 'Helvetica', color: COLORS.white },
+  captionSmall: { size: 7, font: 'Helvetica', color: COLORS.textMuted },
+  micro: { size: 6, font: 'Helvetica', color: COLORS.textLight },
+  tableHeader: { size: 8, font: 'Helvetica-Bold', color: COLORS.white },
+  tableCell: { size: 9, font: 'Helvetica', color: COLORS.text },
+  tableBadge: { size: 7, font: 'Helvetica-Bold', color: COLORS.white },
+  chartValue: { size: 8, font: 'Helvetica', color: COLORS.text },
+  analystHeading: { size: 9, font: 'Helvetica-Bold', color: COLORS.secondary },
+  analystBody: { size: 9, font: 'Helvetica-Oblique', color: '#15803D', lineGap: 3 },
+} as const satisfies Record<string, TypographyStyle>;
+
+export const SPACING = {
+  sectionGap: 24,
+  subsectionGap: 16,
+  paragraphGap: 12,
+  itemGap: 8,
+  cardPadding: 12,
+  headerHeight: 3,
+  footerHeight: 35,
+  titleBannerGap: 2,
+  titleEyebrowGap: 1.5,
+  titleMetaGap: 0.4,
+  titleGaugeGap: 3,
+  titleMiniScoresGap: 2,
+  scoreGaugeOffset: 10,
+  scoreLabelOffsetTop: 28,
+  scoreLabelOffsetBottom: 22,
+  badgeTextOffset: 7,
+  badgeAfterGap: 55,
+  bulletOffsetX: 8,
+  bulletOffsetY: 5,
+  bulletRadius: 2.5,
+  bulletTextOffset: 18,
+  keyFindingGap: 15,
+  compactItemGap: 0.3,
+  chartGap: 1,
+  tableTopGap: 5,
+  tableRowGap: 4,
+  tableRowInset: 2,
+  bodyBlockGap: 0.8,
+  subsectionBlockGap: 0.5,
+  textBlockGap: 4,
+  smallTextOffset: 5,
+  cardAfterGap: 4,
+  priorityHeaderGap: 30,
+  analystHeaderGap: 4,
+  strengthsGap: 1,
+  methodologyScaleGap: 1,
+  methodologyParagraphGap: 0.6,
+  pageHeaderGap: 12,
+  sectionHeadingGap: 0.3,
+  ensureSpaceBottom: 50,
+  footerSeparatorOffset: 8,
+  footerWidth: 120,
+  footerPageWidth: 50,
+  scoreBarLabelOffset: 13,
+} as const;
+
 @Injectable()
 export class PdfService {
   private readonly logger = new Logger(PdfService.name);
+  private contentPages = new Set<number>();
+  private trackContentWrites = false;
+  private lastGenerationMetrics: PdfGenerationMetrics | null = null;
+  private lastTitlePageLayoutMetrics: TitlePageLayoutMetrics | null = null;
+  private lastExecutiveSummaryLayoutMetrics: ExecutiveSummaryLayoutMetrics | null = null;
+  private lastMethodologyLayoutMetrics: MethodologyLayoutMetrics | null = null;
+  private tocEntries: TocEntry[] = [];
+  private tocPageIndex = 1;
+  private lastTocLayoutMetrics: TocLayoutMetrics | null = null;
+  private lastHeaderFooterLayoutMetrics: HeaderFooterLayoutMetrics | null = null;
+  private lastCategoryRecommendationLayoutMetrics: CategoryRecommendationLayoutMetrics | null = null;
+  private lastCompanyProfileLayoutMetrics: CompanyProfileLayoutMetrics | null = null;
+  private lastRiskHeatmapLayoutMetrics: RiskHeatmapLayoutMetrics | null = null;
+  private lastFinancialOverviewLayoutMetrics: FinancialOverviewLayoutMetrics | null = null;
+  private lastActionPlanLayoutMetrics: ActionPlanLayoutMetrics | null = null;
+  private lastAppendixLayoutMetrics: AppendixLayoutMetrics | null = null;
+  private lastDisclaimerLayoutMetrics: DisclaimerLayoutMetrics | null = null;
 
   // ─── Main Entry ─────────────────────────────────────────────────────────────
 
@@ -67,6 +290,25 @@ export class PdfService {
         },
       });
 
+      this.contentPages = new Set<number>();
+      this.lastGenerationMetrics = null;
+      this.lastTitlePageLayoutMetrics = null;
+      this.lastExecutiveSummaryLayoutMetrics = null;
+      this.lastMethodologyLayoutMetrics = null;
+      this.tocEntries = [];
+      this.tocPageIndex = 1;
+      this.lastTocLayoutMetrics = null;
+      this.lastHeaderFooterLayoutMetrics = null;
+      this.lastCategoryRecommendationLayoutMetrics = null;
+      this.lastCompanyProfileLayoutMetrics = null;
+      this.lastRiskHeatmapLayoutMetrics = null;
+      this.lastFinancialOverviewLayoutMetrics = null;
+      this.lastActionPlanLayoutMetrics = null;
+      this.lastAppendixLayoutMetrics = null;
+      this.lastDisclaimerLayoutMetrics = null;
+      this.installContentTracking(doc);
+      this.trackContentWrites = true;
+
       const chunks: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => chunks.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -77,11 +319,21 @@ export class PdfService {
       // ── Page 1: Title Page ──
       this.renderTitlePage(doc, report);
 
-      // ── Page 2: Executive Summary ──
+      // ── Page 2: TOC placeholder ──
+      doc.addPage();
+      this.tocPageIndex = this.getCurrentPageIndex(doc);
+
+      // ── Page 3+: Company Profile (Phase 2) ──
+      if (!cfg || cfg.includeCompanyProfile !== false) {
+        doc.addPage();
+        this.renderCompanyProfile(doc, report);
+      }
+
+      // ── Executive Summary ──
       doc.addPage();
       this.renderExecutiveSummary(doc, report, extras);
 
-      // ── Page 3: Risk Overview (Radar + Table) ──
+      // ── Page 4: Risk Overview (Radar + Table) ──
       doc.addPage();
       this.renderRiskOverview(doc, report, cfg);
 
@@ -94,9 +346,16 @@ export class PdfService {
       }
 
       // ── All Recommendations ──
-      if (!cfg || cfg.includeRecommendations) {
+      const hasRecommendations = report.categories.some((category) => category.recommendations.length > 0);
+      if ((!cfg || cfg.includeRecommendations) && hasRecommendations) {
         doc.addPage();
         this.renderAllRecommendations(doc, report);
+      }
+
+      // ── Action Plan ──
+      if (cfg?.includeActionPlan && report.actionPlanItems?.length) {
+        doc.addPage();
+        this.renderActionPlan(doc, report.actionPlanItems);
       }
 
       // ── Strengths & Weaknesses ──
@@ -105,17 +364,158 @@ export class PdfService {
         this.renderStrengthsWeaknesses(doc, extras);
       }
 
+      // ── Financial Overview ──
+      if (cfg?.includeFinancialCharts && report.financialMetrics && this.hasFinancialData(report.financialMetrics)) {
+        doc.addPage();
+        this.renderFinancialOverview(doc, report.financialMetrics);
+      }
+
       // ── Methodology ──
       if (!cfg || cfg.includeMethodology) {
         doc.addPage();
         this.renderMethodology(doc);
       }
 
-      // Render footers on all pages (using buffered pages to avoid recursion)
-      this.renderAllFooters(doc);
+      // ── Appendix ──
+      if (cfg?.includeAppendix && (report.documentSources?.length || report.gapSummary?.length)) {
+        doc.addPage();
+        this.renderAppendix(doc, report, cfg);
+      }
+
+      // ── Disclaimer (always included) ──
+      doc.addPage();
+      this.renderDisclaimer(doc);
+
+      // Fill TOC after all content pages are known
+      doc.switchToPage(this.tocPageIndex);
+      this.renderTableOfContents(doc);
+
+      // Render headers and footers on all content pages (using buffered pages to avoid recursion)
+      this.trackContentWrites = false;
+      this.renderAllHeadersAndFooters(doc);
 
       doc.end();
     });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private installContentTracking(doc: any): void {
+    const originalText = doc.text.bind(doc);
+
+    doc.text = (...args: any[]) => {
+      if (this.trackContentWrites) {
+        this.markCurrentPage(doc);
+      }
+
+      const result = originalText(...args);
+
+      if (this.trackContentWrites) {
+        this.markCurrentPage(doc);
+      }
+
+      return result;
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private markCurrentPage(doc: any): void {
+    this.contentPages.add(this.getCurrentPageIndex(doc));
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private getCurrentPageIndex(doc: any): number {
+    if (Array.isArray(doc._pageBuffer)) {
+      const pageIndex = doc._pageBuffer.indexOf(doc.page);
+      if (pageIndex >= 0) {
+        return pageIndex;
+      }
+    }
+
+    const range = doc.bufferedPageRange();
+    return Math.max(range.start + range.count - 1, 0);
+  }
+
+  private collectTocEntry(title: string, pageIndex: number, level: number): void {
+    this.tocEntries.push({ title, pageIndex, level });
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderTableOfContents(doc: any): void {
+    doc.x = MARGIN;
+    doc.y = MARGIN;
+    this.markCurrentPage(doc);
+    this.renderPageHeader(doc, 'Contents');
+
+    const titleWidth = CONTENT_WIDTH - 70;
+    const pageNumberWidth = 30;
+    const pageNumberX = PAGE_WIDTH - MARGIN - pageNumberWidth;
+    const leaderGap = 8;
+    const tocEntriesWithNumbers = this.tocEntries.map((entry) => ({
+      ...entry,
+      pageNumber: Math.max(entry.pageIndex, 1),
+    }));
+
+    for (const entry of tocEntriesWithNumbers) {
+      if (doc.y + 24 > PAGE_HEIGHT - SPACING.ensureSpaceBottom) {
+        doc.addPage();
+        this.markCurrentPage(doc);
+        this.renderPageHeader(doc, 'Contents');
+      }
+
+      const entryX = MARGIN + (entry.level > 0 ? 20 : 0);
+      const entryY = doc.y;
+      const entryStyle: TypographyStyle = entry.level === 0 ? TYPOGRAPHY.tocSection : TYPOGRAPHY.tocEntry;
+      const pageLabel = `${entry.pageNumber}`;
+      const pageLabelWidth = doc.widthOfString(pageLabel, { font: entryStyle.font, size: entryStyle.size });
+      const titleMaxWidth = Math.max(titleWidth - (entry.level > 0 ? 20 : 0), 120);
+      const titleHeight = doc.heightOfString(entry.title, {
+        width: titleMaxWidth,
+        lineGap: entryStyle.lineGap ?? 0,
+      });
+
+      this.applyTextStyle(doc, entryStyle)
+        .text(entry.title, entryX, entryY, {
+          width: titleMaxWidth,
+          lineGap: entryStyle.lineGap,
+        });
+
+      const leaderStartX = Math.min(entryX + titleMaxWidth + leaderGap, pageNumberX - 40);
+      const leaderEndX = pageNumberX - pageLabelWidth - leaderGap;
+      const leaderY = entryY + Math.min(titleHeight / 2, 8);
+      if (leaderEndX > leaderStartX) {
+        doc.save();
+        doc.moveTo(leaderStartX, leaderY)
+          .lineTo(leaderEndX, leaderY)
+          .dash(1, { space: 3 })
+          .strokeColor(COLORS.textMuted)
+          .lineWidth(0.8)
+          .stroke()
+          .undash();
+        doc.restore();
+      }
+
+      this.applyTextStyle(doc, entryStyle)
+        .text(pageLabel, pageNumberX, entryY, {
+          width: pageNumberWidth,
+          align: 'right',
+        });
+
+      doc.x = MARGIN;
+      doc.y = entryY + Math.max(titleHeight, 18) + SPACING.itemGap;
+    }
+
+    this.lastTocLayoutMetrics = {
+      tocPageIndex: this.tocPageIndex,
+      entries: tocEntriesWithNumbers,
+    };
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private applyTextStyle(doc: any, style: TypographyStyle, color?: string): any {
+    doc.font(style.font);
+    doc.fontSize(style.size);
+    doc.fillColor(color ?? style.color);
+    return doc;
   }
 
   // ─── Page Footer ────────────────────────────────────────────────────────────
@@ -133,28 +533,81 @@ export class PdfService {
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private renderAllFooters(doc: any): void {
+  private renderAllHeadersAndFooters(doc: any): void {
     const pages = doc.bufferedPageRange();
-    for (let i = 1; i < pages.count; i++) { // skip title page (index 0)
-      doc.switchToPage(i);
+    const contentPageIndexes = [...this.contentPages]
+      .filter((pageIndex) => pageIndex >= 0 && pageIndex < pages.count)
+      .sort((left, right) => left - right);
+    const footerPageIndexes = contentPageIndexes.filter((pageIndex) => pageIndex > 0);
+    const contentPageTotal = footerPageIndexes.length;
+    const headerFooterPages: HeaderFooterLayoutMetrics['pages'] = [];
 
-      // Separator line only (no text to avoid triggering page overflow)
+    this.lastGenerationMetrics = {
+      bufferedPageCount: pages.count,
+      contentPageIndexes,
+      footerPageIndexes,
+      postFooterBufferedPageCount: pages.count,
+    };
+
+    footerPageIndexes.forEach((pageIndex, index) => {
+      doc.switchToPage(pageIndex);
+
+      // Header accent line
       doc.save();
-      doc.moveTo(MARGIN, FOOTER_Y - 8);
-      doc.lineTo(PAGE_WIDTH - MARGIN, FOOTER_Y - 8);
+      doc.moveTo(MARGIN, 20);
+      doc.lineTo(PAGE_WIDTH - MARGIN, 20);
+      doc.strokeColor(COLORS.primary);
+      doc.lineWidth(1.5);
+      doc.stroke();
+      doc.restore();
+
+      // Footer separator line
+      doc.save();
+      doc.moveTo(MARGIN, FOOTER_Y - SPACING.footerSeparatorOffset);
+      doc.lineTo(PAGE_WIDTH - MARGIN, FOOTER_Y - SPACING.footerSeparatorOffset);
       doc.strokeColor(COLORS.border);
       doc.lineWidth(0.5);
       doc.stroke();
       doc.restore();
 
-      // Use _fragment approach: position text precisely without triggering reflow
+      // FOOTER_Y sits below the page bottom margin; writing text there would
+      // trigger PDFKit's overflow check and auto-create phantom pages. Temporarily
+      // zero out the bottom margin so the text lands on this page instead.
       const savedX = doc.x;
       const savedY = doc.y;
-      doc.fontSize(7).fillColor(COLORS.textMuted);
-      doc.text('CONFIDENTIAL', MARGIN, FOOTER_Y, { width: 120, lineBreak: false });
-      doc.text(`Page ${i}`, PAGE_WIDTH - MARGIN - 50, FOOTER_Y, { width: 50, align: 'right', lineBreak: false });
+      const savedBottomMargin = doc.page.margins.bottom;
+      doc.page.margins.bottom = 0;
+      const pageNumber = index + 1;
+      const footerLabel = `Page ${pageNumber} of ${contentPageTotal}`;
+      const footerText = 'CONFIDENTIAL — CGIAR Agricultural Risk Intelligence';
+      this.applyTextStyle(doc, TYPOGRAPHY.footer);
+      doc.text(footerText, MARGIN, FOOTER_Y, { width: 300, lineBreak: false });
+      doc.text(footerLabel, PAGE_WIDTH - MARGIN - 80, FOOTER_Y, {
+        width: 80,
+        align: 'right',
+        lineBreak: false,
+      });
+      doc.page.margins.bottom = savedBottomMargin;
       doc.x = savedX;
       doc.y = savedY;
+
+      headerFooterPages.push({
+        pageIndex,
+        headerRendered: true,
+        footerLabel,
+        footerText,
+      });
+    });
+
+    this.lastHeaderFooterLayoutMetrics = {
+      contentPageTotal,
+      pages: headerFooterPages,
+    };
+
+    // Re-read buffer after footer rendering so tests can assert that no phantom
+    // pages were created by overflow during footer text() calls.
+    if (this.lastGenerationMetrics) {
+      this.lastGenerationMetrics.postFooterBufferedPageCount = doc.bufferedPageRange().count;
     }
   }
 
@@ -162,43 +615,61 @@ export class PdfService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderTitlePage(doc: any, report: ReportResponse): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    const titleBlockWidth = CONTENT_WIDTH - 60;
+    const titleBlockX = MARGIN + (CONTENT_WIDTH - titleBlockWidth) / 2;
+    const titleTopY = 180;
+    const detailsGap = 14;
+    const metadataToGaugeGap = 28;
+    const gaugeR = 70;
+    const gaugeStrokeWidth = 10;
+    const minGaugeCenterY = 360;
+
     // Top banner
     doc.rect(0, 0, PAGE_WIDTH, 100).fill(COLORS.primary);
 
     // Banner text
-    doc.fontSize(10).fillColor(COLORS.accentLight)
+    this.applyTextStyle(doc, TYPOGRAPHY.titleBannerLabel)
       .text('CGIAR', MARGIN, 30, { width: CONTENT_WIDTH, align: 'center' });
-    doc.fontSize(16).fillColor(COLORS.white)
+    this.applyTextStyle(doc, TYPOGRAPHY.titleBannerTitle)
       .text('Agricultural Risk Intelligence Tool', MARGIN, 48, { width: CONTENT_WIDTH, align: 'center' });
 
     // Accent line under banner
-    doc.rect(0, 100, PAGE_WIDTH, 3).fill(COLORS.accent);
+    doc.rect(0, 100, PAGE_WIDTH, SPACING.headerHeight).fill(COLORS.accent);
 
     // Title
-    doc.moveDown(2);
+    doc.moveDown(SPACING.titleBannerGap);
     doc.y = 140;
-    doc.fontSize(11).fillColor(COLORS.textLight)
+    this.applyTextStyle(doc, TYPOGRAPHY.titleEyebrow)
       .text('RISK INTELLIGENCE REPORT', MARGIN, 140, { width: CONTENT_WIDTH, align: 'center', characterSpacing: 4 });
 
-    doc.moveDown(1.5);
+    doc.moveDown(SPACING.titleEyebrowGap);
 
     // Company name
-    doc.fontSize(28).fillColor(COLORS.text)
-      .text(report.assessment.companyName, MARGIN, doc.y, { width: CONTENT_WIDTH, align: 'center' });
-
-    doc.moveDown(0.4);
+    const companyNameHeight = doc.heightOfString(report.assessment.companyName, {
+      width: titleBlockWidth,
+      align: 'center',
+    });
+    this.applyTextStyle(doc, TYPOGRAPHY.titleCompany)
+      .text(report.assessment.companyName, titleBlockX, titleTopY, { width: titleBlockWidth, align: 'center' });
 
     // Company details
     const details = [report.assessment.companyType, report.assessment.country].filter(Boolean).join(' · ');
-    doc.fontSize(13).fillColor(COLORS.textLight)
-      .text(details, MARGIN, doc.y, { width: CONTENT_WIDTH, align: 'center' });
-
-    doc.moveDown(3);
+    const detailsY = titleTopY + companyNameHeight + detailsGap;
+    const detailsHeight = details
+      ? doc.heightOfString(details, {
+          width: titleBlockWidth,
+          align: 'center',
+        })
+      : 0;
+    this.applyTextStyle(doc, TYPOGRAPHY.titleMeta)
+      .text(details, titleBlockX, detailsY, { width: titleBlockWidth, align: 'center' });
 
     // ── Score Gauge ──
-    const gaugeY = doc.y + 10;
+    const metadataBottom = details ? detailsY + detailsHeight : titleTopY + companyNameHeight;
+    const gaugeY = Math.max(minGaugeCenterY, metadataBottom + metadataToGaugeGap + gaugeR);
     const gaugeCx = PAGE_WIDTH / 2;
-    const gaugeR = 70;
     const score = report.overallScore;
     const levelColor = this.getLevelColor(report.overallLevel);
 
@@ -211,10 +682,10 @@ export class PdfService {
     }
 
     // Score text in center
-    doc.fontSize(42).fillColor(levelColor)
-      .text(`${score}`, gaugeCx - 50, gaugeY - 28, { width: 100, align: 'center' });
-    doc.fontSize(11).fillColor(COLORS.textLight)
-      .text('out of 100', gaugeCx - 50, gaugeY + 22, { width: 100, align: 'center' });
+    this.applyTextStyle(doc, TYPOGRAPHY.gaugeScore, levelColor);
+    doc.text(`${score}`, gaugeCx - 50, gaugeY - SPACING.scoreLabelOffsetTop, { width: 100, align: 'center' });
+    this.applyTextStyle(doc, TYPOGRAPHY.gaugeLabel);
+    doc.text('out of 100', gaugeCx - 50, gaugeY + SPACING.scoreLabelOffsetBottom, { width: 100, align: 'center' });
 
     // Level badge
     const badgeWidth = 90;
@@ -222,13 +693,21 @@ export class PdfService {
     const badgeY = gaugeY + 50;
     doc.roundedRect(badgeX, badgeY, badgeWidth, 24, 12).fill(this.getLevelBg(report.overallLevel));
     doc.roundedRect(badgeX, badgeY, badgeWidth, 24, 12).strokeColor(levelColor).lineWidth(1).stroke();
-    doc.fontSize(10).fillColor(levelColor)
-      .text(report.overallLevel, badgeX, badgeY + 7, { width: badgeWidth, align: 'center' });
+    this.applyTextStyle(doc, TYPOGRAPHY.badge, levelColor);
+    doc.text(report.overallLevel, badgeX, badgeY + SPACING.badgeTextOffset, { width: badgeWidth, align: 'center' });
 
-    doc.y = badgeY + 55;
+    this.lastTitlePageLayoutMetrics = {
+      companyNameBottom: titleTopY + companyNameHeight,
+      detailsBottom: metadataBottom,
+      gaugeTop: gaugeY - gaugeR - gaugeStrokeWidth / 2,
+      gaugeCenterY: gaugeY,
+      badgeBottom: badgeY + 24,
+    };
+
+    doc.y = badgeY + SPACING.badgeAfterGap;
 
     // ── Mini category scores row ──
-    doc.moveDown(2);
+    doc.moveDown(SPACING.titleMiniScoresGap);
     const miniY = doc.y;
     const numCats = report.categories.length;
     const spacing = CONTENT_WIDTH / numCats;
@@ -245,18 +724,18 @@ export class PdfService {
       doc.circle(cx, miniY, 18).strokeColor(catColor).lineWidth(1.5).stroke();
 
       // Score
-      doc.fontSize(9).fillColor(catColor)
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall, catColor)
         .text(`${cat.score}`, cx - 15, miniY - 5, { width: 30, align: 'center' });
 
       // Label
       const shortLabel = this.shortCategoryName(cat.category);
-      doc.fontSize(6).fillColor(COLORS.textLight)
+      this.applyTextStyle(doc, TYPOGRAPHY.micro)
         .text(shortLabel, cx - 30, miniY + 23, { width: 60, align: 'center' });
     }
 
     // ── Date and metadata ──
     const dateStr = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
-    doc.fontSize(9).fillColor(COLORS.textMuted)
+    this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
       .text(`Generated: ${dateStr}`, MARGIN, PAGE_HEIGHT - 100, { width: CONTENT_WIDTH, align: 'center' });
 
     // Bottom accent bar
@@ -267,57 +746,155 @@ export class PdfService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderExecutiveSummary(doc: any, report: ReportResponse, extras?: ReportExtras): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    this.collectTocEntry('Executive Summary', this.getCurrentPageIndex(doc), 0);
     this.renderPageHeader(doc, 'Executive Summary');
 
     // Summary text in a tinted box
-    const summaryPadding = 14;
+    const summaryPadding = SPACING.cardPadding;
     const summaryTextWidth = CONTENT_WIDTH - summaryPadding * 2;
-    const summaryHeight = doc.heightOfString(report.executiveSummary, {
-      width: summaryTextWidth, lineGap: 4,
-    }) + summaryPadding * 2;
+    const summaryTextHeight = doc.heightOfString(report.executiveSummary, {
+      width: summaryTextWidth, lineGap: TYPOGRAPHY.body.lineGap,
+    });
+    const summaryHeight = summaryTextHeight + summaryPadding * 2;
 
     const boxY = doc.y;
     doc.roundedRect(MARGIN, boxY, CONTENT_WIDTH, summaryHeight, 6).fill(COLORS.bgTeal);
     doc.roundedRect(MARGIN, boxY, 3, summaryHeight, 2).fill(COLORS.primary);
 
-    doc.fontSize(10.5).fillColor(COLORS.text)
+    this.applyTextStyle(doc, TYPOGRAPHY.body)
       .text(report.executiveSummary, MARGIN + summaryPadding, boxY + summaryPadding, {
-        width: summaryTextWidth, align: 'justify', lineGap: 4,
+        width: summaryTextWidth, align: 'justify', lineGap: TYPOGRAPHY.body.lineGap,
       });
 
-    doc.y = boxY + summaryHeight + 15;
+    doc.y = boxY + summaryHeight + SPACING.keyFindingGap;
+    let keyFindingsStartY: number | null = null;
 
     // Key Findings
     if (extras?.keyFindings?.length) {
+      keyFindingsStartY = doc.y;
       this.renderSectionHeading(doc, 'Key Findings');
       for (const finding of extras.keyFindings) {
         this.ensureSpace(doc, 40);
         // Bullet with accent color
         const bulletY = doc.y;
-        doc.circle(MARGIN + 8, bulletY + 5, 2.5).fill(COLORS.accent);
-        doc.fontSize(9.5).fillColor(COLORS.text)
-          .text(finding, MARGIN + 18, bulletY, {
-            width: CONTENT_WIDTH - 18, lineGap: 3,
+        doc.circle(MARGIN + SPACING.bulletOffsetX, bulletY + SPACING.bulletOffsetY, SPACING.bulletRadius).fill(COLORS.accent);
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(finding, MARGIN + SPACING.bulletTextOffset, bulletY, {
+            width: CONTENT_WIDTH - SPACING.bulletTextOffset,
+            lineGap: TYPOGRAPHY.bodySmall.lineGap,
           });
-        doc.moveDown(0.3);
+        doc.moveDown(SPACING.sectionHeadingGap);
       }
     }
+
+    this.lastExecutiveSummaryLayoutMetrics = {
+      summaryTextHeight,
+      summaryBoxHeight: summaryHeight,
+      summaryBoxBottom: boxY + summaryHeight,
+      keyFindingsStartY,
+      paddingTop: summaryPadding,
+      paddingBottom: summaryPadding,
+    };
+  }
+
+  // ─── Company Profile ────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderCompanyProfile(doc: any, report: ReportResponse): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    const pageIndex = this.getCurrentPageIndex(doc);
+    this.collectTocEntry('Company Profile', pageIndex, 0);
+    this.renderPageHeader(doc, 'Company Profile');
+
+    const assessmentDate = new Date(report.assessment.updatedAt || report.assessment.createdAt)
+      .toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+    const assessmentId = report.assessment.id.substring(0, 8).toUpperCase();
+    const companyTypeValue = report.assessment.companyType ?? 'Not specified';
+    const sectorIndustryValue = report.assessment.companyType ?? 'Not specified';
+    const rows = [
+      ['Company Name', report.assessment.companyName],
+      ['Sector / Industry', sectorIndustryValue],
+      ['Country', report.assessment.country],
+      ['Company Type', companyTypeValue],
+      ['Assessment Date', assessmentDate],
+      ['Assessment ID', assessmentId],
+      ['Overall Risk Score', `${report.overallScore}/100 (${report.overallLevel})`],
+    ] as const;
+
+    const tableX = MARGIN;
+    const tableY = doc.y + 8;
+    const labelWidth = 170;
+    const valueWidth = CONTENT_WIDTH - labelWidth;
+    const rowHeight = 38;
+
+    for (let index = 0; index < rows.length; index++) {
+      const [label, value] = rows[index];
+      const rowY = tableY + index * rowHeight;
+      const background = index % 2 === 0 ? COLORS.white : COLORS.bgLight;
+
+      doc.rect(tableX, rowY, CONTENT_WIDTH, rowHeight).fill(background);
+      doc.save();
+      doc.moveTo(tableX + labelWidth, rowY)
+        .lineTo(tableX + labelWidth, rowY + rowHeight)
+        .strokeColor(COLORS.border)
+        .lineWidth(1)
+        .stroke();
+      doc.restore();
+
+      this.applyTextStyle(doc, TYPOGRAPHY.bodyStrong)
+        .text(label, tableX + 12, rowY + 12, { width: labelWidth - 24 });
+      this.applyTextStyle(doc, TYPOGRAPHY.body)
+        .text(value, tableX + labelWidth + 12, rowY + 12, {
+          width: valueWidth - 24,
+          lineGap: TYPOGRAPHY.body.lineGap,
+        });
+    }
+
+    doc.save();
+    doc.roundedRect(tableX, tableY, CONTENT_WIDTH, rowHeight * rows.length, 4)
+      .lineWidth(1)
+      .strokeColor(COLORS.border)
+      .stroke();
+    doc.restore();
+
+    doc.y = tableY + rowHeight * rows.length + SPACING.sectionGap;
+    doc.x = MARGIN;
+
+    this.lastCompanyProfileLayoutMetrics = {
+      rowCount: rows.length,
+      sectorIndustryValue,
+      companyTypeValue,
+      startPageIndex: pageIndex,
+    };
   }
 
   // ─── Risk Overview (Radar + Table) ──────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderRiskOverview(doc: any, report: ReportResponse, cfg?: ReportConfig): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    this.collectTocEntry('Risk Overview', this.getCurrentPageIndex(doc), 0);
     this.renderPageHeader(doc, 'Risk Overview');
 
     // Radar chart
     if (!cfg || cfg.includeRadarChart) {
       this.renderRadarChart(doc, report.categories);
-      doc.moveDown(1);
+      doc.x = MARGIN;
+      doc.moveDown(SPACING.chartGap);
     }
 
     // Category overview table
     this.renderOverviewTable(doc, report);
+    doc.x = MARGIN;
+
+    if (!cfg || cfg.includeRiskHeatmap !== false) {
+      this.renderRiskHeatmap(doc, report);
+      doc.x = MARGIN;
+    }
   }
 
   // ─── Radar Chart ────────────────────────────────────────────────────────────
@@ -325,8 +902,8 @@ export class PdfService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderRadarChart(doc: any, categories: ReportResponse['categories']): void {
     const cx = PAGE_WIDTH / 2;
-    const cy = doc.y + 140;
-    const R = 110;
+    const cy = doc.y + 124;
+    const R = 104;
     const n = categories.length;
 
     const getPoint = (i: number, radius: number) => {
@@ -388,25 +965,25 @@ export class PdfService {
       doc.circle(p.x, p.y, 4).strokeColor(COLORS.white).lineWidth(1.5).stroke();
 
       // Axis label
-      const lp = getPoint(i, R + 25);
+      const lp = getPoint(i, R + 20);
       const label = this.shortCategoryName(categories[i].category);
       const scoreLabel = `${categories[i].score}`;
 
       let align: 'center' | 'left' | 'right' = 'center';
       const labelWidth = 70;
       const cosAngle = Math.cos((2 * Math.PI * i) / n - Math.PI / 2);
-      let lx = lp.x - labelWidth / 2;
+      const lx = lp.x - labelWidth / 2;
       if (cosAngle < -0.3) align = 'right';
       else if (cosAngle > 0.3) align = 'left';
       const ly = lp.y - 6;
 
-      doc.fontSize(8).fillColor(COLORS.text)
+      this.applyTextStyle(doc, TYPOGRAPHY.caption)
         .text(label, lx, ly, { width: labelWidth, align });
-      doc.fontSize(7).fillColor(catColor)
+      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, catColor)
         .text(scoreLabel, lx, ly + 10, { width: labelWidth, align });
     }
 
-    doc.y = cy + R + 50;
+    doc.y = cy + R + 34;
   }
 
   // ─── Overview Table ─────────────────────────────────────────────────────────
@@ -416,94 +993,349 @@ export class PdfService {
     this.ensureSpace(doc, 240);
 
     const startX = MARGIN;
-    const colWidths = { category: 140, bar: 170, score: 50, level: 60, narrative: CONTENT_WIDTH - 420 };
-    const rowHeight = 26;
+    const colWidths = { category: 146, bar: 178, score: 48, level: 66, narrative: CONTENT_WIDTH - 438 };
+    const rowHeight = 28;
     const headerHeight = 22;
 
     // Header
-    const tableTop = doc.y + 5;
+    const tableTop = doc.y + SPACING.tableTopGap;
     doc.roundedRect(startX, tableTop, CONTENT_WIDTH, headerHeight, 3).fill(COLORS.primary);
-    doc.fontSize(8).fillColor(COLORS.white)
+    this.applyTextStyle(doc, TYPOGRAPHY.tableHeader)
       .text('Category', startX + 10, tableTop + 6, { width: colWidths.category })
       .text('Risk Score', startX + colWidths.category + 10, tableTop + 6, { width: colWidths.bar })
       .text('Score', startX + colWidths.category + colWidths.bar + 5, tableTop + 6, { width: colWidths.score, align: 'center' })
       .text('Level', startX + colWidths.category + colWidths.bar + colWidths.score + 5, tableTop + 6, { width: colWidths.level, align: 'center' });
 
-    let rowY = tableTop + headerHeight + 4;
+    let rowY = tableTop + headerHeight + SPACING.tableRowGap;
     for (let i = 0; i < report.categories.length; i++) {
       const cat = report.categories[i];
       const levelColor = this.getLevelColor(cat.level);
 
       // Alternate row bg
       if (i % 2 === 0) {
-        doc.rect(startX, rowY - 2, CONTENT_WIDTH, rowHeight).fill(COLORS.bgLight);
+        doc.rect(startX, rowY - SPACING.tableRowInset, CONTENT_WIDTH, rowHeight).fill(COLORS.bgLight);
       }
 
       // Category name
-      doc.fontSize(9).fillColor(COLORS.text)
+      this.applyTextStyle(doc, TYPOGRAPHY.tableCell)
         .text(this.formatCategoryName(cat.category), startX + 10, rowY + 4, { width: colWidths.category });
 
       // Mini progress bar
       const barX = startX + colWidths.category + 10;
-      const barY = rowY + 8;
+      const barY = rowY + 9;
       const barWidth = colWidths.bar - 20;
       const barHeight = 10;
-      doc.roundedRect(barX, barY, barWidth, barHeight, 3).fill(COLORS.borderLight);
+      doc.roundedRect(barX, barY, barWidth, barHeight, 4).fill(COLORS.borderLight);
       const fillWidth = (cat.score / 100) * barWidth;
       if (fillWidth > 0) {
-        doc.roundedRect(barX, barY, fillWidth, barHeight, 3).fill(levelColor);
+        doc.roundedRect(barX, barY, fillWidth, barHeight, 4).fill(levelColor);
       }
 
       // Score
-      doc.fontSize(9).fillColor(levelColor)
+      this.applyTextStyle(doc, TYPOGRAPHY.tableCell, levelColor)
         .text(`${cat.score}`, startX + colWidths.category + colWidths.bar + 5, rowY + 4, { width: colWidths.score, align: 'center' });
 
       // Level badge
       const levelX = startX + colWidths.category + colWidths.bar + colWidths.score + 5;
-      const badgeW = 58;
+      const badgeW = 60;
       const badgePad = (colWidths.level - badgeW) / 2;
-      doc.roundedRect(levelX + badgePad, rowY + 3, badgeW, 18, 9).fill(this.getLevelBg(cat.level));
-      doc.fontSize(7).fillColor(levelColor)
-        .text(cat.level, levelX + badgePad, rowY + 7, { width: badgeW, align: 'center' });
+      doc.roundedRect(levelX + badgePad, rowY + 4, badgeW, 18, 9).fill(this.getLevelBg(cat.level));
+      this.applyTextStyle(doc, TYPOGRAPHY.tableBadge, levelColor)
+        .text(cat.level, levelX + badgePad, rowY + 8, { width: badgeW, align: 'center' });
 
       rowY += rowHeight;
     }
 
-    doc.y = rowY + 10;
+    doc.y = rowY + SPACING.smallTextOffset;
+  }
+
+  // ─── Risk Heatmap ───────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderRiskHeatmap(doc: any, report: ReportResponse): void {
+    this.ensureSpace(doc, 280);
+    this.renderSectionHeading(doc, 'Risk Heatmap');
+
+    const zoneLabels = ['LOW (0-30)', 'MODERATE (31-60)', 'HIGH (61-80)', 'CRITICAL'];
+    const zoneColors = [COLORS.lowBg, COLORS.moderateBg, COLORS.highBg, COLORS.criticalBg];
+    const gridStartX = MARGIN + 58;
+    const gridWidth = CONTENT_WIDTH - 58;
+    const zoneWidth = gridWidth / 4;
+    const headerY = doc.y;
+    const headerHeight = 24;
+    const rowStartY = headerY + headerHeight + 10;
+    const rowGap = 26;
+    const circleRadius = 8;
+
+    for (let index = 0; index < zoneLabels.length; index++) {
+      const x = gridStartX + index * zoneWidth;
+      doc.rect(x, headerY, zoneWidth, headerHeight).fill(zoneColors[index]);
+      doc.rect(x, headerY, zoneWidth, headerHeight).strokeColor(COLORS.border).lineWidth(0.5).stroke();
+      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.text)
+        .text(zoneLabels[index], x, headerY + 8, { width: zoneWidth, align: 'center' });
+    }
+
+    for (let index = 0; index <= 4; index++) {
+      const x = gridStartX + index * zoneWidth;
+      doc.save();
+      doc.moveTo(x, headerY)
+        .lineTo(x, rowStartY + report.categories.length * rowGap - 8)
+        .strokeColor(COLORS.border)
+        .lineWidth(0.5)
+        .stroke();
+      doc.restore();
+    }
+
+    const points = report.categories.map((category, index) => {
+      const y = rowStartY + index * rowGap;
+      const shortLabel = this.heatmapCategoryLabel(category.category);
+      const scoreX = gridStartX + (Math.max(0, Math.min(category.score, 100)) / 100) * gridWidth;
+      const pointColor = this.getLevelColor(category.level);
+
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+        .text(shortLabel, MARGIN, y - 5, { width: 42, align: 'left' });
+
+      doc.save();
+      doc.moveTo(gridStartX, y)
+        .lineTo(gridStartX + gridWidth, y)
+        .strokeColor(COLORS.borderLight)
+        .lineWidth(0.5)
+        .stroke();
+      doc.restore();
+
+      doc.circle(scoreX, y, circleRadius).fill(pointColor);
+      doc.circle(scoreX, y, circleRadius).strokeColor(COLORS.white).lineWidth(1.5).stroke();
+      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, pointColor)
+        .text(`${category.score}`, scoreX + 12, y - 4, { width: 28 });
+
+      return {
+        category: category.category,
+        shortLabel,
+        score: category.score,
+        x: scoreX,
+        y,
+      };
+    });
+
+    doc.y = rowStartY + report.categories.length * rowGap + SPACING.paragraphGap;
+    this.lastRiskHeatmapLayoutMetrics = {
+      zoneLabels,
+      points,
+      gridStartX,
+      gridWidth,
+    };
+  }
+
+  // ─── Financial Overview ─────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderFinancialOverview(doc: any, metrics: FinancialMetrics): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    const pageIndex = this.getCurrentPageIndex(doc);
+    this.collectTocEntry('Financial Overview', pageIndex, 0);
+    this.renderPageHeader(doc, 'Financial Overview');
+
+    const revenue = metrics.revenue
+      .filter((entry) => Number.isFinite(entry.year) && Number.isFinite(entry.amount))
+      .sort((left, right) => left.year - right.year);
+    const costs = metrics.costs
+      .filter((entry) => entry.category && Number.isFinite(entry.amount))
+      .sort((left, right) => right.amount - left.amount);
+    const hasMargins = metrics.margins.gross !== null || metrics.margins.operating !== null;
+
+    const revenueHeight = revenue.length > 0 ? 180 : 0;
+    const costHeight = costs.length > 0 ? Math.max(140, costs.length * 28 + 54) : 0;
+    const marginsHeight = 104;
+    const sectionGap = 18;
+
+    if (revenue.length > 0) {
+      this.ensureSpace(doc, revenueHeight + sectionGap);
+      this.renderSectionHeading(doc, 'Revenue Projection');
+
+      const chartX = MARGIN + 18;
+      const chartY = doc.y + 10;
+      const chartWidth = CONTENT_WIDTH - 36;
+      const chartHeight = 128;
+      const maxRevenue = Math.max(...revenue.map((entry) => entry.amount), 1);
+      const pointSpacing = revenue.length > 1 ? chartWidth / (revenue.length - 1) : 0;
+      const points = revenue.map((entry, index) => ({
+        x: chartX + (revenue.length > 1 ? index * pointSpacing : chartWidth / 2),
+        y: chartY + chartHeight - (entry.amount / maxRevenue) * chartHeight,
+        entry,
+      }));
+
+      doc.roundedRect(chartX - 12, chartY - 18, chartWidth + 24, chartHeight + 46, 6).fill(COLORS.bgLight);
+      doc.save();
+      doc.moveTo(chartX, chartY + chartHeight)
+        .lineTo(chartX + chartWidth, chartY + chartHeight)
+        .lineTo(chartX + chartWidth, chartY)
+        .strokeColor(COLORS.border)
+        .lineWidth(1)
+        .stroke();
+      doc.restore();
+
+      for (let tick = 0; tick <= 4; tick++) {
+        const y = chartY + chartHeight - (tick / 4) * chartHeight;
+        const value = maxRevenue * (tick / 4);
+        doc.save();
+        doc.moveTo(chartX, y)
+          .lineTo(chartX + chartWidth, y)
+          .strokeColor(COLORS.borderLight)
+          .lineWidth(0.5)
+          .stroke();
+        doc.restore();
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
+          .text(this.formatCurrencyCompact(value, revenue[0]?.currency), MARGIN, y - 4, { width: 58, align: 'left' });
+      }
+
+      if (points.length > 1) {
+        doc.save();
+        doc.moveTo(points[0].x, points[0].y);
+        for (let index = 1; index < points.length; index++) {
+          doc.lineTo(points[index].x, points[index].y);
+        }
+        doc.strokeColor(COLORS.primary)
+          .lineWidth(2)
+          .stroke();
+        doc.restore();
+      }
+
+      points.forEach((point) => {
+        doc.circle(point.x, point.y, 4).fill(COLORS.primary);
+        doc.circle(point.x, point.y, 4).strokeColor(COLORS.white).lineWidth(1.5).stroke();
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.primary)
+          .text(this.formatCurrencyCompact(point.entry.amount, point.entry.currency), point.x - 26, point.y - 18, {
+            width: 52,
+            align: 'center',
+          });
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(`${point.entry.year}`, point.x - 20, chartY + chartHeight + 10, { width: 40, align: 'center' });
+      });
+
+      doc.y = chartY + chartHeight + 36;
+      doc.x = MARGIN;
+    }
+
+    if (costs.length > 0) {
+      this.ensureSpace(doc, costHeight + sectionGap);
+      this.renderSectionHeading(doc, 'Cost Breakdown');
+
+      const chartX = MARGIN + 140;
+      const chartY = doc.y + 8;
+      const chartWidth = CONTENT_WIDTH - 160;
+      const rowHeight = 28;
+      const barHeight = 12;
+      const maxCost = Math.max(...costs.map((entry) => entry.amount), 1);
+
+      costs.forEach((entry, index) => {
+        const rowY = chartY + index * rowHeight;
+        const fillWidth = (entry.amount / maxCost) * chartWidth;
+
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(entry.category, MARGIN, rowY + 2, { width: 128 });
+
+        doc.roundedRect(chartX, rowY + 6, chartWidth, barHeight, 4).fill(COLORS.borderLight);
+        if (fillWidth > 0) {
+          doc.roundedRect(chartX, rowY + 6, Math.max(fillWidth, 4), barHeight, 4).fill(COLORS.accent);
+        }
+
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
+          .text(this.formatCurrencyCompact(entry.amount), chartX + chartWidth + 8, rowY + 4, {
+            width: 56,
+            align: 'right',
+          });
+      });
+
+      doc.y = chartY + costs.length * rowHeight + 10;
+      doc.x = MARGIN;
+    }
+
+    this.ensureSpace(doc, marginsHeight);
+    this.renderSectionHeading(doc, 'Margins Summary');
+
+    const summaryY = doc.y + 8;
+    const cardGap = 12;
+    const cardWidth = (CONTENT_WIDTH - cardGap) / 2;
+    const cardHeight = 68;
+    const grossMarginLabel = this.formatMargin(metrics.margins.gross);
+    const operatingMarginLabel = this.formatMargin(metrics.margins.operating);
+
+    const marginCards = [
+      {
+        x: MARGIN,
+        title: 'Gross Margin',
+        value: grossMarginLabel,
+        color: metrics.margins.gross === null ? COLORS.textMuted : this.getMarginColor(metrics.margins.gross),
+        bg: metrics.margins.gross === null ? COLORS.bgLight : this.getMarginBg(metrics.margins.gross),
+      },
+      {
+        x: MARGIN + cardWidth + cardGap,
+        title: 'Operating Margin',
+        value: operatingMarginLabel,
+        color: metrics.margins.operating === null ? COLORS.textMuted : this.getMarginColor(metrics.margins.operating),
+        bg: metrics.margins.operating === null ? COLORS.bgLight : this.getMarginBg(metrics.margins.operating),
+      },
+    ];
+
+    marginCards.forEach((card) => {
+      doc.roundedRect(card.x, summaryY, cardWidth, cardHeight, 6).fill(card.bg);
+      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
+        .text(card.title, card.x + 12, summaryY + 12, { width: cardWidth - 24 });
+      this.applyTextStyle(doc, TYPOGRAPHY.sectionTitle, card.color)
+        .text(card.value, card.x + 12, summaryY + 28, { width: cardWidth - 24 });
+    });
+
+    doc.y = summaryY + cardHeight + SPACING.paragraphGap;
+    doc.x = MARGIN;
+
+    this.lastFinancialOverviewLayoutMetrics = {
+      startPageIndex: pageIndex,
+      renderedRevenueChart: revenue.length > 0,
+      renderedCostChart: costs.length > 0,
+      renderedMarginsSummary: hasMargins || true,
+      revenuePointCount: revenue.length,
+      costBarCount: costs.length,
+      grossMarginLabel,
+      operatingMarginLabel,
+    };
   }
 
   // ─── Category Detail Page ───────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderCategoryPage(doc: any, category: ReportResponse['categories'][number], cfg?: ReportConfig): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
     const categoryLabel = this.formatCategoryName(category.category);
+    this.collectTocEntry(categoryLabel, this.getCurrentPageIndex(doc), 1);
     this.renderPageHeader(doc, categoryLabel);
 
     // Score banner
     this.renderScoreBanner(doc, category.score, category.level);
     // Reset x to margin after banner (banner text can shift it)
     doc.x = MARGIN;
-    doc.moveDown(0.5);
+    doc.moveDown(SPACING.subsectionBlockGap);
 
     // Narrative
     if (category.narrative) {
-      doc.fontSize(10).fillColor(COLORS.text)
-        .text(category.narrative, MARGIN, doc.y, { align: 'justify', lineGap: 3, width: CONTENT_WIDTH });
-      doc.moveDown(0.8);
+      this.applyTextStyle(doc, TYPOGRAPHY.body)
+        .text(category.narrative, MARGIN, doc.y, { align: 'justify', lineGap: TYPOGRAPHY.body.lineGap, width: CONTENT_WIDTH });
+      doc.moveDown(SPACING.bodyBlockGap);
     }
 
     // Evidence
     if ((!cfg || cfg.includeEvidenceTraces) && category.evidence) {
       this.renderSectionHeading(doc, 'Evidence');
-      doc.fontSize(9).fillColor(COLORS.textLight)
-        .text(category.evidence, MARGIN, doc.y, { align: 'justify', lineGap: 2, width: CONTENT_WIDTH });
-      doc.moveDown(0.8);
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmallMuted)
+        .text(category.evidence, MARGIN, doc.y, { align: 'justify', lineGap: TYPOGRAPHY.bodySmallMuted.lineGap, width: CONTENT_WIDTH });
+      doc.moveDown(SPACING.bodyBlockGap);
     }
 
     // Analyst Commentary
     if (category.analystComment) {
       this.renderAnalystCommentary(doc, category.analystComment);
-      doc.moveDown(0.8);
+      doc.moveDown(SPACING.bodyBlockGap);
     }
 
     // Subcategory bar chart
@@ -513,7 +1345,8 @@ export class PdfService {
       } else {
         this.renderSubcategoryTable(doc, category.subcategories);
       }
-      doc.moveDown(0.5);
+      doc.x = MARGIN;
+      doc.moveDown(SPACING.subsectionBlockGap);
     }
 
     // Category recommendations
@@ -539,16 +1372,16 @@ export class PdfService {
     doc.roundedRect(MARGIN, bannerY, CONTENT_WIDTH, bannerHeight, 6).fill(levelBg);
 
     // Score number — use separate text calls to avoid `continued` shifting doc.x
-    doc.fontSize(26).fillColor(levelColor)
+    this.applyTextStyle(doc, TYPOGRAPHY.titleCompany, levelColor)
       .text(`${score}`, MARGIN + 15, bannerY + 8, { width: 70, lineBreak: false });
-    doc.fontSize(11).fillColor(COLORS.textLight)
+    this.applyTextStyle(doc, TYPOGRAPHY.label)
       .text('/100', MARGIN + 75, bannerY + 18, { width: 30, lineBreak: false });
 
     // Level badge
     const badgeWidth = 80;
     const badgeX = MARGIN + 110;
     doc.roundedRect(badgeX, bannerY + 14, badgeWidth, 22, 11).fill(levelColor);
-    doc.fontSize(9).fillColor(COLORS.white)
+    this.applyTextStyle(doc, TYPOGRAPHY.badgeSmall)
       .text(level, badgeX, bannerY + 19, { width: badgeWidth, align: 'center' });
 
     // Progress bar
@@ -564,12 +1397,12 @@ export class PdfService {
     const ticks = [0, 25, 50, 75, 100];
     for (const t of ticks) {
       const tx = barX + (t / 100) * barWidth;
-      doc.fontSize(6).fillColor(COLORS.textMuted)
-        .text(`${t}`, tx - 8, barY + 13, { width: 16, align: 'center' });
+      this.applyTextStyle(doc, TYPOGRAPHY.micro, COLORS.textMuted)
+        .text(`${t}`, tx - 8, barY + SPACING.scoreBarLabelOffset, { width: 16, align: 'center' });
     }
 
     doc.x = MARGIN;
-    doc.y = bannerY + bannerHeight + 8;
+    doc.y = bannerY + bannerHeight + SPACING.itemGap;
   }
 
   // ─── Subcategory Bar Chart ──────────────────────────────────────────────────
@@ -579,22 +1412,24 @@ export class PdfService {
     this.ensureSpace(doc, subcategories.length * 30 + 25);
     this.renderSectionHeading(doc, 'Subcategory Scores');
 
-    const labelWidth = 140;
-    const barMaxWidth = CONTENT_WIDTH - labelWidth - 60;
-    const rowHeight = 28;
+    const labelWidth = 150;
+    const levelWidth = 54;
+    const barGap = 10;
+    const barMaxWidth = CONTENT_WIDTH - labelWidth - levelWidth - barGap * 2;
+    const rowHeight = 30;
 
     for (const sub of subcategories) {
       const rowY = doc.y;
       const levelColor = this.getLevelColor(sub.level);
 
       // Label
-      doc.fontSize(9).fillColor(COLORS.text)
-        .text(sub.name, MARGIN, rowY + 4, { width: labelWidth });
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+        .text(sub.name, MARGIN, rowY + 6, { width: labelWidth });
 
       // Bar background
-      const barX = MARGIN + labelWidth + 5;
-      const barY = rowY + 6;
-      const barHeight = 14;
+      const barX = MARGIN + labelWidth + barGap;
+      const barY = rowY + 8;
+      const barHeight = 12;
       doc.roundedRect(barX, barY, barMaxWidth, barHeight, 4).fill(COLORS.borderLight);
 
       // Bar fill
@@ -604,17 +1439,17 @@ export class PdfService {
       // Score text inside bar (or outside if too small)
       const scoreText = `${sub.score}`;
       if (fillW > 30) {
-        doc.fontSize(8).fillColor(COLORS.white)
+        this.applyTextStyle(doc, TYPOGRAPHY.chartValue, COLORS.white)
           .text(scoreText, barX + fillW - 25, barY + 2, { width: 22, align: 'right' });
       } else {
-        doc.fontSize(8).fillColor(levelColor)
+        this.applyTextStyle(doc, TYPOGRAPHY.chartValue, levelColor)
           .text(scoreText, barX + fillW + 4, barY + 2, { width: 30 });
       }
 
       // Level badge
-      const badgeX = MARGIN + CONTENT_WIDTH - 50;
-      doc.fontSize(7).fillColor(levelColor)
-        .text(sub.level, badgeX, rowY + 6, { width: 50 });
+      const badgeX = MARGIN + CONTENT_WIDTH - levelWidth;
+      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, levelColor)
+        .text(sub.level, badgeX, rowY + 7, { width: levelWidth, align: 'right' });
 
       doc.y = rowY + rowHeight;
     }
@@ -633,7 +1468,7 @@ export class PdfService {
     // Header
     const tableTop = doc.y;
     doc.roundedRect(startX, tableTop, CONTENT_WIDTH, 18, 2).fill(COLORS.primary);
-    doc.fontSize(7).fillColor(COLORS.white)
+    this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
       .text('Subcategory', startX + 6, tableTop + 4, { width: colWidths.name })
       .text('Score', startX + colWidths.name + 6, tableTop + 4, { width: colWidths.score })
       .text('Level', startX + colWidths.name + colWidths.score + 6, tableTop + 4, { width: colWidths.level })
@@ -646,21 +1481,21 @@ export class PdfService {
         doc.rect(startX, rowY - 1, CONTENT_WIDTH, 20).fill(COLORS.bgLight);
       }
       const levelColor = this.getLevelColor(sub.level);
-      doc.fontSize(8).fillColor(COLORS.text)
+      this.applyTextStyle(doc, TYPOGRAPHY.caption)
         .text(sub.name, startX + 6, rowY + 2, { width: colWidths.name });
-      doc.fillColor(levelColor)
+      this.applyTextStyle(doc, TYPOGRAPHY.caption, levelColor)
         .text(`${sub.score}`, startX + colWidths.name + 6, rowY + 2, { width: colWidths.score });
-      doc.fillColor(levelColor)
+      this.applyTextStyle(doc, TYPOGRAPHY.caption, levelColor)
         .text(sub.level, startX + colWidths.name + colWidths.score + 6, rowY + 2, { width: colWidths.level });
 
       const evidenceText = sub.evidence || sub.mitigation || '—';
       const short = evidenceText.substring(0, 80) + (evidenceText.length > 80 ? '...' : '');
-      doc.fillColor(COLORS.textLight)
+      this.applyTextStyle(doc, TYPOGRAPHY.caption, COLORS.textLight)
         .text(short, startX + colWidths.name + colWidths.score + colWidths.level + 6, rowY + 2, { width: colWidths.evidence });
 
       rowY += 22;
     }
-    doc.y = rowY + 5;
+    doc.y = rowY + SPACING.tableTopGap;
   }
 
   // ─── Recommendation Card ────────────────────────────────────────────────────
@@ -668,39 +1503,53 @@ export class PdfService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderRecommendationCard(doc: any, priority: string, text: string): void {
     const priorityColor = this.getPriorityColor(priority);
-    const cardPadding = 10;
-    const textWidth = CONTENT_WIDTH - cardPadding * 2 - 8;
-    const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: 2 });
+    const cardPadding = SPACING.cardPadding;
+    const railWidth = 4;
+    const textWidth = CONTENT_WIDTH - railWidth - cardPadding * 2 - 10;
+    const textHeight = doc.heightOfString(text, { width: textWidth, lineGap: TYPOGRAPHY.bodySmall.lineGap });
     const cardHeight = textHeight + cardPadding * 2 + 14; // extra for badge
 
-    this.ensureSpace(doc, cardHeight + 4);
+    this.ensureSpace(doc, cardHeight + SPACING.cardAfterGap);
 
     const cardY = doc.y;
 
     // Card background
     doc.roundedRect(MARGIN, cardY, CONTENT_WIDTH, cardHeight, 4).fill(COLORS.bgLight);
     // Left accent border
-    doc.roundedRect(MARGIN, cardY, 3, cardHeight, 2).fill(priorityColor);
+    doc.roundedRect(MARGIN, cardY, railWidth, cardHeight, 2).fill(priorityColor);
 
     // Priority badge
     const badgeWidth = 52;
-    doc.roundedRect(MARGIN + cardPadding + 5, cardY + cardPadding, badgeWidth, 14, 7).fill(priorityColor);
-    doc.fontSize(7).fillColor(COLORS.white)
-      .text(priority, MARGIN + cardPadding + 5, cardY + cardPadding + 3, { width: badgeWidth, align: 'center' });
+    const contentX = MARGIN + railWidth + 6;
+    doc.roundedRect(contentX + cardPadding, cardY + cardPadding, badgeWidth, 14, 7).fill(priorityColor);
+    this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
+      .text(priority, contentX + cardPadding, cardY + cardPadding + 3, { width: badgeWidth, align: 'center' });
 
     // Recommendation text
-    doc.fontSize(9).fillColor(COLORS.text)
-      .text(text, MARGIN + cardPadding + 5, cardY + cardPadding + 18, {
-        width: textWidth, lineGap: 2,
+    this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+      .text(text, contentX + cardPadding, cardY + cardPadding + 18, {
+        width: textWidth,
+        lineGap: TYPOGRAPHY.bodySmall.lineGap,
       });
 
-    doc.y = cardY + cardHeight + 4;
+    this.lastCategoryRecommendationLayoutMetrics = {
+      recommendationRailWidth: railWidth,
+      recommendationPadding: cardPadding,
+      radarBottomY: 262,
+      overviewRowHeight: 28,
+      subcategoryRowHeight: 30,
+    };
+
+    doc.y = cardY + cardHeight + SPACING.cardAfterGap;
   }
 
   // ─── All Recommendations ────────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderAllRecommendations(doc: any, report: ReportResponse): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    this.collectTocEntry('All Recommendations', this.getCurrentPageIndex(doc), 0);
     this.renderPageHeader(doc, 'All Recommendations');
 
     const allRecs = report.categories.flatMap((c) =>
@@ -726,26 +1575,27 @@ export class PdfService {
 
       const badgeW = 52;
       doc.roundedRect(MARGIN + 10, headerY + 4, badgeW, 14, 7).fill(priorityColor);
-      doc.fontSize(7).fillColor(COLORS.white)
+      this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
         .text(priority, MARGIN + 10, headerY + 7, { width: badgeW, align: 'center' });
 
-      doc.fontSize(9).fillColor(COLORS.text)
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
         .text(`${filtered.length} recommendation${filtered.length !== 1 ? 's' : ''}`, MARGIN + 70, headerY + 6);
 
-      doc.y = headerY + 30;
+      doc.y = headerY + SPACING.priorityHeaderGap;
 
       for (const rec of filtered) {
         this.ensureSpace(doc, 35);
         const recY = doc.y;
 
         // Category tag
-        doc.fontSize(7).fillColor(COLORS.textMuted)
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
           .text(rec.category, MARGIN + 5, recY);
 
         // Recommendation text
-        doc.fontSize(9).fillColor(COLORS.text)
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
           .text(rec.text, MARGIN + 5, doc.y, {
-            width: CONTENT_WIDTH - 10, lineGap: 2,
+            width: CONTENT_WIDTH - 10,
+            lineGap: TYPOGRAPHY.bodySmall.lineGap,
           });
 
         // Separator
@@ -753,49 +1603,308 @@ export class PdfService {
           .lineTo(PAGE_WIDTH - MARGIN, doc.y + 4)
           .strokeColor(COLORS.borderLight).lineWidth(0.5).stroke();
 
-        doc.y += 8;
+        doc.y += SPACING.itemGap;
       }
-      doc.moveDown(0.5);
+      doc.moveDown(SPACING.subsectionBlockGap);
     }
+  }
+
+  // ─── Action Plan ─────────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderActionPlan(doc: any, items: ActionPlanItem[]): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    const pageIndex = this.getCurrentPageIndex(doc);
+    this.collectTocEntry('Action Plan', pageIndex, 0);
+    this.renderPageHeader(doc, 'Action Plan');
+
+    const timeframeOrder: ActionPlanTimeframe[] = ['IMMEDIATE', 'SHORT_TERM', 'MEDIUM_TERM'];
+    const timeframeLabels: Record<ActionPlanTimeframe, string> = {
+      IMMEDIATE: 'Immediate (0-3 months)',
+      SHORT_TERM: 'Short-term (3-6 months)',
+      MEDIUM_TERM: 'Medium-term (6-12 months)',
+    };
+    const timeframeBackgrounds: Record<ActionPlanTimeframe, string> = {
+      IMMEDIATE: COLORS.criticalBg,
+      SHORT_TERM: COLORS.moderateBg,
+      MEDIUM_TERM: COLORS.lowBg,
+    };
+    const timeframeAccents: Record<ActionPlanTimeframe, string> = {
+      IMMEDIATE: COLORS.critical,
+      SHORT_TERM: COLORS.moderate,
+      MEDIUM_TERM: COLORS.low,
+    };
+
+    const timeframeGroups = timeframeOrder
+      .map((timeframe) => ({
+        timeframe,
+        items: items.filter((item) => item.timeframe === timeframe),
+      }))
+      .filter((group) => group.items.length > 0);
+
+    timeframeGroups.forEach((group) => {
+      this.ensureSpace(doc, 54);
+      const headerY = doc.y;
+      const accent = timeframeAccents[group.timeframe];
+      const background = timeframeBackgrounds[group.timeframe];
+      const countText = `${group.items.length} action${group.items.length === 1 ? '' : 's'}`;
+
+      doc.roundedRect(MARGIN, headerY, CONTENT_WIDTH, 24, 4).fill(background);
+      doc.roundedRect(MARGIN, headerY, 4, 24, 2).fill(accent);
+
+      this.applyTextStyle(doc, TYPOGRAPHY.bodyStrong)
+        .text(timeframeLabels[group.timeframe], MARGIN + 12, headerY + 7, { width: 220 });
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall, accent)
+        .text(countText, PAGE_WIDTH - MARGIN - 90, headerY + 7, { width: 78, align: 'right' });
+
+      doc.y = headerY + 32;
+
+      group.items.forEach((item) => {
+        const priorityColor = this.getPriorityColor(item.priority);
+        const priorityBg = this.getPriorityBg(item.priority);
+        const badgeHeight = 16;
+        const badgeGap = 8;
+        const textWidth = CONTENT_WIDTH - 24;
+        const textHeight = doc.heightOfString(item.text, {
+          width: textWidth,
+          lineGap: TYPOGRAPHY.bodySmall.lineGap,
+        });
+        const cardHeight = 16 + badgeHeight + textHeight + 24;
+
+        this.ensureSpace(doc, cardHeight + 8);
+        const cardY = doc.y;
+
+        doc.roundedRect(MARGIN, cardY, CONTENT_WIDTH, cardHeight, 5).fill(COLORS.bgLight);
+        doc.roundedRect(MARGIN, cardY, 4, cardHeight, 2).fill(accent);
+
+        const timeframeBadgeWidth = 100;
+        const priorityBadgeWidth = 58;
+        const categoryBadgeX = MARGIN + 12 + timeframeBadgeWidth + badgeGap + priorityBadgeWidth + badgeGap;
+        const categoryBadgeWidth = Math.min(150, Math.max(70, doc.widthOfString(this.formatCategoryName(item.category)) + 18));
+
+        doc.roundedRect(MARGIN + 12, cardY + 12, timeframeBadgeWidth, badgeHeight, 8).fill(accent);
+        this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
+          .text(group.timeframe, MARGIN + 12, cardY + 16, { width: timeframeBadgeWidth, align: 'center' });
+
+        doc.roundedRect(MARGIN + 12 + timeframeBadgeWidth + badgeGap, cardY + 12, priorityBadgeWidth, badgeHeight, 8).fill(priorityBg);
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, priorityColor)
+          .text(item.priority, MARGIN + 12 + timeframeBadgeWidth + badgeGap, cardY + 16, { width: priorityBadgeWidth, align: 'center' });
+
+        doc.roundedRect(categoryBadgeX, cardY + 12, categoryBadgeWidth, badgeHeight, 8).fill(COLORS.accentLight);
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.secondary)
+          .text(this.formatCategoryName(item.category), categoryBadgeX + 6, cardY + 16, {
+            width: categoryBadgeWidth - 12,
+            align: 'center',
+          });
+
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(item.text, MARGIN + 12, cardY + 12 + badgeHeight + 10, {
+            width: textWidth,
+            lineGap: TYPOGRAPHY.bodySmall.lineGap,
+          });
+
+        doc.y = cardY + cardHeight + 8;
+      });
+
+      doc.moveDown(SPACING.subsectionBlockGap);
+    });
+
+    this.lastActionPlanLayoutMetrics = {
+      startPageIndex: pageIndex,
+      timeframeGroups: timeframeGroups.map((group) => ({
+        timeframe: group.timeframe,
+        count: group.items.length,
+      })),
+    };
+  }
+
+  // ─── Appendix ────────────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderAppendix(doc: any, report: ReportResponse, cfg?: ReportConfig): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    const pageIndex = this.getCurrentPageIndex(doc);
+    this.collectTocEntry('Appendix', pageIndex, 0);
+    this.renderPageHeader(doc, 'Appendix');
+
+    const documentSources = report.documentSources ?? [];
+    const gapSummary = report.gapSummary ?? [];
+    const evidenceCategories = cfg?.includeEvidenceTraces
+      ? report.categories.filter((category) => category.evidence)
+      : [];
+
+    if (documentSources.length > 0) {
+      this.renderSectionHeading(doc, 'Document Sources');
+      this.renderAppendixTable(doc, [
+        { key: 'fileName', label: 'Filename', width: 230 },
+        { key: 'fileType', label: 'Type', width: 150 },
+        { key: 'extractedLength', label: 'Extracted Chars', width: 125, align: 'right' },
+      ], documentSources.map((source) => ({
+        fileName: source.fileName,
+        fileType: source.fileType,
+        extractedLength: `${source.extractedLength}`,
+      })));
+      doc.moveDown(SPACING.subsectionBlockGap);
+    }
+
+    if (gapSummary.length > 0) {
+      this.renderSectionHeading(doc, 'Gap Detection Summary');
+      this.renderAppendixTable(doc, [
+        { key: 'fieldKey', label: 'Field', width: 120 },
+        { key: 'status', label: 'Status', width: 70 },
+        { key: 'detectedValue', label: 'Detected Value', width: 145 },
+        { key: 'correctedValue', label: 'Corrected Value', width: 145 },
+      ], gapSummary.map((gap) => ({
+        fieldKey: gap.fieldKey,
+        status: gap.status,
+        detectedValue: gap.detectedValue ?? '—',
+        correctedValue: gap.correctedValue ?? '—',
+      })));
+      doc.moveDown(SPACING.subsectionBlockGap);
+    }
+
+    if (evidenceCategories.length > 0) {
+      this.renderSectionHeading(doc, 'Detailed Evidence');
+      evidenceCategories.forEach((category) => {
+        const evidenceText = category.evidence ?? '';
+        const evidenceHeight = doc.heightOfString(evidenceText, {
+          width: CONTENT_WIDTH - 24,
+          lineGap: TYPOGRAPHY.bodySmall.lineGap,
+        });
+        const blockHeight = evidenceHeight + 34;
+        this.ensureSpace(doc, blockHeight + 8);
+
+        const blockY = doc.y;
+        doc.roundedRect(MARGIN, blockY, CONTENT_WIDTH, blockHeight, 5).fill(COLORS.bgLight);
+        doc.roundedRect(MARGIN, blockY, 4, blockHeight, 2).fill(COLORS.primary);
+        this.applyTextStyle(doc, TYPOGRAPHY.bodyStrong)
+          .text(this.formatCategoryName(category.category), MARGIN + 12, blockY + 10, { width: CONTENT_WIDTH - 24 });
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(evidenceText, MARGIN + 12, blockY + 26, {
+            width: CONTENT_WIDTH - 24,
+            lineGap: TYPOGRAPHY.bodySmall.lineGap,
+          });
+
+        doc.y = blockY + blockHeight + 8;
+      });
+    }
+
+    this.lastAppendixLayoutMetrics = {
+      startPageIndex: pageIndex,
+      documentSourceCount: documentSources.length,
+      gapSummaryCount: gapSummary.length,
+      evidenceCategoryCount: evidenceCategories.length,
+    };
+  }
+
+  // ─── Disclaimer ──────────────────────────────────────────────────────────────
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderDisclaimer(doc: any): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    const pageIndex = this.getCurrentPageIndex(doc);
+    const currentYear = new Date().getFullYear();
+    this.collectTocEntry('Disclaimer', pageIndex, 0);
+    this.renderPageHeader(doc, 'Disclaimer');
+
+    const sections = [
+      {
+        title: 'DISCLAIMER',
+        body: 'This risk assessment report was generated using the CGIAR Agricultural Risk Intelligence Tool, which employs artificial intelligence to analyze business documents and evaluate risk across seven standardized categories.',
+      },
+      {
+        title: 'DATA LIMITATIONS',
+        body: 'The analysis is based solely on documents and information provided by or about the assessed entity. The completeness and accuracy of the assessment depend on the quality and completeness of input data. Areas where documentation was insufficient are noted in the Gap Detection summary.',
+      },
+      {
+        title: 'AI-GENERATED CONTENT',
+        body: 'Portions of this report, including the executive summary, key findings, and recommendations, were generated by AI models. While the AI applies domain expertise in agricultural risk assessment, all findings should be validated by qualified professionals before making investment or operational decisions.',
+      },
+      {
+        title: 'CONFIDENTIALITY',
+        body: 'This report contains confidential information intended solely for authorized recipients. Unauthorized distribution, copying, or disclosure is prohibited.',
+      },
+    ];
+
+    sections.forEach((section) => {
+      this.ensureSpace(doc, 90);
+      this.renderSectionHeading(doc, section.title);
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+        .text(section.body, MARGIN, doc.y, {
+          width: CONTENT_WIDTH,
+          align: 'justify',
+          lineGap: TYPOGRAPHY.bodySmall.lineGap,
+        });
+      doc.moveDown(SPACING.paragraphGap / 8);
+      doc.x = MARGIN;
+    });
+
+    this.ensureSpace(doc, 70);
+    doc.moveDown(SPACING.subsectionBlockGap);
+    this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+      .text(
+        'This report is intended as a decision-support tool and should be complemented by domain expert review and independent due diligence before finalizing any investment or partnership assessment.',
+        MARGIN,
+        doc.y,
+        {
+          width: CONTENT_WIDTH,
+          align: 'justify',
+          lineGap: TYPOGRAPHY.bodySmall.lineGap,
+        },
+      );
+    doc.moveDown(SPACING.paragraphGap / 6);
+    this.applyTextStyle(doc, TYPOGRAPHY.caption)
+      .text(`© ${currentYear} CGIAR / Alliance of Bioversity International and CIAT`, MARGIN, doc.y, {
+        width: CONTENT_WIDTH,
+      });
+
+    this.lastDisclaimerLayoutMetrics = {
+      startPageIndex: pageIndex,
+      sectionCount: sections.length,
+      copyrightYear: currentYear,
+    };
   }
 
   // ─── Analyst Commentary ─────────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderAnalystCommentary(doc: any, comment: string): void {
-    const boxPadding = 12;
+    const boxPadding = SPACING.cardPadding;
     const textWidth = CONTENT_WIDTH - boxPadding * 2 - 5;
-    const textHeight = doc.heightOfString(comment, { width: textWidth, lineGap: 3 });
+    const textHeight = doc.heightOfString(comment, { width: textWidth, lineGap: TYPOGRAPHY.analystBody.lineGap });
     const boxHeight = textHeight + boxPadding * 2 + 14;
 
-    this.ensureSpace(doc, boxHeight + 10);
+    this.ensureSpace(doc, boxHeight + SPACING.smallTextOffset);
 
     const boxY = doc.y;
 
     // Header
-    doc.fontSize(9).fillColor(COLORS.secondary)
-      .font('Helvetica-Bold')
+    this.applyTextStyle(doc, TYPOGRAPHY.analystHeading)
       .text('Analyst Commentary', MARGIN, boxY);
-    doc.font('Helvetica');
 
-    const contentY = doc.y + 4;
+    const contentY = doc.y + SPACING.analystHeaderGap;
     doc.roundedRect(MARGIN, contentY, CONTENT_WIDTH, textHeight + boxPadding * 2, 4).fill('#F0FDF4');
     doc.roundedRect(MARGIN, contentY, 3, textHeight + boxPadding * 2, 2).fill('#16A34A');
 
-    doc.font('Helvetica-Oblique')
-      .fontSize(9).fillColor('#15803D')
+    this.applyTextStyle(doc, TYPOGRAPHY.analystBody)
       .text(comment, MARGIN + boxPadding + 5, contentY + boxPadding, {
-        width: textWidth, lineGap: 3,
+        width: textWidth,
+        lineGap: TYPOGRAPHY.analystBody.lineGap,
       });
 
-    doc.font('Helvetica');
-    doc.y = contentY + textHeight + boxPadding * 2 + 5;
+    doc.y = contentY + textHeight + boxPadding * 2 + SPACING.tableTopGap;
   }
 
   // ─── Strengths & Weaknesses ─────────────────────────────────────────────────
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderStrengthsWeaknesses(doc: any, extras: ReportExtras): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    this.collectTocEntry('Strengths & Weaknesses', this.getCurrentPageIndex(doc), 0);
     this.renderPageHeader(doc, 'Strengths & Weaknesses');
 
     if (extras.strengths?.length) {
@@ -803,12 +1912,12 @@ export class PdfService {
       for (const item of extras.strengths) {
         this.ensureSpace(doc, 35);
         const y = doc.y;
-        doc.circle(MARGIN + 8, y + 5, 3).fill(COLORS.low);
-        doc.fontSize(9).fillColor(COLORS.text)
-          .text(item, MARGIN + 18, y, { width: CONTENT_WIDTH - 18, lineGap: 2 });
-        doc.moveDown(0.3);
+        doc.circle(MARGIN + SPACING.bulletOffsetX, y + SPACING.bulletOffsetY, 3).fill(COLORS.low);
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(item, MARGIN + SPACING.bulletTextOffset, y, { width: CONTENT_WIDTH - SPACING.bulletTextOffset, lineGap: TYPOGRAPHY.bodySmall.lineGap });
+        doc.moveDown(SPACING.sectionHeadingGap);
       }
-      doc.moveDown(1);
+      doc.moveDown(SPACING.strengthsGap);
     }
 
     if (extras.weaknesses?.length) {
@@ -816,10 +1925,10 @@ export class PdfService {
       for (const item of extras.weaknesses) {
         this.ensureSpace(doc, 35);
         const y = doc.y;
-        doc.circle(MARGIN + 8, y + 5, 3).fill(COLORS.critical);
-        doc.fontSize(9).fillColor(COLORS.text)
-          .text(item, MARGIN + 18, y, { width: CONTENT_WIDTH - 18, lineGap: 2 });
-        doc.moveDown(0.3);
+        doc.circle(MARGIN + SPACING.bulletOffsetX, y + SPACING.bulletOffsetY, 3).fill(COLORS.critical);
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(item, MARGIN + SPACING.bulletTextOffset, y, { width: CONTENT_WIDTH - SPACING.bulletTextOffset, lineGap: TYPOGRAPHY.bodySmall.lineGap });
+        doc.moveDown(SPACING.sectionHeadingGap);
       }
     }
   }
@@ -828,12 +1937,16 @@ export class PdfService {
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderMethodology(doc: any): void {
+    doc.x = MARGIN;
+    this.markCurrentPage(doc);
+    this.collectTocEntry('Methodology', this.getCurrentPageIndex(doc), 0);
     this.renderPageHeader(doc, 'Methodology');
 
     const intro = 'This risk assessment was generated using the CGIAR Agricultural Risk Intelligence Tool, which employs AI-powered analysis across seven standardized risk categories.';
-    doc.fontSize(10).fillColor(COLORS.text)
-      .text(intro, { align: 'justify', lineGap: 3, width: CONTENT_WIDTH });
-    doc.moveDown(1);
+    this.applyTextStyle(doc, TYPOGRAPHY.body)
+      .text(intro, MARGIN, doc.y, { align: 'justify', lineGap: TYPOGRAPHY.body.lineGap, width: CONTENT_WIDTH });
+    const introX = doc.x;
+    doc.moveDown(SPACING.methodologyScaleGap);
 
     // Risk scale visual
     this.renderSectionHeading(doc, 'Risk Scoring Scale');
@@ -851,17 +1964,18 @@ export class PdfService {
 
       // Badge
       doc.roundedRect(MARGIN + 12, rowY + 6, 70, 16, 8).fill(scale.color);
-      doc.fontSize(8).fillColor(COLORS.white)
+      this.applyTextStyle(doc, TYPOGRAPHY.tableHeader)
         .text(`${scale.level} (${scale.range})`, MARGIN + 12, rowY + 9, { width: 70, align: 'center' });
 
       // Description
-      doc.fontSize(9).fillColor(COLORS.text)
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
         .text(scale.desc, MARGIN + 92, rowY + 8, { width: CONTENT_WIDTH - 100 });
 
       doc.y = rowY + 32;
+      doc.x = MARGIN;
     }
 
-    doc.moveDown(1);
+    doc.moveDown(SPACING.methodologyScaleGap);
 
     const methodology = [
       'Each category contains 5 subcategories scored independently. Category scores represent the weighted assessment of subcategory indicators. The overall score is the simple average of all 7 category scores.',
@@ -871,10 +1985,21 @@ export class PdfService {
     ];
 
     for (const para of methodology) {
-      doc.fontSize(9.5).fillColor(COLORS.text)
-        .text(para, { align: 'justify', lineGap: 3, width: CONTENT_WIDTH });
-      doc.moveDown(0.6);
+      this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+        .text(para, MARGIN, doc.y, { align: 'justify', lineGap: TYPOGRAPHY.bodySmall.lineGap, width: CONTENT_WIDTH });
+      doc.moveDown(SPACING.methodologyParagraphGap);
+      doc.x = MARGIN;
     }
+
+    this.lastMethodologyLayoutMetrics = {
+      introX,
+      introWidth: CONTENT_WIDTH,
+      scaleDescriptionX: MARGIN + 92,
+      scaleDescriptionWidth: CONTENT_WIDTH - 100,
+      paragraphX: MARGIN,
+      paragraphWidth: CONTENT_WIDTH,
+      finalCursorX: doc.x,
+    };
   }
 
   // ─── Drawing Helpers ────────────────────────────────────────────────────────
@@ -906,34 +2031,127 @@ export class PdfService {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderPageHeader(doc: any, title: string): void {
     // Top accent bar
-    doc.rect(0, 0, PAGE_WIDTH, 4).fill(COLORS.primary);
+    doc.rect(0, 0, PAGE_WIDTH, SPACING.headerHeight + 1).fill(COLORS.primary);
 
-    doc.fontSize(18).fillColor(COLORS.primary)
+    this.applyTextStyle(doc, TYPOGRAPHY.sectionTitle)
       .text(title, MARGIN, 30);
 
     // Divider
-    const lineY = doc.y + 4;
+    const lineY = doc.y + SPACING.textBlockGap;
     doc.moveTo(MARGIN, lineY)
       .lineTo(PAGE_WIDTH - MARGIN, lineY)
       .strokeColor(COLORS.border).lineWidth(1).stroke();
 
-    doc.y = lineY + 12;
+    doc.y = lineY + SPACING.paragraphGap;
+    doc.x = MARGIN;
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private renderSectionHeading(doc: any, title: string): void {
-    doc.fontSize(11).fillColor(COLORS.secondary)
-      .font('Helvetica-Bold')
+    this.applyTextStyle(doc, TYPOGRAPHY.subsectionTitle, COLORS.secondary)
       .text(title, MARGIN, doc.y, { width: CONTENT_WIDTH });
-    doc.font('Helvetica');
-    doc.moveDown(0.3);
+    doc.moveDown(SPACING.sectionHeadingGap);
+    doc.x = MARGIN;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private renderAppendixTable(
+    doc: any,
+    columns: Array<{ key: string; label: string; width: number; align?: 'left' | 'right' | 'center' }>,
+    rows: Array<Record<string, string>>,
+  ): void {
+    const headerHeight = 18;
+    const rowPaddingY = 6;
+    const tableX = MARGIN;
+
+    // Local helper: draw the column header bar at the current cursor position
+    // and advance doc.y to just below it. Used both for the initial header and
+    // for repeating it on continuation pages when a long table breaks.
+    const drawHeader = (): void => {
+      const headerY = doc.y;
+      doc.roundedRect(tableX, headerY, CONTENT_WIDTH, headerHeight, 3).fill(COLORS.primary);
+
+      let columnX = tableX;
+      columns.forEach((column) => {
+        this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
+          .text(column.label, columnX + 6, headerY + 4, {
+            width: column.width - 12,
+            align: column.align ?? 'left',
+          });
+        columnX += column.width;
+      });
+
+      // doc.text() above advances doc.y as a side effect. Reset it to a known
+      // position just below the header bar so the next row starts cleanly.
+      doc.y = headerY + headerHeight + 4;
+    };
+
+    this.ensureSpace(doc, 28);
+    drawHeader();
+    let rowY = doc.y;
+
+    rows.forEach((row, rowIndex) => {
+      // Clamp row height to one full page so a pathologically long appendix
+      // value (e.g. a multi-paragraph extracted Gap Detection field) cannot
+      // overflow even after the header is redrawn on a continuation page.
+      // 28 ≈ headerHeight (18) + the 4pt gap below + a small safety pad.
+      // The text is visually clipped in extreme cases, which is acceptable
+      // here — the appendix is a reference surface and the full content is
+      // always available in the original source document.
+      const MAX_ROW_HEIGHT = PAGE_HEIGHT - MARGIN * 2 - 28;
+
+      const rowHeight = Math.min(
+        Math.max(
+          ...columns.map((column) => doc.heightOfString(row[column.key] ?? '—', {
+            width: column.width - 12,
+          })),
+        ) + rowPaddingY * 2,
+        MAX_ROW_HEIGHT,
+      );
+
+      // Detect whether ensureSpace triggered a page break so we can repeat the
+      // column header on the new page.
+      const pageCountBefore = doc.bufferedPageRange().count;
+      this.ensureSpace(doc, rowHeight + 4);
+      if (doc.bufferedPageRange().count > pageCountBefore) {
+        drawHeader();
+      }
+      // After ensureSpace (and any page break + header redraw) doc.y is the
+      // only authoritative cursor position. Sync rowY to it before drawing so
+      // the row doesn't land at a stale coordinate from the previous page.
+      rowY = doc.y;
+
+      if (rowIndex % 2 === 0) {
+        doc.rect(tableX, rowY, CONTENT_WIDTH, rowHeight).fill(COLORS.bgLight);
+      }
+
+      let cellX = tableX;
+      columns.forEach((column) => {
+        this.applyTextStyle(doc, TYPOGRAPHY.caption)
+          .text(row[column.key] ?? '—', cellX + 6, rowY + rowPaddingY, {
+            width: column.width - 12,
+            align: column.align ?? 'left',
+          });
+        cellX += column.width;
+      });
+
+      rowY += rowHeight;
+      doc.y = rowY + 2;
+    });
   }
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private ensureSpace(doc: any, needed: number): void {
-    if (doc.y + needed > PAGE_HEIGHT - 50) {
+    if (doc.y + needed > PAGE_HEIGHT - SPACING.ensureSpaceBottom) {
       doc.addPage();
     }
+  }
+
+  private hasFinancialData(metrics: FinancialMetrics): boolean {
+    return metrics.revenue.length > 0
+      || metrics.costs.length > 0
+      || metrics.margins.gross !== null
+      || metrics.margins.operating !== null;
   }
 
   // ─── Color Helpers ──────────────────────────────────────────────────────────
@@ -976,6 +2194,39 @@ export class PdfService {
     }
   }
 
+  private getMarginColor(value: number): string {
+    if (value >= 0.3) return COLORS.low;
+    if (value >= 0.15) return COLORS.moderate;
+    return COLORS.high;
+  }
+
+  private getMarginBg(value: number): string {
+    if (value >= 0.3) return COLORS.lowBg;
+    if (value >= 0.15) return COLORS.moderateBg;
+    return COLORS.highBg;
+  }
+
+  private formatCurrencyCompact(value: number, currency?: string): string {
+    const compactValue = Math.abs(value) >= 1000000
+      ? `${(value / 1000000).toFixed(value % 1000000 === 0 ? 0 : 1)}M`
+      : Math.abs(value) >= 1000
+        ? `${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}K`
+        : `${Math.round(value)}`;
+
+    if (currency === 'USD') return `$${compactValue}`;
+    if (currency === 'EUR') return `EUR ${compactValue}`;
+    if (currency === 'KES') return `KES ${compactValue}`;
+    return currency ? `${currency} ${compactValue}` : compactValue;
+  }
+
+  private formatMargin(value: number | null): string {
+    if (value === null) {
+      return 'N/A';
+    }
+
+    return `${Math.round(value * 100)}%`;
+  }
+
   private formatCategoryName(category: string): string {
     return category
       .replace(/_/g, ' ')
@@ -992,5 +2243,20 @@ export class PdfService {
       .replace('Climate Environmental', 'Climate')
       .replace('Governance Legal', 'Governance')
       .replace('Technology Data', 'Technology');
+  }
+
+  private heatmapCategoryLabel(category: string): string {
+    switch (category) {
+      case 'FINANCIAL': return 'FIN';
+      case 'CLIMATE_ENVIRONMENTAL': return 'CLI';
+      case 'BEHAVIORAL': return 'BEH';
+      case 'OPERATIONAL': return 'OPS';
+      case 'MARKET': return 'MKT';
+      case 'MARKET_COMMERCIAL': return 'MKT';
+      case 'GOVERNANCE_LEGAL': return 'GOV';
+      case 'TECHNOLOGY_DATA': return 'TEC';
+      case 'BUSINESS_MODEL': return 'BUS';
+      default: return category.slice(0, 3).toUpperCase();
+    }
   }
 }

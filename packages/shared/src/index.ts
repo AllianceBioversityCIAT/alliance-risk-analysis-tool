@@ -36,10 +36,16 @@ export type {
   ReportResponse,
   ReportConfig,
   SubcategoryChartType,
+  ActionPlanTimeframe,
+  ActionPlanItem,
+  DocumentSource,
+  GapSummaryItem,
   FinancialMetrics,
   FinancialRevenueEntry,
   FinancialCostEntry,
   FinancialMargins,
+  ReportGenerationStage,
+  ReportGenerationProgress,
 } from './types/report.types';
 export type {
   DocumentInfo,

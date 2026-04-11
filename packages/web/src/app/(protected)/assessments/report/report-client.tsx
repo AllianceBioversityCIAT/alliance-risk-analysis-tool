@@ -14,6 +14,7 @@ import { SubcategoryBarChart } from '@/components/report/subcategory-bar-chart';
 import { FinancialRevenueChart } from '@/components/report/financial-revenue-chart';
 import { FinancialCostChart } from '@/components/report/financial-cost-chart';
 import { ReportConfigurationDialog } from '@/components/risk-scorecard/report-configuration-dialog';
+import { PdfGenerationProgress } from '@/components/report/pdf-generation-progress';
 import { useReport, useGeneratePdf } from '@/hooks/use-report';
 import { useAssessment } from '@/hooks/use-assessments';
 import { useJobPolling } from '@/hooks/use-job-polling';
@@ -40,6 +41,7 @@ export default function ReportClient() {
   const {
     startPolling,
     result: jobResult,
+    progress: jobProgress,
     status: jobStatus,
     error: jobError,
     isProcessing: pdfProcessing,
@@ -58,7 +60,6 @@ export default function ReportClient() {
       const response = await generatePdf(config);
       if (response.jobId) {
         startPolling(response.jobId);
-        sileo.info({ title: 'PDF generation started', description: 'This typically takes 30-60 seconds.' });
       } else if (response.downloadUrl) {
         window.open(response.downloadUrl, '_blank');
       }
@@ -379,6 +380,9 @@ export default function ReportClient() {
         onGenerate={handleGenerateWithConfig}
         isGenerating={isPdfBusy}
       />
+
+      {/* Live PDF generation progress (floating card) */}
+      <PdfGenerationProgress isVisible={isPdfBusy} progress={jobProgress} />
 
       {/* Print styles */}
       <style jsx global>{`

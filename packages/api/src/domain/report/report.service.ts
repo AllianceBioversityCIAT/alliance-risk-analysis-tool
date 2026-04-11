@@ -98,6 +98,10 @@ export class ReportService {
       includeRecommendations: configDto.includeRecommendations ?? true,
       includeEvidenceTraces: configDto.includeEvidenceTraces ?? false,
       includeMethodology: configDto.includeMethodology ?? true,
+      includeCompanyProfile: configDto.includeCompanyProfile ?? true,
+      includeRiskHeatmap: configDto.includeRiskHeatmap ?? true,
+      includeActionPlan: configDto.includeActionPlan ?? true,
+      includeAppendix: configDto.includeAppendix ?? false,
     } : undefined;
     const jobId = await this.jobsService.create(
       JobType.REPORT_GENERATION,
