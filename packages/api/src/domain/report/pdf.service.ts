@@ -2064,29 +2064,63 @@ export class PdfService {
     const rowPaddingY = 6;
     const tableX = MARGIN;
 
+    // Local helper: draw the column header bar at the current cursor position
+    // and advance doc.y to just below it. Used both for the initial header and
+    // for repeating it on continuation pages when a long table breaks.
+    const drawHeader = (): void => {
+      const headerY = doc.y;
+      doc.roundedRect(tableX, headerY, CONTENT_WIDTH, headerHeight, 3).fill(COLORS.primary);
+
+      let columnX = tableX;
+      columns.forEach((column) => {
+        this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
+          .text(column.label, columnX + 6, headerY + 4, {
+            width: column.width - 12,
+            align: column.align ?? 'left',
+          });
+        columnX += column.width;
+      });
+
+      // doc.text() above advances doc.y as a side effect. Reset it to a known
+      // position just below the header bar so the next row starts cleanly.
+      doc.y = headerY + headerHeight + 4;
+    };
+
     this.ensureSpace(doc, 28);
-    const headerY = doc.y;
-    doc.roundedRect(tableX, headerY, CONTENT_WIDTH, headerHeight, 3).fill(COLORS.primary);
+    drawHeader();
+    let rowY = doc.y;
 
-    let columnX = tableX;
-    columns.forEach((column) => {
-      this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
-        .text(column.label, columnX + 6, headerY + 4, {
-          width: column.width - 12,
-          align: column.align ?? 'left',
-        });
-      columnX += column.width;
-    });
-
-    let rowY = headerY + headerHeight + 4;
     rows.forEach((row, rowIndex) => {
-      const rowHeight = Math.max(
-        ...columns.map((column) => doc.heightOfString(row[column.key] ?? '—', {
-          width: column.width - 12,
-        })),
-      ) + rowPaddingY * 2;
+      // Clamp row height to one full page so a pathologically long appendix
+      // value (e.g. a multi-paragraph extracted Gap Detection field) cannot
+      // overflow even after the header is redrawn on a continuation page.
+      // 28 ≈ headerHeight (18) + the 4pt gap below + a small safety pad.
+      // The text is visually clipped in extreme cases, which is acceptable
+      // here — the appendix is a reference surface and the full content is
+      // always available in the original source document.
+      const MAX_ROW_HEIGHT = PAGE_HEIGHT - MARGIN * 2 - 28;
 
+      const rowHeight = Math.min(
+        Math.max(
+          ...columns.map((column) => doc.heightOfString(row[column.key] ?? '—', {
+            width: column.width - 12,
+          })),
+        ) + rowPaddingY * 2,
+        MAX_ROW_HEIGHT,
+      );
+
+      // Detect whether ensureSpace triggered a page break so we can repeat the
+      // column header on the new page.
+      const pageCountBefore = doc.bufferedPageRange().count;
       this.ensureSpace(doc, rowHeight + 4);
+      if (doc.bufferedPageRange().count > pageCountBefore) {
+        drawHeader();
+      }
+      // After ensureSpace (and any page break + header redraw) doc.y is the
+      // only authoritative cursor position. Sync rowY to it before drawing so
+      // the row doesn't land at a stale coordinate from the previous page.
+      rowY = doc.y;
+
       if (rowIndex % 2 === 0) {
         doc.rect(tableX, rowY, CONTENT_WIDTH, rowHeight).fill(COLORS.bgLight);
       }
