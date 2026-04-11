@@ -5,11 +5,30 @@ import { StorageService } from '../../../infrastructure/storage/storage.service'
 import { PdfService } from '../../../domain/report/pdf.service';
 import type { JobHandler } from '../job-handler.interface';
 import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
-import type { ReportResponse, ReportConfig, FinancialMetrics } from '@alliance-risk/shared';
+import type {
+  ReportResponse,
+  ReportConfig,
+  FinancialMetrics,
+  ActionPlanItem,
+  ActionPlanTimeframe,
+  DocumentSource,
+  GapSummaryItem,
+  ReportGenerationStage,
+  ReportGenerationProgress,
+} from '@alliance-risk/shared';
 
 interface ReportGenerationInput {
   assessmentId: string;
   reportConfig?: ReportConfig;
+}
+
+interface ReportGenerationContext {
+  jobId?: string;
+}
+
+interface StageDefinition {
+  stage: ReportGenerationStage;
+  label: string;
 }
 
 interface ReportGenerationResult {
@@ -26,6 +45,19 @@ interface ReportAIResponse {
   keyFindings: string[];
 }
 
+interface ActionPlanAssignmentResponse {
+  assignments: Array<{
+    index: number;
+    timeframe: ActionPlanTimeframe;
+  }>;
+}
+
+interface RecommendationForActionPlan {
+  category: string;
+  priority: string;
+  text: string;
+}
+
 @Injectable()
 export class ReportGenerationHandler implements JobHandler {
   private readonly logger = new Logger(ReportGenerationHandler.name);
@@ -37,8 +69,17 @@ export class ReportGenerationHandler implements JobHandler {
     private readonly pdfService: PdfService,
   ) {}
 
-  async execute(input: ReportGenerationInput): Promise<ReportGenerationResult> {
+  async execute(
+    input: ReportGenerationInput,
+    context: ReportGenerationContext = {},
+  ): Promise<ReportGenerationResult> {
     this.logger.log(`Generating report for assessment: ${input.assessmentId}`);
+
+    // Compute the ordered list of stages this run will execute so the client
+    // sees a coherent "Step N of M" counter that matches reality (e.g. skips
+    // financial extraction when financial charts are disabled).
+    const stages = this.buildStageTimeline(input.reportConfig);
+    await this.reportStage(context.jobId, stages, 'LOADING_DATA');
 
     // 1. Fetch assessment + all RiskScore records with recommendations
     const assessment = await this.prisma.assessment.findUniqueOrThrow({
@@ -101,6 +142,7 @@ export class ReportGenerationHandler implements JobHandler {
       .replace(/\{\{risk_results\}\}/g, `${contextHeader}\n\n${riskResultsText}`);
 
     // 4. Invoke Bedrock for executive summary + strengths/weaknesses
+    await this.reportStage(context.jobId, stages, 'GENERATING_SUMMARY');
     let bedrockTokensUsed = 0;
     let reportAI: ReportAIResponse;
 
@@ -134,13 +176,44 @@ export class ReportGenerationHandler implements JobHandler {
     // 5. Extract financial metrics if requested
     let financialMetrics: FinancialMetrics | undefined;
     if (input.reportConfig?.includeFinancialCharts) {
-      financialMetrics = await this.extractFinancialMetrics(input.assessmentId, bedrockTokensUsed);
+      await this.reportStage(context.jobId, stages, 'EXTRACTING_FINANCIAL');
+      financialMetrics = await this.extractFinancialMetrics(input.assessmentId);
       if (financialMetrics) {
         bedrockTokensUsed += 500; // approximate tokens for financial extraction
       }
     }
 
-    // 6. Build ReportResponse for PDF generation
+    // 6. Assign action plan timeframes when requested
+    let actionPlanItems: ActionPlanItem[] | undefined;
+    if (input.reportConfig?.includeActionPlan) {
+      await this.reportStage(context.jobId, stages, 'PLANNING_ACTIONS');
+      const recommendations = riskScores.flatMap((score) =>
+        score.recommendations.map((recommendation) => ({
+          category: score.category,
+          priority: recommendation.priority,
+          text: recommendation.isEdited && recommendation.editedText ? recommendation.editedText : recommendation.text,
+        })),
+      );
+
+      actionPlanItems = recommendations.length > 0
+        ? await this.assignActionPlanTimeframes(recommendations)
+        : undefined;
+    }
+
+    // 7. Fetch appendix data when requested
+    let documentSources: DocumentSource[] | undefined;
+    let gapSummary: GapSummaryItem[] | undefined;
+    if (input.reportConfig?.includeAppendix) {
+      await this.reportStage(context.jobId, stages, 'FETCHING_APPENDIX');
+      const [fetchedDocumentSources, fetchedGapSummary] = await Promise.all([
+        this.fetchDocumentSources(input.assessmentId),
+        this.fetchGapSummary(input.assessmentId),
+      ]);
+      documentSources = fetchedDocumentSources.length > 0 ? fetchedDocumentSources : undefined;
+      gapSummary = fetchedGapSummary.length > 0 ? fetchedGapSummary : undefined;
+    }
+
+    // 8. Build ReportResponse for PDF generation
     const reportData: ReportResponse = {
       assessment: {
         id: assessment.id,
@@ -182,25 +255,30 @@ export class ReportGenerationHandler implements JobHandler {
         score: s.score,
       })),
       financialMetrics,
+      actionPlanItems,
+      documentSources,
+      gapSummary,
       reportConfig: input.reportConfig,
     };
 
-    // 7. Generate PDF
+    // 9. Generate PDF
+    await this.reportStage(context.jobId, stages, 'RENDERING_PDF');
     const pdfBuffer = await this.pdfService.generate(reportData, {
       strengths: reportAI.strengths,
       weaknesses: reportAI.weaknesses,
       keyFindings: reportAI.keyFindings,
     }, input.reportConfig);
 
-    // 8. Upload PDF to S3
+    // 10. Upload PDF to S3
+    await this.reportStage(context.jobId, stages, 'UPLOADING');
     const reportId = `report-${crypto.randomUUID()}`;
     const pdfKey = this.storageService.buildReportKey(input.assessmentId, reportId);
     await this.storageService.uploadBuffer(pdfKey, pdfBuffer, 'application/pdf');
 
-    // 9. Generate presigned download URL
+    // 11. Generate presigned download URL
     const downloadUrl = await this.storageService.generatePresignedDownloadUrl(pdfKey);
 
-    // 10. Update assessment progress
+    // 12. Update assessment progress
     await this.prisma.assessment.update({
       where: { id: input.assessmentId },
       data: { progress: 100 },
@@ -216,11 +294,89 @@ export class ReportGenerationHandler implements JobHandler {
     };
   }
 
+  private async fetchDocumentSources(assessmentId: string): Promise<DocumentSource[]> {
+    const documents = await this.prisma.assessmentDocument.findMany({
+      where: { assessmentId },
+      orderBy: { uploadedAt: 'asc' },
+    });
+
+    return documents.map((document) => ({
+      fileName: document.fileName,
+      fileType: document.mimeType,
+      extractedLength: document.fileSize,
+    }));
+  }
+
+  private async fetchGapSummary(assessmentId: string): Promise<GapSummaryItem[]> {
+    const gapFields = await this.prisma.gapField.findMany({
+      where: { assessmentId },
+      orderBy: [
+        { category: 'asc' },
+        { order: 'asc' },
+      ],
+    });
+
+    return gapFields.map((field) => ({
+      fieldKey: field.field,
+      status: field.status,
+      detectedValue: field.extractedValue,
+      correctedValue: field.correctedValue,
+    }));
+  }
+
+  private async assignActionPlanTimeframes(
+    recommendations: RecommendationForActionPlan[],
+  ): Promise<ActionPlanItem[]> {
+    if (recommendations.length === 0) {
+      return [];
+    }
+
+    try {
+      const rgModel = BEDROCK_MODELS[AgentSection.REPORT_GENERATION];
+      const promptLines = recommendations.map((recommendation, index) => (
+        `${index}. [${recommendation.priority}] ${recommendation.category}: ${recommendation.text}`
+      ));
+      const { output } = await this.bedrock.invokeModel({
+        modelId: rgModel.modelId,
+        systemPrompt: 'You assign implementation timeframes to risk recommendations. Return ONLY valid JSON.',
+        userPrompt: `Given these recommendations from a risk assessment, assign each one an implementation timeframe: IMMEDIATE (0-3 months), SHORT_TERM (3-6 months), or MEDIUM_TERM (6-12 months).
+
+Consider urgency based on priority, implementation complexity, dependencies between recommendations, and typical agricultural business cycles.
+
+Return JSON in this exact shape:
+{
+  "assignments": [{"index": 0, "timeframe": "IMMEDIATE"}]
+}
+
+Recommendations:
+${promptLines.join('\n')}`,
+        temperature: 0.1,
+        maxTokens: 1000,
+      });
+
+      const parsed = this.parseActionPlanAssignments(output);
+      const assignments = new Map<number, ActionPlanTimeframe>();
+      parsed.assignments.forEach((assignment) => {
+        assignments.set(assignment.index, assignment.timeframe);
+      });
+
+      return recommendations.map((recommendation, index) => ({
+        ...recommendation,
+        timeframe: assignments.get(index) ?? this.getFallbackTimeframe(recommendation.priority),
+      }));
+    } catch (error) {
+      this.logger.warn(`Action plan timeframe assignment failed, falling back to priority mapping: ${(error as Error).message}`);
+      return recommendations.map((recommendation) => ({
+        ...recommendation,
+        timeframe: this.getFallbackTimeframe(recommendation.priority),
+      }));
+    }
+  }
+
   // ─── Financial Metrics Extraction ────────────────────────────────────────
 
   private async extractFinancialMetrics(
     assessmentId: string,
-    _currentTokens: number,
   ): Promise<FinancialMetrics | undefined> {
     try {
       // Fetch merged document content from completed parse jobs
@@ -305,6 +461,39 @@ ${mergedContent}`,
     return undefined;
   }
 
+  private parseActionPlanAssignments(output: string): ActionPlanAssignmentResponse {
+    const strategies = [
+      () => JSON.parse(output),
+      () => JSON.parse(output.replace(/^```(?:json)?\s*\n?/m, '').replace(/\n?```\s*$/m, '')),
+      () => {
+        const first = output.indexOf('{');
+        const last = output.lastIndexOf('}');
+        if (first !== -1 && last > first) return JSON.parse(output.substring(first, last + 1));
+        throw new Error('No JSON block found');
+      },
+    ];
+
+    for (const strategy of strategies) {
+      try {
+        const parsed = strategy() as ActionPlanAssignmentResponse;
+        const assignments = Array.isArray(parsed.assignments)
+          ? parsed.assignments.filter((assignment) => (
+            Number.isInteger(assignment?.index)
+            && this.isActionPlanTimeframe(assignment?.timeframe)
+          ))
+          : [];
+
+        if (assignments.length > 0) {
+          return { assignments };
+        }
+      } catch {
+        // Fall through to next strategy
+      }
+    }
+
+    throw new Error(`Failed to parse action plan assignments. Output preview: ${output.substring(0, 200)}`);
+  }
+
   // ─── JSON Parsing (3-Strategy Defensive) ─────────────────────────────────
 
   private parseAIResponse(output: string): ReportAIResponse {
@@ -349,5 +538,75 @@ ${mergedContent}`,
       weaknesses: Array.isArray(parsed.weaknesses) ? parsed.weaknesses : [],
       keyFindings: Array.isArray(parsed.keyFindings) ? parsed.keyFindings : [],
     };
+  }
+
+  private getFallbackTimeframe(priority: string): ActionPlanTimeframe {
+    switch (priority) {
+      case 'HIGH':
+        return 'IMMEDIATE';
+      case 'MEDIUM':
+        return 'SHORT_TERM';
+      default:
+        return 'MEDIUM_TERM';
+    }
+  }
+
+  private isActionPlanTimeframe(value: unknown): value is ActionPlanTimeframe {
+    return value === 'IMMEDIATE' || value === 'SHORT_TERM' || value === 'MEDIUM_TERM';
+  }
+
+  // ─── Progress Reporting ──────────────────────────────────────────────────
+
+  private buildStageTimeline(cfg?: ReportConfig): StageDefinition[] {
+    const stages: StageDefinition[] = [
+      { stage: 'LOADING_DATA', label: 'Loading assessment data' },
+      { stage: 'GENERATING_SUMMARY', label: 'Generating executive summary' },
+    ];
+    if (cfg?.includeFinancialCharts) {
+      stages.push({ stage: 'EXTRACTING_FINANCIAL', label: 'Extracting financial metrics' });
+    }
+    if (cfg?.includeActionPlan) {
+      stages.push({ stage: 'PLANNING_ACTIONS', label: 'Planning action timeline' });
+    }
+    if (cfg?.includeAppendix) {
+      stages.push({ stage: 'FETCHING_APPENDIX', label: 'Compiling appendix data' });
+    }
+    stages.push(
+      { stage: 'RENDERING_PDF', label: 'Rendering PDF document' },
+      { stage: 'UPLOADING', label: 'Uploading report' },
+    );
+    return stages;
+  }
+
+  private async reportStage(
+    jobId: string | undefined,
+    stages: StageDefinition[],
+    stage: ReportGenerationStage,
+  ): Promise<void> {
+    if (!jobId) return;
+
+    const index = stages.findIndex((entry) => entry.stage === stage);
+    if (index === -1) return;
+
+    const definition = stages[index];
+    const progress: ReportGenerationProgress = {
+      stage: definition.stage,
+      stageLabel: definition.label,
+      stageIndex: index + 1,
+      stageTotal: stages.length,
+      updatedAt: new Date().toISOString(),
+    };
+
+    try {
+      await this.prisma.job.update({
+        where: { id: jobId },
+        data: { result: progress as unknown as object },
+      });
+    } catch (error) {
+      // Progress updates are best-effort — never fail the job over a stage write.
+      this.logger.warn(
+        `Failed to write report generation stage "${stage}" for job ${jobId}: ${(error as Error).message}`,
+      );
+    }
   }
 }

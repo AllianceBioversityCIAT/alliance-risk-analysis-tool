@@ -13,9 +13,17 @@ export interface UseJobPollingOptions {
   maxAttempts?: number;
 }
 
+export interface JobProgress {
+  stage: string;
+  stageLabel: string;
+  stageIndex: number;
+  stageTotal: number;
+}
+
 export interface UseJobPollingResult<T> {
   status: JobStatus | null;
   result: T | null;
+  progress: JobProgress | null;
   error: string | null;
   isProcessing: boolean;
   attemptCount: number;
@@ -78,6 +86,8 @@ export function useJobPolling<T = unknown>(
 
   const result = job?.status === JobStatus.COMPLETED ? (job.result as T) : null;
 
+  const progress = readProgress(job);
+
   const error = timedOut
     ? 'Polling timed out. Please try again.'
     : job?.status === JobStatus.FAILED
@@ -95,10 +105,39 @@ export function useJobPolling<T = unknown>(
   return {
     status,
     result,
+    progress,
     error,
     isProcessing,
     attemptCount: attemptCountRef.current,
     startPolling,
     reset,
+  };
+}
+
+function readProgress(job: JobResponse | undefined): JobProgress | null {
+  if (!job || job.status !== JobStatus.PROCESSING) return null;
+  const payload = job.result as
+    | {
+        stage?: unknown;
+        stageLabel?: unknown;
+        stageIndex?: unknown;
+        stageTotal?: unknown;
+      }
+    | null
+    | undefined;
+  if (!payload || typeof payload !== 'object') return null;
+  if (
+    typeof payload.stage !== 'string' ||
+    typeof payload.stageLabel !== 'string' ||
+    typeof payload.stageIndex !== 'number' ||
+    typeof payload.stageTotal !== 'number'
+  ) {
+    return null;
+  }
+  return {
+    stage: payload.stage,
+    stageLabel: payload.stageLabel,
+    stageIndex: payload.stageIndex,
+    stageTotal: payload.stageTotal,
   };
 }

@@ -33,4 +33,20 @@ export class ReportConfigDto {
   @IsOptional()
   @IsBoolean()
   includeMethodology?: boolean = true;
+
+  @IsOptional()
+  @IsBoolean()
+  includeCompanyProfile?: boolean = true;
+
+  @IsOptional()
+  @IsBoolean()
+  includeRiskHeatmap?: boolean = true;
+
+  @IsOptional()
+  @IsBoolean()
+  includeActionPlan?: boolean = true;
+
+  @IsOptional()
+  @IsBoolean()
+  includeAppendix?: boolean = false;
 }
