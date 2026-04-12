@@ -1140,153 +1140,231 @@ export class PdfService {
       .filter((entry) => Number.isFinite(entry.year) && Number.isFinite(entry.amount))
       .sort((left, right) => left.year - right.year);
     const costs = metrics.costs
-      .filter((entry) => entry.category && Number.isFinite(entry.amount))
+      .filter((entry) => entry.category && Number.isFinite(entry.amount) && entry.amount > 0)
       .sort((left, right) => right.amount - left.amount);
     const hasMargins = metrics.margins.gross !== null || metrics.margins.operating !== null;
 
-    const revenueHeight = revenue.length > 0 ? 180 : 0;
-    const costHeight = costs.length > 0 ? Math.max(140, costs.length * 28 + 54) : 0;
-    const marginsHeight = 104;
-    const sectionGap = 18;
-
+    // ─── Revenue Projection: vertical bar chart ────────────────────────────
     if (revenue.length > 0) {
-      this.ensureSpace(doc, revenueHeight + sectionGap);
+      const chartHeight = 140;
+      const valueLabelGap = 22;     // headroom above the tallest bar for value labels
+      const yearLabelGap = 22;      // space below the baseline for year labels
+      const blockHeight = chartHeight + valueLabelGap + yearLabelGap + 30; // + section heading
+      this.ensureSpace(doc, blockHeight);
       this.renderSectionHeading(doc, 'Revenue Projection');
 
-      const chartX = MARGIN + 18;
-      const chartY = doc.y + 10;
-      const chartWidth = CONTENT_WIDTH - 36;
-      const chartHeight = 128;
+      const yLabelWidth = 64;
+      const chartX = MARGIN + yLabelWidth;
+      const chartTop = doc.y + valueLabelGap;
+      const chartWidth = CONTENT_WIDTH - yLabelWidth;
+      const baselineY = chartTop + chartHeight;
       const maxRevenue = Math.max(...revenue.map((entry) => entry.amount), 1);
-      const pointSpacing = revenue.length > 1 ? chartWidth / (revenue.length - 1) : 0;
-      const points = revenue.map((entry, index) => ({
-        x: chartX + (revenue.length > 1 ? index * pointSpacing : chartWidth / 2),
-        y: chartY + chartHeight - (entry.amount / maxRevenue) * chartHeight,
-        entry,
-      }));
 
-      doc.roundedRect(chartX - 12, chartY - 18, chartWidth + 24, chartHeight + 46, 6).fill(COLORS.bgLight);
-      doc.save();
-      doc.moveTo(chartX, chartY + chartHeight)
-        .lineTo(chartX + chartWidth, chartY + chartHeight)
-        .lineTo(chartX + chartWidth, chartY)
-        .strokeColor(COLORS.border)
-        .lineWidth(1)
-        .stroke();
-      doc.restore();
-
-      for (let tick = 0; tick <= 4; tick++) {
-        const y = chartY + chartHeight - (tick / 4) * chartHeight;
-        const value = maxRevenue * (tick / 4);
+      // Y-axis: baseline (0%) + gridlines at 25/50/75/100%
+      [0, 0.25, 0.5, 0.75, 1].forEach((tick) => {
+        const y = baselineY - tick * chartHeight;
         doc.save();
         doc.moveTo(chartX, y)
           .lineTo(chartX + chartWidth, y)
-          .strokeColor(COLORS.borderLight)
-          .lineWidth(0.5)
+          .strokeColor(tick === 0 ? COLORS.text : COLORS.border)
+          .lineWidth(tick === 0 ? 1 : 0.5)
           .stroke();
         doc.restore();
         this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
-          .text(this.formatCurrencyCompact(value, revenue[0]?.currency), MARGIN, y - 4, { width: 58, align: 'left' });
-      }
-
-      if (points.length > 1) {
-        doc.save();
-        doc.moveTo(points[0].x, points[0].y);
-        for (let index = 1; index < points.length; index++) {
-          doc.lineTo(points[index].x, points[index].y);
-        }
-        doc.strokeColor(COLORS.primary)
-          .lineWidth(2)
-          .stroke();
-        doc.restore();
-      }
-
-      points.forEach((point) => {
-        doc.circle(point.x, point.y, 4).fill(COLORS.primary);
-        doc.circle(point.x, point.y, 4).strokeColor(COLORS.white).lineWidth(1.5).stroke();
-        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.primary)
-          .text(this.formatCurrencyCompact(point.entry.amount, point.entry.currency), point.x - 26, point.y - 18, {
-            width: 52,
-            align: 'center',
-          });
-        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
-          .text(`${point.entry.year}`, point.x - 20, chartY + chartHeight + 10, { width: 40, align: 'center' });
+          .text(
+            this.formatCurrencyCompact(maxRevenue * tick, revenue[0]?.currency),
+            MARGIN,
+            y - 4,
+            { width: yLabelWidth - 6, align: 'right', lineBreak: false },
+          );
       });
 
-      doc.y = chartY + chartHeight + 36;
+      // Vertical bars
+      const barCount = revenue.length;
+      const barGap = 14;
+      const barWidth = Math.max(18, (chartWidth - barGap * (barCount + 1)) / barCount);
+      revenue.forEach((entry, index) => {
+        const x = chartX + barGap + index * (barWidth + barGap);
+        const heightPx = (entry.amount / maxRevenue) * chartHeight;
+        const y = baselineY - heightPx;
+
+        // Filled bar
+        doc.rect(x, y, barWidth, heightPx).fill(COLORS.primary);
+
+        // Value label above the bar
+        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.primary)
+          .text(
+            this.formatCurrencyCompact(entry.amount, entry.currency),
+            x - 16,
+            y - 12,
+            { width: barWidth + 32, align: 'center', lineBreak: false },
+          );
+
+        // Year label below the baseline
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(
+            `${entry.year}`,
+            x - 16,
+            baselineY + 6,
+            { width: barWidth + 32, align: 'center', lineBreak: false },
+          );
+      });
+
+      doc.y = baselineY + yearLabelGap + SPACING.paragraphGap;
       doc.x = MARGIN;
     }
 
+    // ─── Cost Breakdown: horizontal stacked bar + legend ───────────────────
+    // NOTE: FinancialCostEntry has no `year` field, so a single horizontal
+    // stacked bar (one segment per category) is the closest match to "stacked
+    // bars" given the current data shape. Per-year stacking would require
+    // extending FinancialCostEntry with `year` and updating the Bedrock
+    // extraction prompt — flagged as a separate change.
     if (costs.length > 0) {
-      this.ensureSpace(doc, costHeight + sectionGap);
+      const stackPalette = [
+        COLORS.primary,
+        COLORS.accent,
+        COLORS.moderate,
+        COLORS.high,
+        COLORS.critical,
+        COLORS.low,
+        COLORS.secondary,
+        COLORS.primaryDark,
+      ];
+      const stackHeight = 30;
+      const legendRowHeight = 18;
+      const legendRows = Math.ceil(costs.length / 2);
+      const blockHeight = 30 + stackHeight + 14 + legendRows * legendRowHeight + SPACING.paragraphGap;
+      this.ensureSpace(doc, blockHeight);
       this.renderSectionHeading(doc, 'Cost Breakdown');
 
-      const chartX = MARGIN + 140;
-      const chartY = doc.y + 8;
-      const chartWidth = CONTENT_WIDTH - 160;
-      const rowHeight = 28;
-      const barHeight = 12;
-      const maxCost = Math.max(...costs.map((entry) => entry.amount), 1);
+      const totalCost = costs.reduce((sum, entry) => sum + entry.amount, 0);
+      const stackY = doc.y + 6;
 
+      // Rounded background track (so the outer corners look clean)
+      doc.roundedRect(MARGIN, stackY, CONTENT_WIDTH, stackHeight, 4).fill(COLORS.borderLight);
+
+      // Stacked segments
+      let cursorX = MARGIN;
       costs.forEach((entry, index) => {
-        const rowY = chartY + index * rowHeight;
-        const fillWidth = (entry.amount / maxCost) * chartWidth;
+        const segmentWidth = (entry.amount / totalCost) * CONTENT_WIDTH;
+        const color = stackPalette[index % stackPalette.length];
+        doc.rect(cursorX, stackY, segmentWidth, stackHeight).fill(color);
 
-        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
-          .text(entry.category, MARGIN, rowY + 2, { width: 128 });
-
-        doc.roundedRect(chartX, rowY + 6, chartWidth, barHeight, 4).fill(COLORS.borderLight);
-        if (fillWidth > 0) {
-          doc.roundedRect(chartX, rowY + 6, Math.max(fillWidth, 4), barHeight, 4).fill(COLORS.accent);
+        const pct = (entry.amount / totalCost) * 100;
+        if (segmentWidth > 36) {
+          this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.white)
+            .text(`${pct.toFixed(0)}%`, cursorX, stackY + 11, {
+              width: segmentWidth,
+              align: 'center',
+              lineBreak: false,
+            });
         }
+        cursorX += segmentWidth;
+      });
 
-        this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
-          .text(this.formatCurrencyCompact(entry.amount), chartX + chartWidth + 8, rowY + 4, {
-            width: 56,
-            align: 'right',
+      // Re-stroke the rounded outline on top so the inner segments don't poke
+      // past the corners
+      doc.save();
+      doc.roundedRect(MARGIN, stackY, CONTENT_WIDTH, stackHeight, 4)
+        .strokeColor(COLORS.border)
+        .lineWidth(0.5)
+        .stroke();
+      doc.restore();
+
+      // Legend (two columns)
+      const legendStartY = stackY + stackHeight + 14;
+      const legendColWidth = CONTENT_WIDTH / 2;
+      const swatchSize = 10;
+      const swatchGap = 6;
+      costs.forEach((entry, index) => {
+        const col = index % 2;
+        const row = Math.floor(index / 2);
+        const cellX = MARGIN + col * legendColWidth;
+        const cellY = legendStartY + row * legendRowHeight;
+        const color = stackPalette[index % stackPalette.length];
+
+        doc.rect(cellX, cellY + 3, swatchSize, swatchSize).fill(color);
+
+        const labelText = `${entry.category} — ${this.formatCurrencyCompact(entry.amount)}`;
+        this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
+          .text(labelText, cellX + swatchSize + swatchGap, cellY, {
+            width: legendColWidth - swatchSize - swatchGap - 8,
+            lineBreak: false,
           });
       });
 
-      doc.y = chartY + costs.length * rowHeight + 10;
+      doc.y = legendStartY + legendRows * legendRowHeight + SPACING.paragraphGap;
       doc.x = MARGIN;
     }
 
-    this.ensureSpace(doc, marginsHeight);
-    this.renderSectionHeading(doc, 'Margins Summary');
-
-    const summaryY = doc.y + 8;
-    const cardGap = 12;
-    const cardWidth = (CONTENT_WIDTH - cardGap) / 2;
-    const cardHeight = 68;
+    // ─── Margins Summary: pills with progress bars ─────────────────────────
     const grossMarginLabel = this.formatMargin(metrics.margins.gross);
     const operatingMarginLabel = this.formatMargin(metrics.margins.operating);
 
-    const marginCards = [
+    const pillHeight = 56;
+    const pillGap = 14;
+    const pillWidth = (CONTENT_WIDTH - pillGap) / 2;
+    const marginsBlockHeight = 30 + pillHeight + SPACING.paragraphGap;
+    this.ensureSpace(doc, marginsBlockHeight);
+    this.renderSectionHeading(doc, 'Margins Summary');
+
+    const summaryY = doc.y + 6;
+
+    const pills = [
       {
         x: MARGIN,
-        title: 'Gross Margin',
-        value: grossMarginLabel,
+        title: 'GROSS MARGIN',
+        label: grossMarginLabel,
+        value: metrics.margins.gross,
         color: metrics.margins.gross === null ? COLORS.textMuted : this.getMarginColor(metrics.margins.gross),
-        bg: metrics.margins.gross === null ? COLORS.bgLight : this.getMarginBg(metrics.margins.gross),
       },
       {
-        x: MARGIN + cardWidth + cardGap,
-        title: 'Operating Margin',
-        value: operatingMarginLabel,
+        x: MARGIN + pillWidth + pillGap,
+        title: 'OPERATING MARGIN',
+        label: operatingMarginLabel,
+        value: metrics.margins.operating,
         color: metrics.margins.operating === null ? COLORS.textMuted : this.getMarginColor(metrics.margins.operating),
-        bg: metrics.margins.operating === null ? COLORS.bgLight : this.getMarginBg(metrics.margins.operating),
       },
     ];
 
-    marginCards.forEach((card) => {
-      doc.roundedRect(card.x, summaryY, cardWidth, cardHeight, 6).fill(card.bg);
-      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall)
-        .text(card.title, card.x + 12, summaryY + 12, { width: cardWidth - 24 });
-      this.applyTextStyle(doc, TYPOGRAPHY.sectionTitle, card.color)
-        .text(card.value, card.x + 12, summaryY + 28, { width: cardWidth - 24 });
+    pills.forEach((pill) => {
+      // Background pill — light teal accent (per spec)
+      doc.roundedRect(pill.x, summaryY, pillWidth, pillHeight, 10).fill(COLORS.accentLight);
+
+      // Title (top-left, dark muted)
+      this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, COLORS.textLight)
+        .text(pill.title, pill.x + 16, summaryY + 12, {
+          width: pillWidth - 32,
+          lineBreak: false,
+        });
+
+      // Value (top-right, large + colored by margin level)
+      this.applyTextStyle(doc, TYPOGRAPHY.heading3, pill.color)
+        .text(pill.label, pill.x + 16, summaryY + 9, {
+          width: pillWidth - 32,
+          align: 'right',
+          lineBreak: false,
+        });
+
+      // Progress track (bottom of pill)
+      const trackHeight = 6;
+      const trackX = pill.x + 16;
+      const trackY = summaryY + pillHeight - 16;
+      const trackWidth = pillWidth - 32;
+      doc.roundedRect(trackX, trackY, trackWidth, trackHeight, trackHeight / 2).fill(COLORS.borderLight);
+
+      // Progress fill — width proportional to clamped margin value
+      if (pill.value !== null) {
+        const clamped = Math.max(0, Math.min(1, pill.value));
+        const fillW = clamped > 0 ? Math.max(clamped * trackWidth, trackHeight) : 0;
+        if (fillW > 0) {
+          doc.roundedRect(trackX, trackY, fillW, trackHeight, trackHeight / 2).fill(pill.color);
+        }
+      }
     });
 
-    doc.y = summaryY + cardHeight + SPACING.paragraphGap;
+    doc.y = summaryY + pillHeight + SPACING.paragraphGap;
     doc.x = MARGIN;
 
     this.lastFinancialOverviewLayoutMetrics = {
@@ -1685,7 +1763,7 @@ export class PdfService {
 
         doc.roundedRect(MARGIN + 12, cardY + 12, timeframeBadgeWidth, badgeHeight, 8).fill(accent);
         this.applyTextStyle(doc, TYPOGRAPHY.tableBadge)
-          .text(group.timeframe, MARGIN + 12, cardY + 16, { width: timeframeBadgeWidth, align: 'center' });
+          .text(this.formatFieldLabel(group.timeframe), MARGIN + 12, cardY + 16, { width: timeframeBadgeWidth, align: 'center' });
 
         doc.roundedRect(MARGIN + 12 + timeframeBadgeWidth + badgeGap, cardY + 12, priorityBadgeWidth, badgeHeight, 8).fill(priorityBg);
         this.applyTextStyle(doc, TYPOGRAPHY.captionSmall, priorityColor)
@@ -1743,7 +1821,7 @@ export class PdfService {
         { key: 'extractedLength', label: 'Extracted Chars', width: 125, align: 'right' },
       ], documentSources.map((source) => ({
         fileName: source.fileName,
-        fileType: source.fileType,
+        fileType: this.formatFileType(source.fileType),
         extractedLength: `${source.extractedLength}`,
       })));
       doc.moveDown(SPACING.subsectionBlockGap);
@@ -1757,8 +1835,8 @@ export class PdfService {
         { key: 'detectedValue', label: 'Detected Value', width: 145 },
         { key: 'correctedValue', label: 'Corrected Value', width: 145 },
       ], gapSummary.map((gap) => ({
-        fieldKey: gap.fieldKey,
-        status: gap.status,
+        fieldKey: this.formatFieldLabel(gap.fieldKey),
+        status: this.formatFieldLabel(gap.status),
         detectedValue: gap.detectedValue ?? '—',
         correctedValue: gap.correctedValue ?? '—',
       })));
@@ -1767,12 +1845,17 @@ export class PdfService {
 
     if (evidenceCategories.length > 0) {
       this.renderSectionHeading(doc, 'Detailed Evidence');
+      // Clamp any single evidence block to one full page so a multi-page
+      // category narrative cannot infinitely overflow. 60 ≈ section heading
+      // (~24) + block padding/title (~26) + page bottom safety (~10).
+      const MAX_EVIDENCE_HEIGHT = PAGE_HEIGHT - MARGIN * 2 - 60;
       evidenceCategories.forEach((category) => {
         const evidenceText = category.evidence ?? '';
-        const evidenceHeight = doc.heightOfString(evidenceText, {
+        const measuredHeight = doc.heightOfString(evidenceText, {
           width: CONTENT_WIDTH - 24,
           lineGap: TYPOGRAPHY.bodySmall.lineGap,
         });
+        const evidenceHeight = Math.min(measuredHeight, MAX_EVIDENCE_HEIGHT);
         const blockHeight = evidenceHeight + 34;
         this.ensureSpace(doc, blockHeight + 8);
 
@@ -1784,7 +1867,9 @@ export class PdfService {
         this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
           .text(evidenceText, MARGIN + 12, blockY + 26, {
             width: CONTENT_WIDTH - 24,
+            height: evidenceHeight,
             lineGap: TYPOGRAPHY.bodySmall.lineGap,
+            ellipsis: true,
           });
 
         doc.y = blockY + blockHeight + 8;
@@ -1942,13 +2027,22 @@ export class PdfService {
     this.collectTocEntry('Methodology', this.getCurrentPageIndex(doc), 0);
     this.renderPageHeader(doc, 'Methodology');
 
+    // Intro paragraph — measure first so we never split it across a page break.
     const intro = 'This risk assessment was generated using the CGIAR Agricultural Risk Intelligence Tool, which employs AI-powered analysis across seven standardized risk categories.';
+    const introHeight = doc.heightOfString(intro, {
+      width: CONTENT_WIDTH,
+      lineGap: TYPOGRAPHY.body.lineGap,
+    });
+    this.ensureSpace(doc, introHeight + 8);
     this.applyTextStyle(doc, TYPOGRAPHY.body)
       .text(intro, MARGIN, doc.y, { align: 'justify', lineGap: TYPOGRAPHY.body.lineGap, width: CONTENT_WIDTH });
     const introX = doc.x;
     doc.moveDown(SPACING.methodologyScaleGap);
 
-    // Risk scale visual
+    // ── Risk scale visual ────────────────────────────────────────────────
+    // Keep the heading attached to at least the first scale row so it doesn't
+    // get orphaned at the bottom of a page.
+    this.ensureSpace(doc, 24 + 32 + 8);
     this.renderSectionHeading(doc, 'Risk Scoring Scale');
     const scales = [
       { level: 'LOW', range: '0–30', desc: 'Minimal risk exposure with adequate controls in place', color: COLORS.low, bg: COLORS.lowBg },
@@ -1957,19 +2051,30 @@ export class PdfService {
       { level: 'CRITICAL', range: '81–100', desc: 'Severe risk exposure demanding urgent intervention', color: COLORS.critical, bg: COLORS.criticalBg },
     ];
 
+    // Badge needs to fit the longest label "CRITICAL (81–100)" at 8pt Helvetica-Bold,
+    // so we widen from 70pt → 100pt and shift the description column accordingly.
+    const scaleBadgeX = MARGIN + 12;
+    const scaleBadgeWidth = 100;
+    const scaleDescX = scaleBadgeX + scaleBadgeWidth + 10;
+    const scaleDescWidth = CONTENT_WIDTH - (scaleDescX - MARGIN) - 12;
+
     for (const scale of scales) {
+      // Each scale row is a fixed 32pt block — guard against falling across a
+      // page break, which previously caused the badge text to overlap the
+      // page footer.
+      this.ensureSpace(doc, 32);
       const rowY = doc.y;
       doc.roundedRect(MARGIN, rowY, CONTENT_WIDTH, 28, 4).fill(scale.bg);
       doc.roundedRect(MARGIN, rowY, 3, 28, 2).fill(scale.color);
 
       // Badge
-      doc.roundedRect(MARGIN + 12, rowY + 6, 70, 16, 8).fill(scale.color);
+      doc.roundedRect(scaleBadgeX, rowY + 6, scaleBadgeWidth, 16, 8).fill(scale.color);
       this.applyTextStyle(doc, TYPOGRAPHY.tableHeader)
-        .text(`${scale.level} (${scale.range})`, MARGIN + 12, rowY + 9, { width: 70, align: 'center' });
+        .text(`${scale.level} (${scale.range})`, scaleBadgeX, rowY + 9, { width: scaleBadgeWidth, align: 'center', lineBreak: false });
 
       // Description
       this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
-        .text(scale.desc, MARGIN + 92, rowY + 8, { width: CONTENT_WIDTH - 100 });
+        .text(scale.desc, scaleDescX, rowY + 8, { width: scaleDescWidth });
 
       doc.y = rowY + 32;
       doc.x = MARGIN;
@@ -1985,6 +2090,13 @@ export class PdfService {
     ];
 
     for (const para of methodology) {
+      // Per-paragraph guard so a long paragraph never overruns the bottom of
+      // the page and lands on top of the footer or the next paragraph.
+      const paraHeight = doc.heightOfString(para, {
+        width: CONTENT_WIDTH,
+        lineGap: TYPOGRAPHY.bodySmall.lineGap,
+      });
+      this.ensureSpace(doc, paraHeight + 6);
       this.applyTextStyle(doc, TYPOGRAPHY.bodySmall)
         .text(para, MARGIN, doc.y, { align: 'justify', lineGap: TYPOGRAPHY.bodySmall.lineGap, width: CONTENT_WIDTH });
       doc.moveDown(SPACING.methodologyParagraphGap);
@@ -1994,8 +2106,8 @@ export class PdfService {
     this.lastMethodologyLayoutMetrics = {
       introX,
       introWidth: CONTENT_WIDTH,
-      scaleDescriptionX: MARGIN + 92,
-      scaleDescriptionWidth: CONTENT_WIDTH - 100,
+      scaleDescriptionX: scaleDescX,
+      scaleDescriptionWidth: scaleDescWidth,
       paragraphX: MARGIN,
       paragraphWidth: CONTENT_WIDTH,
       finalCursorX: doc.x,
@@ -2125,12 +2237,20 @@ export class PdfService {
         doc.rect(tableX, rowY, CONTENT_WIDTH, rowHeight).fill(COLORS.bgLight);
       }
 
+      // Constrain each cell's text() to the row's interior height. Without
+      // this, a long Detected/Corrected value whose actual rendered height
+      // exceeds the clamped MAX_ROW_HEIGHT (or that PDFKit measures slightly
+      // taller than heightOfString predicted) spills below the row and
+      // overlaps the next row's top edge.
+      const cellInteriorHeight = Math.max(0, rowHeight - rowPaddingY * 2);
       let cellX = tableX;
       columns.forEach((column) => {
         this.applyTextStyle(doc, TYPOGRAPHY.caption)
           .text(row[column.key] ?? '—', cellX + 6, rowY + rowPaddingY, {
             width: column.width - 12,
+            height: cellInteriorHeight,
             align: column.align ?? 'left',
+            ellipsis: true,
           });
         cellX += column.width;
       });
@@ -2234,6 +2354,61 @@ export class PdfService {
       .map((w) => w.charAt(0) + w.slice(1).toLowerCase())
       .join(' ')
       .replace('And', '&');
+  }
+
+  /**
+   * Render an enum / snake_case identifier as a human-readable label.
+   * - "workforce_summary" → "Workforce Summary"
+   * - "supply_chain_overview" → "Supply Chain Overview"
+   * - "VERIFIED" → "Verified"
+   * - "MEDIUM_TERM" → "Medium-Term" (action plan timeframes use a hyphen)
+   * - "SHORT_TERM" → "Short-Term"
+   * - "IMMEDIATE" → "Immediate"
+   *
+   * Used wherever Gap Detection field names / statuses or Action Plan
+   * timeframe enums would otherwise leak into the PDF as raw SCREAMING_SNAKE.
+   */
+  private formatFieldLabel(value: string | null | undefined): string {
+    if (!value) return '';
+    const specialCases: Record<string, string> = {
+      MEDIUM_TERM: 'Medium-Term',
+      SHORT_TERM: 'Short-Term',
+      IMMEDIATE: 'Immediate',
+    };
+    if (Object.prototype.hasOwnProperty.call(specialCases, value)) {
+      return specialCases[value];
+    }
+    return value
+      .split('_')
+      .map((word) => (word.length === 0 ? word : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()))
+      .join(' ');
+  }
+
+  /**
+   * Map a MIME type to a short, human-friendly label that fits inside the
+   * Document Sources table without truncation. Falls back to the raw value
+   * for unknown types so we never silently drop information.
+   */
+  private formatFileType(mimeType: string | null | undefined): string {
+    if (!mimeType) return '';
+    const mimeLabels: Record<string, string> = {
+      'application/pdf': 'PDF',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'Excel (.xlsx)',
+      'application/vnd.ms-excel': 'Excel (.xls)',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'Word (.docx)',
+      'application/msword': 'Word (.doc)',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation': 'PowerPoint (.pptx)',
+      'application/vnd.ms-powerpoint': 'PowerPoint (.ppt)',
+      'text/csv': 'CSV',
+      'text/plain': 'Text',
+      'text/markdown': 'Markdown',
+      'image/png': 'PNG',
+      'image/jpeg': 'JPEG',
+      'image/jpg': 'JPEG',
+      'image/gif': 'GIF',
+      'image/webp': 'WebP',
+    };
+    return mimeLabels[mimeType] ?? mimeType;
   }
 
   private shortCategoryName(category: string): string {
