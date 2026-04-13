@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { AssessmentsService } from './assessments.service';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
@@ -40,6 +40,7 @@ const mockPrisma = {
     create: jest.fn().mockResolvedValue(mockAssessment),
     findMany: jest.fn().mockResolvedValue([mockAssessment]),
     findUnique: jest.fn().mockResolvedValue(mockAssessment),
+    findFirst: jest.fn().mockResolvedValue(mockAssessment),
     update: jest.fn().mockResolvedValue(mockAssessment),
     delete: jest.fn().mockResolvedValue(mockAssessment),
     count: jest.fn().mockResolvedValue(1),
@@ -80,6 +81,7 @@ describe('AssessmentsService', () => {
 
     service = module.get<AssessmentsService>(AssessmentsService);
     jest.clearAllMocks();
+    mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
     mockPrisma.assessment.findUnique.mockResolvedValue(mockAssessment);
   });
 
@@ -100,13 +102,9 @@ describe('AssessmentsService', () => {
       expect(result).toEqual(mockAssessment);
     });
 
-    it('should throw NotFoundException when not found', async () => {
-      mockPrisma.assessment.findUnique.mockResolvedValue(null);
+    it('should throw NotFoundException when not found or user does not own assessment', async () => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
       await expect(service.findOne('bad-id', 'user-1')).rejects.toThrow(NotFoundException);
-    });
-
-    it('should throw ForbiddenException when user does not own assessment', async () => {
-      await expect(service.findOne('assess-1', 'other-user')).rejects.toThrow(ForbiddenException);
     });
   });
 
