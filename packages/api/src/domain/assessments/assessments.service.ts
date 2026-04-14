@@ -151,6 +151,12 @@ export class AssessmentsService {
   ): Promise<{ presignedUrl: string; documentId: string }> {
     await this.findOne(id, userId); // Ownership check
 
+    if (dto.mimeType === 'application/msword') {
+      throw new BadRequestException(
+        'Legacy .doc format is not supported. Please save the document as .docx (Word 2007+) and re-upload.',
+      );
+    }
+
     if (!(ALLOWED_DOCUMENT_MIME_TYPES as readonly string[]).includes(dto.mimeType)) {
       throw new BadRequestException(
         `Unsupported file type: ${dto.mimeType}. Allowed: ${ALLOWED_DOCUMENT_MIME_TYPES.join(', ')}`,

@@ -217,6 +217,7 @@ export class AllianceRiskStack extends cdk.Stack {
         ENVIRONMENT: 'production',
         AWS_ACCOUNT_ID: this.account,
         S3_BUCKET_NAME: fileBucket.bucketName,
+        DOCX_EXTRACTION_MODE: 'text',
         WORKER_ADMIN_TOKEN: workerAdminToken.secretValueFromJson('token').unsafeUnwrap(),
       },
     });
@@ -313,6 +314,7 @@ export class AllianceRiskStack extends cdk.Stack {
         AWS_ACCOUNT_ID: this.account,
         WORKER_FUNCTION_NAME: workerLambda.functionName,
         CORS_ORIGIN: 'https://app.alliance-risk.example.com',
+        DOCX_EXTRACTION_MODE: 'text',
       },
     });
 

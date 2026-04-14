@@ -340,6 +340,7 @@ Resources:
           ENVIRONMENT: !Ref Environment
           AWS_ACCOUNT_ID: !Ref AWS::AccountId
           S3_BUCKET_NAME: !Ref FileBucket
+          DOCX_EXTRACTION_MODE: text
           DATABASE_URL: !Sub
             - "postgresql://${Username}:${Password}@${Host}:5432/alliance_risk"
             - Username: postgres
@@ -437,6 +438,7 @@ Resources:
           AWS_ACCOUNT_ID: !Ref AWS::AccountId
           WORKER_FUNCTION_NAME: !Ref WorkerLambda
           CORS_ORIGIN: !Ref CorsOrigin
+          DOCX_EXTRACTION_MODE: text
           DATABASE_URL: !Sub
             - "postgresql://${Username}:${Password}@${Host}:5432/alliance_risk"
             - Username: postgres

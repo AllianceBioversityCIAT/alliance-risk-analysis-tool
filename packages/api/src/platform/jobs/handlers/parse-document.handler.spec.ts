@@ -1,9 +1,14 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { ParseDocumentHandler } from './parse-document.handler';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { ExtractorFactory } from '../../../infrastructure/extractors/extractor-factory';
 import type { ExtractionResult } from '@alliance-risk/shared';
+import { ProgrammaticExtractor } from '../../../infrastructure/extractors/programmatic.extractor';
+import { TextractExtractor } from '../../../infrastructure/extractors/textract.extractor';
+import { StorageService } from '../../../infrastructure/storage/storage.service';
 
 const mockExtraction: ExtractionResult = {
   pages: 3,
@@ -37,6 +42,9 @@ const mockExtractorFactory = {
 const mockConfig = {
   get: jest.fn().mockReturnValue('my-s3-bucket'),
 };
+
+const DOCX_FIXTURE_PATH = path.resolve(__dirname, '../../../../test/fixtures/sample-business-plan.docx');
+const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 describe('ParseDocumentHandler', () => {
   let handler: ParseDocumentHandler;
@@ -125,6 +133,145 @@ describe('ParseDocumentHandler', () => {
           errorMessage: 'Extractor timed out',
         },
       });
+    });
+  });
+
+  describe('execute integration with real ProgrammaticExtractor', () => {
+    const fixtureBuffer = readFileSync(DOCX_FIXTURE_PATH);
+    const originalDocxMode = process.env.DOCX_EXTRACTION_MODE;
+
+    afterEach(() => {
+      if (originalDocxMode === undefined) {
+        delete process.env.DOCX_EXTRACTION_MODE;
+      } else {
+        process.env.DOCX_EXTRACTION_MODE = originalDocxMode;
+      }
+    });
+
+    async function createIntegrationHandler(mode: 'text' | 'html') {
+      process.env.DOCX_EXTRACTION_MODE = mode;
+
+      const updateMock = jest.fn().mockResolvedValue({});
+      const downloadObjectMock = jest.fn().mockResolvedValue(fixtureBuffer);
+      const integrationConfig = {
+        get: jest.fn((key: string) => {
+          if (key === 'S3_BUCKET_NAME') return 'integration-bucket';
+          if (key === 'DOCX_EXTRACTION_MODE') return process.env.DOCX_EXTRACTION_MODE;
+          return undefined;
+        }),
+      };
+
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [
+          ParseDocumentHandler,
+          ExtractorFactory,
+          ProgrammaticExtractor,
+          {
+            provide: PrismaService,
+            useValue: {
+              assessmentDocument: {
+                update: updateMock,
+              },
+            },
+          },
+          {
+            provide: StorageService,
+            useValue: {
+              downloadObject: downloadObjectMock,
+            },
+          },
+          {
+            provide: TextractExtractor,
+            useValue: {
+              supportedMimeTypes: ['application/pdf'],
+              extract: jest.fn(),
+            },
+          },
+          { provide: ConfigService, useValue: integrationConfig },
+        ],
+      }).compile();
+
+      return {
+        handler: module.get<ParseDocumentHandler>(ParseDocumentHandler),
+        updateMock,
+        downloadObjectMock,
+      };
+    }
+
+    it('parses the DOCX fixture through the real text-mode extractor path', async () => {
+      const { handler: integrationHandler, updateMock, downloadObjectMock } =
+        await createIntegrationHandler('text');
+
+      const result = await integrationHandler.execute({
+        assessmentId: 'a-docx',
+        documentId: 'd-docx',
+        s3Key: 'assessments/a-docx/documents/d-docx/sample-business-plan.docx',
+        mimeType: DOCX_MIME,
+        fileName: 'sample-business-plan.docx',
+      });
+
+      expect(downloadObjectMock).toHaveBeenCalledWith(
+        'assessments/a-docx/documents/d-docx/sample-business-plan.docx',
+      );
+      expect(updateMock.mock.calls[0][0]).toEqual({
+        where: { id: 'd-docx' },
+        data: { status: 'PARSING' },
+      });
+      expect(updateMock.mock.calls[1][0]).toEqual({
+        where: { id: 'd-docx' },
+        data: { status: 'PARSED', errorMessage: null },
+      });
+      expect(result).toEqual(
+        expect.objectContaining({
+          pages: 0,
+          textContent: expect.any(String),
+          markdownContent: expect.any(String),
+          tables: expect.any(Array),
+          metadata: expect.objectContaining({
+            s3Key: 'assessments/a-docx/documents/d-docx/sample-business-plan.docx',
+            processingTimeMs: expect.any(Number),
+            processedAt: expect.any(String),
+            extractorModel: 'programmatic-docx-text',
+          }),
+        }),
+      );
+      expect(result.textContent.length).toBeGreaterThan(500);
+      expect(result.markdownContent.length).toBeGreaterThan(500);
+    });
+
+    it('parses the DOCX fixture through the real html-mode extractor path', async () => {
+      const { handler: integrationHandler, updateMock, downloadObjectMock } =
+        await createIntegrationHandler('html');
+
+      const result = await integrationHandler.execute({
+        assessmentId: 'a-docx-html',
+        documentId: 'd-docx-html',
+        s3Key: 'assessments/a-docx-html/documents/d-docx-html/sample-business-plan.docx',
+        mimeType: DOCX_MIME,
+        fileName: 'sample-business-plan.docx',
+      });
+
+      expect(downloadObjectMock).toHaveBeenCalledWith(
+        'assessments/a-docx-html/documents/d-docx-html/sample-business-plan.docx',
+      );
+      expect(updateMock.mock.calls[0][0].data.status).toBe('PARSING');
+      expect(updateMock.mock.calls[1][0].data.status).toBe('PARSED');
+      expect(result).toEqual(
+        expect.objectContaining({
+          pages: 0,
+          textContent: expect.any(String),
+          markdownContent: expect.any(String),
+          tables: expect.any(Array),
+          metadata: expect.objectContaining({
+            s3Key: 'assessments/a-docx-html/documents/d-docx-html/sample-business-plan.docx',
+            processingTimeMs: expect.any(Number),
+            processedAt: expect.any(String),
+            extractorModel: 'programmatic-docx-html',
+          }),
+        }),
+      );
+      expect(result.textContent.length).toBeGreaterThan(500);
+      expect(result.markdownContent.length).toBeGreaterThan(500);
     });
   });
 });

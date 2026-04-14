@@ -327,14 +327,25 @@ PNPM_STORE="${ROOT_DIR}/node_modules/.pnpm"
 
 # copy_from_pnpm_store: Find a package in the .pnpm store and rsync its
 # node_modules/ (the package + all co-located deps) into the target.
+#
+# Excludes test/docs/example directories upfront — historically @mixmark-io/domino
+# (a turndown transitive dep) carried a 6.9 MB test/w3c/ tree with 947 files
+# that could turn this single tar into a multi-minute step on macOS APFS.
+# Excluding them at copy time, instead of pruning them later, keeps the deploy
+# fast and predictable.
 copy_from_pnpm_store() {
   local pkg_name="$1"
-  local store_dir
-  store_dir=$(find "${PNPM_STORE}" -maxdepth 1 -name "${pkg_name}@*" -type d | head -1)
-  if [[ -n "${store_dir}" && -d "${store_dir}/node_modules/${pkg_name}" ]]; then
+  local pkg_dir
+  pkg_dir=$(find "${PNPM_STORE}" -maxdepth 4 -type d -path "*/node_modules/${pkg_name}" | head -1)
+  if [[ -n "${pkg_dir}" ]]; then
     # Use tar pipe — avoids macOS cp -R slowness with extended attributes and pnpm symlinks
     mkdir -p "${NM}/${pkg_name}"
-    tar cf - -C "${store_dir}/node_modules/${pkg_name}" --exclude='* 2' --exclude='* 2.*' . 2>/dev/null \
+    tar cf - -C "${pkg_dir}" \
+      --exclude='* 2' --exclude='* 2.*' \
+      --exclude='test' --exclude='tests' --exclude='__tests__' \
+      --exclude='docs' --exclude='example' --exclude='examples' \
+      --exclude='fixture' --exclude='fixtures' --exclude='.github' \
+      . 2>/dev/null \
       | tar xf - -C "${NM}/${pkg_name}/"
     return 0
   fi
@@ -356,10 +367,33 @@ done
 
 # Transitive deps that pnpm may isolate into separate store entries.
 # mammoth → jszip → {pako, setimmediate, lie → immediate, readable-stream → {inherits, string_decoder, util-deprecate}}
+# mammoth → {argparse, base64-js, bluebird, dingbat-to-unicode, jszip, lop, path-is-absolute, underscore, xmlbuilder, @xmldom/xmldom}
 # mammoth → lop → {duck → underscore, option}
 # turndown → @mixmark-io/domino
 log "  Copying transitive dependencies..."
-TRANSITIVE_DEPS=(jszip pako setimmediate lie immediate readable-stream inherits string_decoder util-deprecate lop duck option underscore)
+TRANSITIVE_DEPS=(
+  argparse
+  base64-js
+  bluebird
+  dingbat-to-unicode
+  jszip
+  lop
+  path-is-absolute
+  underscore
+  xmlbuilder
+  @xmldom/xmldom
+  @mixmark-io/domino
+  pako
+  setimmediate
+  lie
+  immediate
+  readable-stream
+  inherits
+  string_decoder
+  util-deprecate
+  duck
+  option
+)
 for dep in "${TRANSITIVE_DEPS[@]}"; do
   copy_from_pnpm_store "${dep}" && log "    ${dep}" || true
 done

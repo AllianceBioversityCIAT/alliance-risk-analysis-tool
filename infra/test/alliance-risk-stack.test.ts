@@ -57,6 +57,11 @@ describe('AllianceRiskStack', () => {
         Runtime: 'nodejs22.x',
         Architectures: ['arm64'],
         MemorySize: 1024,
+        Environment: {
+          Variables: Match.objectLike({
+            DOCX_EXTRACTION_MODE: 'text',
+          }),
+        },
       });
     });
 
@@ -67,6 +72,11 @@ describe('AllianceRiskStack', () => {
         Architectures: ['arm64'],
         MemorySize: 1024,
         Timeout: 900, // 15 minutes in seconds
+        Environment: {
+          Variables: Match.objectLike({
+            DOCX_EXTRACTION_MODE: 'text',
+          }),
+        },
       });
     });
   });

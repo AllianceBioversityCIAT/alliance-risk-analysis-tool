@@ -3,6 +3,7 @@ import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { JobsService } from './platform/jobs/jobs.service';
 import { PrismaService } from './infrastructure/database/prisma.service';
+import { JobType } from '@alliance-risk/shared';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cachedApp: any;
@@ -20,10 +21,48 @@ interface WorkerEvent {
   action?: string;
   authToken?: string;
   sql?: string;
+  dryRun?: boolean;
+  assessmentId?: string;
 }
+
+interface WorkerAdminActionResult {
+  success: boolean;
+  error?: string;
+}
+
+type ReprocessDocxAction = 'requeued' | 'skipped' | 'dry-run-matched';
+
+interface ReprocessDocxResultRow {
+  id: string;
+  fileName: string;
+  action: ReprocessDocxAction;
+}
+
+const DOCX_MIME_TYPES = [
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/msword',
+];
+
+const DOCX_REPROCESS_ERROR_PATTERNS = [
+  'mammoth',
+  'turndown',
+  'timeout',
+  "Cannot find module 'mammoth'",
+  "Cannot find module 'turndown'",
+];
 
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+function isWorkerAdminAuthorized(event: WorkerEvent, logger: Logger): boolean {
+  const expectedToken = process.env.WORKER_ADMIN_TOKEN;
+  if (!expectedToken || event.authToken !== expectedToken) {
+    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
+    return false;
+  }
+
+  return true;
 }
 
 async function handleParameterizedSql(
@@ -68,9 +107,7 @@ async function handleRunSql(
   event: WorkerEvent,
   logger: Logger,
 ): Promise<{ success: boolean; executed?: number; error?: string; statement?: string }> {
-  const expectedToken = process.env.WORKER_ADMIN_TOKEN;
-  if (!expectedToken || event.authToken !== expectedToken) {
-    logger.error('Unauthorized run-sql attempt');
+  if (!isWorkerAdminAuthorized(event, logger)) {
     return { success: false, error: 'Unauthorized' };
   }
 
@@ -91,6 +128,126 @@ async function handleRunSql(
   return handleBatchSql(prisma, event.sql, logger);
 }
 
+async function handleReprocessFailedDocx(
+  event: WorkerEvent,
+  logger: Logger,
+): Promise<WorkerAdminActionResult & { matched?: number; requeued?: number; results?: ReprocessDocxResultRow[] }> {
+  if (!isWorkerAdminAuthorized(event, logger)) {
+    return { success: false, error: 'Unauthorized' };
+  }
+
+  const app = await bootstrap();
+  const prisma = app.get(PrismaService);
+  const jobsService = app.get(JobsService);
+
+  const documents = await prisma.assessmentDocument.findMany({
+    where: {
+      status: 'FAILED',
+      ...(event.assessmentId ? { assessmentId: event.assessmentId } : {}),
+      mimeType: { in: DOCX_MIME_TYPES },
+      OR: [
+        { errorMessage: null },
+        ...DOCX_REPROCESS_ERROR_PATTERNS.map((pattern) => ({
+          errorMessage: { contains: pattern, mode: 'insensitive' as const },
+        })),
+      ],
+    },
+    include: {
+      assessment: {
+        select: {
+          userId: true,
+        },
+      },
+    },
+    orderBy: { uploadedAt: 'asc' },
+  });
+
+  const results: ReprocessDocxResultRow[] = [];
+
+  if (event.dryRun) {
+    logger.log(`DOCX reprocess dry run matched ${documents.length} failed document(s)`);
+    for (const document of documents) {
+      results.push({
+        id: document.id,
+        fileName: document.fileName,
+        action: 'dry-run-matched',
+      });
+    }
+
+    return {
+      success: true,
+      matched: documents.length,
+      requeued: 0,
+      results,
+    };
+  }
+
+  let requeued = 0;
+
+  for (const document of documents) {
+    const currentDocument = await prisma.assessmentDocument.findUnique({
+      where: { id: document.id },
+      include: {
+        assessment: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
+
+    if (!currentDocument || currentDocument.status !== 'FAILED') {
+      results.push({
+        id: document.id,
+        fileName: document.fileName,
+        action: 'skipped',
+      });
+      continue;
+    }
+
+    logger.log(
+      `Reprocessing DOCX document ${currentDocument.id}; previous error: ${currentDocument.errorMessage ?? 'null'}`,
+    );
+
+    const jobId = await jobsService.create(
+      JobType.PARSE_DOCUMENT,
+      {
+        assessmentId: currentDocument.assessmentId,
+        documentId: currentDocument.id,
+        s3Key: currentDocument.s3Key,
+        mimeType: currentDocument.mimeType,
+        fileName: currentDocument.fileName,
+      },
+      currentDocument.assessment.userId,
+    );
+
+    await prisma.assessmentDocument.update({
+      where: { id: currentDocument.id },
+      data: {
+        status: 'UPLOADED',
+        parseJobId: jobId,
+        errorMessage: null,
+      },
+    });
+
+    results.push({
+      id: currentDocument.id,
+      fileName: currentDocument.fileName,
+      action: 'requeued',
+    });
+    requeued++;
+  }
+
+  logger.log(`DOCX reprocess queued ${requeued} document(s)`);
+
+  return {
+    success: true,
+    matched: documents.length,
+    requeued,
+    results,
+  };
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const handler = async (event: WorkerEvent, context: any) => {
   context.callbackWaitsForEmptyEventLoop = false;
@@ -98,6 +255,10 @@ export const handler = async (event: WorkerEvent, context: any) => {
 
   if (event.action === 'run-sql') {
     return handleRunSql(event, logger);
+  }
+
+  if (event.action === 'reprocess-failed-docx') {
+    return handleReprocessFailedDocx(event, logger);
   }
 
   if (!event.jobId || !UUID_REGEX.test(event.jobId)) {
