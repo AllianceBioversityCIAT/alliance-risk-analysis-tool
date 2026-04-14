@@ -1,5 +1,22 @@
 {
  "Description": "CGIAR Risk Intelligence Tool — MVP infrastructure",
+ "Parameters": {
+  "Environment": {
+   "Type": "String",
+   "Default": "dev",
+   "AllowedValues": [
+    "dev",
+    "staging",
+    "production"
+   ],
+   "Description": "Deployment environment (dev | staging | production)"
+  },
+  "BootstrapVersion": {
+   "Type": "AWS::SSM::Parameter::Value<String>",
+   "Default": "/cdk-bootstrap/hnb659fds/version",
+   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
+  }
+ },
  "Resources": {
   "UserPool6BA7E5F2": {
    "Type": "AWS::Cognito::UserPool",
@@ -250,6 +267,26 @@
      ]
     },
     "BucketName": "alliance-risk-files-569113802249",
+    "CorsConfiguration": {
+     "CorsRules": [
+      {
+       "AllowedHeaders": [
+        "*"
+       ],
+       "AllowedMethods": [
+        "GET",
+        "PUT"
+       ],
+       "AllowedOrigins": [
+        "*"
+       ],
+       "ExposedHeaders": [
+        "ETag"
+       ],
+       "MaxAge": 3600
+      }
+     ]
+    },
     "PublicAccessBlockConfiguration": {
      "BlockPublicAcls": true,
      "BlockPublicPolicy": true,
@@ -376,6 +413,23 @@
     "aws:cdk:path": "AllianceRiskStack/LambdaExecutionRole/DefaultPolicy/Resource"
    }
   },
+  "WorkerAdminToken33914C46": {
+   "Type": "AWS::SecretsManager::Secret",
+   "Properties": {
+    "GenerateSecretString": {
+     "ExcludeCharacters": " ",
+     "GenerateStringKey": "token",
+     "PasswordLength": 64,
+     "SecretStringTemplate": "{}"
+    },
+    "Name": "alliance-risk/worker-admin-token"
+   },
+   "UpdateReplacePolicy": "Retain",
+   "DeletionPolicy": "Retain",
+   "Metadata": {
+    "aws:cdk:path": "AllianceRiskStack/WorkerAdminToken/Resource"
+   }
+  },
   "WorkerLambdaBD11C0E2": {
    "Type": "AWS::Lambda::Function",
    "Properties": {
@@ -384,12 +438,28 @@
     ],
     "Code": {
      "S3Bucket": "cdk-hnb659fds-assets-569113802249-us-east-1",
-     "S3Key": "821bc6b2e6a671ab1332ba9170b5d12a2b5bcd15d8a2d4a117db632d66efbefa.zip"
+     "S3Key": "0bc240089feb87bab56b9dba1819afe3c7a6a8f51c1ec774e216de7b3578b66f.zip"
     },
     "Environment": {
      "Variables": {
       "ENVIRONMENT": "production",
-      "AWS_ACCOUNT_ID": "569113802249"
+      "AWS_ACCOUNT_ID": "569113802249",
+      "S3_BUCKET_NAME": {
+       "Ref": "FileBucketCDFCD6DE"
+      },
+      "DOCX_EXTRACTION_MODE": "text",
+      "WORKER_ADMIN_TOKEN": {
+       "Fn::Join": [
+        "",
+        [
+         "{{resolve:secretsmanager:",
+         {
+          "Ref": "WorkerAdminToken33914C46"
+         },
+         ":SecretString:token::}}"
+        ]
+       ]
+      }
      }
     },
     "FunctionName": "alliance-risk-worker",
@@ -401,7 +471,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs20.x",
+    "Runtime": "nodejs22.x",
     "Timeout": 900
    },
    "DependsOn": [
@@ -546,7 +616,7 @@
     ],
     "Code": {
      "S3Bucket": "cdk-hnb659fds-assets-569113802249-us-east-1",
-     "S3Key": "821bc6b2e6a671ab1332ba9170b5d12a2b5bcd15d8a2d4a117db632d66efbefa.zip"
+     "S3Key": "0bc240089feb87bab56b9dba1819afe3c7a6a8f51c1ec774e216de7b3578b66f.zip"
     },
     "Environment": {
      "Variables": {
@@ -564,7 +634,8 @@
       "WORKER_FUNCTION_NAME": {
        "Ref": "WorkerLambdaBD11C0E2"
       },
-      "CORS_ORIGIN": "https://app.alliance-risk.example.com"
+      "CORS_ORIGIN": "https://app.alliance-risk.example.com",
+      "DOCX_EXTRACTION_MODE": "text"
      }
     },
     "FunctionName": "alliance-risk-api",
@@ -576,7 +647,7 @@
       "Arn"
      ]
     },
-    "Runtime": "nodejs20.x",
+    "Runtime": "nodejs22.x",
     "Timeout": 29
    },
    "DependsOn": [
@@ -935,7 +1006,7 @@
    ],
    "Metadata": {
     "aws:cdk:path": "AllianceRiskStack/Custom::S3AutoDeleteObjectsCustomResourceProvider/Handler",
-    "aws:asset:path": "/private/var/folders/g8/8wqxv48d60737hm79glkxx0w0000gn/T/cdk-custom-resourceUaRfWj",
+    "aws:asset:path": "/private/var/folders/g8/8wqxv48d60737hm79glkxx0w0000gn/T/cdk-custom-resourceCKDNhN",
     "aws:asset:property": "Code"
    }
   },
@@ -948,6 +1019,41 @@
    },
    "Metadata": {
     "aws:cdk:path": "AllianceRiskStack/WebOAI/Resource"
+   }
+  },
+  "UrlRewriteFunction9ABF1F87": {
+   "Type": "AWS::CloudFront::Function",
+   "Properties": {
+    "AutoPublish": true,
+    "FunctionCode": "\nfunction handler(event) {\n  var request = event.request;\n  var uri = request.uri;\n  if (uri.endsWith('.txt')) {\n    var rscHeader = request.headers['rsc'];\n    if (!rscHeader || rscHeader.value !== '1') {\n      request.uri = uri.slice(0, -4) + '.html';\n    }\n    return request;\n  }\n  if (uri.endsWith('/') && uri !== '/') {\n    request.uri = uri.slice(0, -1) + '.html';\n    return request;\n  }\n  if (uri.includes('.')) {\n    return request;\n  }\n  request.uri = uri + '.html';\n  return request;\n}\n",
+    "FunctionConfig": {
+     "Comment": {
+      "Fn::Join": [
+       "",
+       [
+        "alliance-risk-url-rewrite-",
+        {
+         "Ref": "Environment"
+        }
+       ]
+      ]
+     },
+     "Runtime": "cloudfront-js-1.0"
+    },
+    "Name": {
+     "Fn::Join": [
+      "",
+      [
+       "alliance-risk-url-rewrite-",
+       {
+        "Ref": "Environment"
+       }
+      ]
+     ]
+    }
+   },
+   "Metadata": {
+    "aws:cdk:path": "AllianceRiskStack/UrlRewriteFunction/Resource"
    }
   },
   "WebDistribution59C46482": {
@@ -971,6 +1077,17 @@
      "DefaultCacheBehavior": {
       "CachePolicyId": "658327ea-f89d-4fab-a63d-7e88639e58f6",
       "Compress": true,
+      "FunctionAssociations": [
+       {
+        "EventType": "viewer-request",
+        "FunctionARN": {
+         "Fn::GetAtt": [
+          "UrlRewriteFunction9ABF1F87",
+          "FunctionARN"
+         ]
+        }
+       }
+      ],
       "TargetOriginId": "AllianceRiskStackWebDistributionOrigin18984B369",
       "ViewerProtocolPolicy": "redirect-to-https"
      },
@@ -1012,7 +1129,7 @@
   "CDKMetadata": {
    "Type": "AWS::CDK::Metadata",
    "Properties": {
-    "Analytics": "v2:deflate64:H4sIAAAAAAAA/21Sy1LrMAz9FvauL4S5i7vsY+B2RafAmlEcEUQTO2PJZTqe/Dt20rTlsdKRztHLcqGL23/6+go+eGaq3ayhUsdHAbNTKfQSjastidPxmdFvnGvU8tWe8ASWDaGVS+pn5N670PUKTZEaoAme5DDEsuhLoFe+Yh1XIFAC49qygDWoHkNpUU45q8VlYFKnSh5l5KfMXvEQ5RYs1Oh1HFtm4WiewNcoc0mLv7XHwX9nUq1bHRfB7MYuRzSaRRrgCDeuIXM4K0a/VwStjlvXYKYGe1ZOmgbasgId74I1Qs5m7hJv0LfEnLw8zQswp930PBsFHdUg+AGHfXro/yLdvKOclE12ty4IDmhtBWsPU9Vv7lmXvkM9jDuAXpnGherVOys6Pniqyc6NQeZ1ld4nHTFLl1lzlzW/KlbE4qkMU7NLv+/VFtkFn04+7JTbkq3VMrC49sTlGU/4C7Xxbk8V+uEcSfYQpAvpctZVqN/5z774qwt9c/XORDMf0kgt6u1oPwEo2cRLEQMAAA=="
+    "Analytics": "v2:deflate64:H4sIAAAAAAAA/3VSTW/bMAz9Lb0rWutihx3zgW451Ui3c0HLrMfGlgyKShEI/u+V7DhJu+7ER74n6olUoYv7H/r2Bt78wtT7RUuVjk8CZq/WL7YEhg4FWSX+ORrXWBKn4x+PXDrXZs0Zz2DdElq5pv6t/GQX+kGhKdJtaAKTHMdaFn0oDIprr+MGBCrwuLVewBpUT6GyKOczm9V1YVanTowy8fPJQfmx6juw0CDrOF2ZhVP4DdygLCVN4W93Mv4fZiqnlvc6roLZT5ed0BRWyccJlq4lc7wopnxQBJ2OO9dipsZ4Uc6aFrqqBh0fgjVCzmbuGpfIHXmfsuzmGbxPT9TLHBT01IDgGxwPad6/RPplT/lQDjnduSA4oq0VbBjmrp/Siy59kWa0O4JBmdaF+oWdFR0fmRqyS2PQ+22dxpR2maXrrHnImi8VX75sQ16YqjAT1/kwqB16Fzh9h/Gh2QvZRq2DF9eduWz8jD9QJbsD1cjjjpLsMUgf0jqtq1G/+m+H4rsu9N3NqydacEg+O9S7Kb4D1rO+bToDAAA="
    },
    "Metadata": {
     "aws:cdk:path": "AllianceRiskStack/CDKMetadata/Default"
@@ -1102,13 +1219,6 @@
    "Value": {
     "Ref": "WorkerLambdaBD11C0E2"
    }
-  }
- },
- "Parameters": {
-  "BootstrapVersion": {
-   "Type": "AWS::SSM::Parameter::Value<String>",
-   "Default": "/cdk-bootstrap/hnb659fds/version",
-   "Description": "Version of the CDK Bootstrap resources in this environment, automatically retrieved from SSM Parameter Store. [cdk:skip]"
   }
  },
  "Rules": {
