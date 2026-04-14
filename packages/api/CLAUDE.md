@@ -272,6 +272,13 @@ POST /api/assessments/:id/documents/:docId/parse
 | API Lambda | `lambda.ts` | Cached NestJS instance via `@codegenie/serverless-express` |
 | Worker Lambda | `worker.ts` | `NestFactory.createApplicationContext()` for background jobs |
 
+## Lambda Environment Variables
+
+| Variable | Lambda | Purpose |
+|----------|--------|---------|
+| `DOCX_EXTRACTION_MODE` | API + Worker | Controls DOCX extraction rollback mode: `text` by default, `html` for legacy HTML plus Turndown fallback |
+| `WORKER_ADMIN_TOKEN` | Worker only | Authenticates privileged worker actions such as `run-sql` and DOCX reprocessing |
+
 ## TypeScript
 
 - Strict mode enabled

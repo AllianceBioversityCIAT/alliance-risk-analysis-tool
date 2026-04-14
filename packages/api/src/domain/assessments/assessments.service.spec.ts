@@ -1,10 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
 import { AssessmentsService } from './assessments.service';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
-import { IntakeMode } from '@alliance-risk/shared';
+import { IntakeMode, ALLOWED_DOCUMENT_MIME_TYPES } from '@alliance-risk/shared';
 
 const mockAssessment = {
   id: 'assess-1',
@@ -148,14 +148,32 @@ describe('AssessmentsService', () => {
       expect(result.documentId).toBe('doc-2');
     });
 
-    it('should reject invalid mime types', async () => {
+    it('should reject other unsupported mime types with the generic message', async () => {
       await expect(
         service.requestUploadUrl(
           'assess-1',
-          { fileName: 'plan.exe', mimeType: 'application/exe', fileSize: 1024 },
+          { fileName: 'archive.rar', mimeType: 'application/x-rar', fileSize: 1024 },
           'user-1',
         ),
-      ).rejects.toThrow();
+      ).rejects.toThrow(
+        new BadRequestException(
+          `Unsupported file type: application/x-rar. Allowed: ${ALLOWED_DOCUMENT_MIME_TYPES.join(', ')}`,
+        ),
+      );
+    });
+
+    it('should reject legacy .doc files with a targeted message', async () => {
+      await expect(
+        service.requestUploadUrl(
+          'assess-1',
+          { fileName: 'legacy.doc', mimeType: 'application/msword', fileSize: 1024 },
+          'user-1',
+        ),
+      ).rejects.toThrow(
+        new BadRequestException(
+          'Legacy .doc format is not supported. Please save the document as .docx (Word 2007+) and re-upload.',
+        ),
+      );
     });
   });
 

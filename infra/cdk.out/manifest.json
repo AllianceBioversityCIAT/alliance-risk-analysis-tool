@@ -18,7 +18,7 @@
         "validateOnSynth": false,
         "assumeRoleArn": "arn:${AWS::Partition}:iam::569113802249:role/cdk-hnb659fds-deploy-role-569113802249-us-east-1",
         "cloudFormationExecutionRoleArn": "arn:${AWS::Partition}:iam::569113802249:role/cdk-hnb659fds-cfn-exec-role-569113802249-us-east-1",
-        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-569113802249-us-east-1/e4fe68debd8d790603c1e0a559cd5d38a59f72ccb6bc2129bfbab7297ec756bd.json",
+        "stackTemplateAssetObjectUrl": "s3://cdk-hnb659fds-assets-569113802249-us-east-1/c8e81e5538b837d7ecc7ad0b54c6f2f61867a552d5a73e5249431e48106f070e.json",
         "requiresBootstrapStackVersion": 6,
         "bootstrapStackVersionSsmParameter": "/cdk-bootstrap/hnb659fds/version",
         "additionalDependencies": [
@@ -34,6 +34,12 @@
         "AllianceRiskStack.assets"
       ],
       "metadata": {
+        "/AllianceRiskStack/Environment": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "Environment"
+          }
+        ],
         "/AllianceRiskStack/UserPool/Resource": [
           {
             "type": "aws:cdk:logicalId",
@@ -98,6 +104,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "LambdaExecutionRoleDefaultPolicy6D69732F"
+          }
+        ],
+        "/AllianceRiskStack/WorkerAdminToken/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "WorkerAdminToken33914C46"
           }
         ],
         "/AllianceRiskStack/WorkerLambda/Resource": [
@@ -194,6 +206,12 @@
           {
             "type": "aws:cdk:logicalId",
             "data": "WebOAI6A7C4516"
+          }
+        ],
+        "/AllianceRiskStack/UrlRewriteFunction/Resource": [
+          {
+            "type": "aws:cdk:logicalId",
+            "data": "UrlRewriteFunction9ABF1F87"
           }
         ],
         "/AllianceRiskStack/WebDistribution/Resource": [

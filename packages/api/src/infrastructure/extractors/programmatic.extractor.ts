@@ -1,11 +1,26 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { StorageService } from '../storage/storage.service';
 import type { DocumentExtractor } from './document-extractor.interface';
 import type { ExtractionResult } from '@alliance-risk/shared';
+import mammoth from 'mammoth';
+import TurndownService from 'turndown';
+
+type DocxExtractionMode = 'text' | 'html';
+
+interface ExtractionTimingFields {
+  mime: string;
+  fileName: string;
+  mode: DocxExtractionMode | null;
+  download_ms: number;
+  extract_ms: number;
+  total_ms: number;
+  content_length: number;
+}
 
 /**
  * Extracts non-PDF documents using pure Node.js libraries (no AI dependency).
- * - DOCX: mammoth → HTML → turndown → Markdown
+ * - DOCX: mammoth raw text (default) or legacy HTML → turndown
  * - XLSX/XLS: xlsx (SheetJS) → Markdown tables
  * - CSV: xlsx (SheetJS) → Markdown table
  * - HTML: turndown → Markdown
@@ -14,6 +29,7 @@ import type { ExtractionResult } from '@alliance-risk/shared';
 @Injectable()
 export class ProgrammaticExtractor implements DocumentExtractor {
   private readonly logger = new Logger(ProgrammaticExtractor.name);
+  private readonly docxMode: DocxExtractionMode;
 
   readonly supportedMimeTypes = [
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
@@ -25,7 +41,12 @@ export class ProgrammaticExtractor implements DocumentExtractor {
     'text/plain',
   ];
 
-  constructor(private readonly storage: StorageService) {}
+  constructor(
+    private readonly storage: StorageService,
+    private readonly configService: ConfigService,
+  ) {
+    this.docxMode = this.resolveDocxMode();
+  }
 
   async extract(
     _s3Bucket: string,
@@ -33,16 +54,25 @@ export class ProgrammaticExtractor implements DocumentExtractor {
     mimeType: string,
     fileName: string,
   ): Promise<ExtractionResult> {
-    const startedAt = Date.now();
+    const totalStartedAt = Date.now();
 
     this.logger.log(`Extracting ${fileName} (${mimeType}) programmatically`);
 
+    const downloadStartedAt = Date.now();
     const buffer = await this.storage.downloadObject(s3Key);
+    const downloadCompletedAt = Date.now();
+    const downloadMs = downloadCompletedAt - downloadStartedAt;
+
+    const extractStartedAt = Date.now();
     let markdownContent: string;
+    let mode: DocxExtractionMode | null = null;
+    let extractorModel = 'programmatic';
 
     switch (mimeType) {
       case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        mode = this.docxMode;
         markdownContent = await this.extractDocx(buffer);
+        extractorModel = mode === 'text' ? 'programmatic-docx-text' : 'programmatic-docx-html';
         break;
       case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
       case 'application/vnd.ms-excel':
@@ -62,9 +92,20 @@ export class ProgrammaticExtractor implements DocumentExtractor {
         markdownContent = buffer.toString('utf-8');
     }
 
-    this.logger.log(
-      `Extraction complete for ${fileName}. Content length: ${markdownContent.length}`,
-    );
+    const extractCompletedAt = Date.now();
+    const extractMs = extractCompletedAt - extractStartedAt;
+    const totalMs = extractCompletedAt - totalStartedAt;
+    const contentLength = markdownContent.length;
+
+    this.logExtractionTiming({
+      mime: mimeType,
+      fileName,
+      mode,
+      download_ms: downloadMs,
+      extract_ms: extractMs,
+      total_ms: totalMs,
+      content_length: contentLength,
+    });
 
     return {
       pages: 0,
@@ -73,18 +114,37 @@ export class ProgrammaticExtractor implements DocumentExtractor {
       tables: [],
       metadata: {
         s3Key,
-        processingTimeMs: Date.now() - startedAt,
+        processingTimeMs: totalMs,
         processedAt: new Date().toISOString(),
-        extractorModel: 'programmatic',
+        extractorModel,
       },
     };
   }
 
   /**
-   * DOCX → HTML (mammoth) → Markdown (turndown).
+   * DOCX → raw text by default, or legacy HTML → Markdown.
    */
   private async extractDocx(buffer: Buffer): Promise<string> {
-    const mammoth = await import('mammoth');
+    if (this.docxMode === 'html') {
+      return this.extractDocxAsHtml(buffer);
+    }
+
+    return this.extractDocxAsText(buffer);
+  }
+
+  private async extractDocxAsText(buffer: Buffer): Promise<string> {
+    const result = await mammoth.extractRawText({ buffer });
+
+    if (result.messages.length > 0) {
+      this.logger.warn(
+        `mammoth warnings: ${result.messages.map((m) => m.message).join('; ')}`,
+      );
+    }
+
+    return result.value ?? '';
+  }
+
+  private async extractDocxAsHtml(buffer: Buffer): Promise<string> {
     const result = await mammoth.convertToHtml({ buffer });
 
     if (result.messages.length > 0) {
@@ -163,15 +223,42 @@ export class ProgrammaticExtractor implements DocumentExtractor {
    * Convert HTML string to Markdown using TurndownService.
    */
   private async htmlToMarkdown(html: string): Promise<string> {
-    const TurndownModule = await import('turndown');
-    // Handle both ESM default and CJS module.exports
-    const TurndownService =
-      'default' in TurndownModule ? TurndownModule.default : TurndownModule;
-    const turndown = new (TurndownService as any)({
+    const turndown = new TurndownService({
       headingStyle: 'atx',
       codeBlockStyle: 'fenced',
     });
     return turndown.turndown(html);
+  }
+
+  private resolveDocxMode(): DocxExtractionMode {
+    const rawMode = this.configService.get<string>('DOCX_EXTRACTION_MODE');
+    const normalizedMode = rawMode?.toLowerCase().trim();
+
+    if (normalizedMode === 'html') {
+      return 'html';
+    }
+
+    if (normalizedMode && normalizedMode !== 'text') {
+      this.logger.warn(
+        `Unknown DOCX_EXTRACTION_MODE="${normalizedMode}"; defaulting to "text"`,
+      );
+    }
+
+    return 'text';
+  }
+
+  private logExtractionTiming(fields: ExtractionTimingFields): void {
+    const payload = JSON.stringify({
+      event: 'extraction_complete',
+      ...fields,
+    });
+
+    if (fields.content_length === 0) {
+      this.logger.warn(payload);
+      return;
+    }
+
+    this.logger.log(payload);
   }
 
   /**
