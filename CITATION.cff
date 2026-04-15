@@ -1,0 +1,65 @@
+cff-version: 1.2.0
+message: "If you use this software or its outputs in your research or reporting, please cite it as below."
+title: "CGIAR Agricultural Risk Intelligence Tool"
+abstract: >
+  An AI-powered platform for assessing the risk profile of agricultural small
+  and medium enterprises. The tool automates the end-to-end risk-assessment
+  workflow — document ingestion, gap detection over core enterprise fields,
+  scoring across 7 categories and 35 indicators, and generation of a
+  downloadable PDF report with narrative, evidence, and prioritised
+  recommendations.
+type: software
+license: Apache-2.0
+repository-code: "https://github.com/<org>/alliance-risk-analysis-tool"
+version: "0.1.0"
+date-released: "2026-04-15"
+authors:
+  - name: "Alliance of Bioversity International & CIAT — Digital Platforms"
+    affiliation: "Alliance of Bioversity International & CIAT (CGIAR)"
+    website: "https://alliancebioversityciat.org/"
+  - name: "CGIAR Digital Teams (Contributors)"
+    affiliation: "CGIAR System Organization"
+    website: "https://www.cgiar.org/"
+keywords:
+  - agricultural risk
+  - risk assessment
+  - SME
+  - CGIAR
+  - Alliance Bioversity CIAT
+  - artificial intelligence
+  - document extraction
+  - Kenya
+  - agriculture
+  - digital platforms
+contact:
+  - name: "Alliance IBD Digital Platforms"
+    affiliation: "Alliance of Bioversity International & CIAT"
+preferred-citation:
+  type: software
+  title: "CGIAR Agricultural Risk Intelligence Tool"
+  version: "0.1.0"
+  year: 2026
+  authors:
+    - name: "Alliance of Bioversity International & CIAT — Digital Platforms"
+  url: "https://github.com/<org>/alliance-risk-analysis-tool"
+  license: "Apache-2.0"
+identifiers:
+  - type: other
+    value: "alliance-risk-analysis-tool"
+    description: "Internal project identifier"
+references:
+  - type: software
+    title: "NestJS"
+    url: "https://nestjs.com/"
+  - type: software
+    title: "Next.js"
+    url: "https://nextjs.org/"
+  - type: software
+    title: "Prisma"
+    url: "https://www.prisma.io/"
+  - type: software
+    title: "AWS Bedrock"
+    url: "https://aws.amazon.com/bedrock/"
+  - type: software
+    title: "Moonshot AI Kimi K2.5"
+    notes: "Large language model used for gap detection, risk analysis, and report generation agents"
