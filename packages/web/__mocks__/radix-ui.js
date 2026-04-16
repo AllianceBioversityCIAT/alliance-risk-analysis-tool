@@ -271,6 +271,57 @@ const CheckboxIndicator = ({ children, ...props }) =>
 CheckboxIndicator.displayName = 'Checkbox.Indicator';
 const Checkbox = { Root: CheckboxRoot, Indicator: CheckboxIndicator };
 
+// ─── DropdownMenu ────────────────────────────────────────────────────────────
+// dropdown-menu.tsx
+const DropdownMenuRoot = ({ children }) => React.createElement('div', { 'data-testid': 'dropdown-menu-root' }, children);
+DropdownMenuRoot.displayName = 'DropdownMenu.Root';
+const DropdownMenuTrigger = React.forwardRef(({ children, ...props }, ref) => React.createElement('button', { ...props, ref }, children));
+DropdownMenuTrigger.displayName = 'DropdownMenu.Trigger';
+const DropdownMenuPortal = ({ children }) => React.createElement(React.Fragment, null, children);
+DropdownMenuPortal.displayName = 'DropdownMenu.Portal';
+const DropdownMenuContent = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, ref }, children));
+DropdownMenuContent.displayName = 'DropdownMenu.Content';
+const DropdownMenuItem = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, role: 'menuitem', ref }, children));
+DropdownMenuItem.displayName = 'DropdownMenu.Item';
+const DropdownMenuCheckboxItem = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, role: 'menuitemcheckbox', ref }, children));
+DropdownMenuCheckboxItem.displayName = 'DropdownMenu.CheckboxItem';
+const DropdownMenuRadioGroup = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, role: 'group', ref }, children));
+DropdownMenuRadioGroup.displayName = 'DropdownMenu.RadioGroup';
+const DropdownMenuRadioItem = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, role: 'menuitemradio', ref }, children));
+DropdownMenuRadioItem.displayName = 'DropdownMenu.RadioItem';
+const DropdownMenuLabel = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, ref }, children));
+DropdownMenuLabel.displayName = 'DropdownMenu.Label';
+const DropdownMenuSeparator = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, role: 'separator', ref }, children));
+DropdownMenuSeparator.displayName = 'DropdownMenu.Separator';
+const DropdownMenuGroup = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, role: 'group', ref }, children));
+DropdownMenuGroup.displayName = 'DropdownMenu.Group';
+const DropdownMenuSub = ({ children }) => React.createElement('div', { 'data-testid': 'dropdown-menu-sub' }, children);
+DropdownMenuSub.displayName = 'DropdownMenu.Sub';
+const DropdownMenuSubTrigger = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, ref }, children));
+DropdownMenuSubTrigger.displayName = 'DropdownMenu.SubTrigger';
+const DropdownMenuSubContent = React.forwardRef(({ children, ...props }, ref) => React.createElement('div', { ...props, ref }, children));
+DropdownMenuSubContent.displayName = 'DropdownMenu.SubContent';
+const DropdownMenuItemIndicator = React.forwardRef(({ children, ...props }, ref) => React.createElement('span', { ...props, ref }, children));
+DropdownMenuItemIndicator.displayName = 'DropdownMenu.ItemIndicator';
+
+const DropdownMenu = {
+  Root: DropdownMenuRoot,
+  Trigger: DropdownMenuTrigger,
+  Portal: DropdownMenuPortal,
+  Content: DropdownMenuContent,
+  Item: DropdownMenuItem,
+  CheckboxItem: DropdownMenuCheckboxItem,
+  RadioGroup: DropdownMenuRadioGroup,
+  RadioItem: DropdownMenuRadioItem,
+  Label: DropdownMenuLabel,
+  Separator: DropdownMenuSeparator,
+  Group: DropdownMenuGroup,
+  Sub: DropdownMenuSub,
+  SubTrigger: DropdownMenuSubTrigger,
+  SubContent: DropdownMenuSubContent,
+  ItemIndicator: DropdownMenuItemIndicator,
+};
+
 module.exports = {
   Slot,
   Label,
@@ -280,4 +331,5 @@ module.exports = {
   Select,
   Tabs,
   Checkbox,
+  DropdownMenu,
 };

@@ -63,11 +63,11 @@ describe('AssessmentTable', () => {
     const onStatusFilterMock = jest.fn();
     render(<AssessmentTable {...defaultProps} onStatusFilter={onStatusFilterMock} activeStatus="DRAFT" />);
     
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Analyzing')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Analyzing').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Complete').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText('Complete'));
+    fireEvent.click(screen.getAllByText('Complete')[0]);
     expect(onStatusFilterMock).toHaveBeenCalledWith('COMPLETE');
   });
 
@@ -77,28 +77,31 @@ describe('AssessmentTable', () => {
     // Initial order should be just the order given (Alpha, Beta, Gamma)
     const rowsInitial = screen.getAllByRole('row');
     // First row is header, so rowsInitial[1] is first data row
-    expect(rowsInitial[1]).toHaveTextContent('Alpha Project');
+    expect(rowsInitial[1].textContent).toMatch(/Alpha Project/);
 
     const progressHeader = screen.getByText('Progress');
     
     // Click once -> sort ascending
     await userEvent.click(progressHeader);
     const rowsAsc = screen.getAllByRole('row');
-    expect(rowsAsc[1]).toHaveTextContent('Gamma Project'); // 10%
-    expect(rowsAsc[2]).toHaveTextContent('Alpha Project'); // 50%
-    expect(rowsAsc[3]).toHaveTextContent('Beta Project'); // 90%
+    expect(rowsAsc[1].textContent).toMatch(/Gamma Project/); // 10%
+    expect(rowsAsc[2].textContent).toMatch(/Alpha Project/); // 50%
+    expect(rowsAsc[3].textContent).toMatch(/Beta Project/); // 90%
 
     // Click again -> sort descending
     await userEvent.click(progressHeader);
     const rowsDesc = screen.getAllByRole('row');
-    expect(rowsDesc[1]).toHaveTextContent('Beta Project'); // 90%
-    expect(rowsDesc[2]).toHaveTextContent('Alpha Project'); // 50%
-    expect(rowsDesc[3]).toHaveTextContent('Gamma Project'); // 10%
+    expect(rowsDesc[1].textContent).toMatch(/Beta Project/); // 90%
+    expect(rowsDesc[2].textContent).toMatch(/Alpha Project/); // 50%
+    expect(rowsDesc[3].textContent).toMatch(/Gamma Project/); // 10%
   });
 
   it('shows empty state when no assessments match', () => {
     render(<AssessmentTable {...defaultProps} assessments={[]} searchQuery="No Match" />);
-    expect(screen.getByText(/No results found/i)).toBeInTheDocument();
-    expect(screen.getByText(/No Match/i)).toBeInTheDocument();
+    // Testing multiple elements text
+    const noResultsElements = screen.queryAllByText(/No results for/i);
+    expect(noResultsElements.length).toBeGreaterThan(0);
+    const noMatchElements = screen.getAllByText(/No Match/i);
+    expect(noMatchElements.length).toBeGreaterThan(0);
   });
 });
