@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
   BadRequestException,
   ConflictException,
 } from '@nestjs/common';
@@ -81,9 +80,9 @@ export class AssessmentsService {
   }
 
   async findOne(id: string, userId: string): Promise<Assessment> {
-    const assessment = await this.prisma.assessment.findUnique({ where: { id } });
+    // SECURITY: Use findFirst with compound conditions to prevent IDOR and resource enumeration
+    const assessment = await this.prisma.assessment.findFirst({ where: { id, userId } });
     if (!assessment) throw new NotFoundException('Assessment not found');
-    if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
     return assessment;
   }
 
