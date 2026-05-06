@@ -63,11 +63,11 @@ describe('AssessmentTable', () => {
     const onStatusFilterMock = jest.fn();
     render(<AssessmentTable {...defaultProps} onStatusFilter={onStatusFilterMock} activeStatus="DRAFT" />);
     
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Analyzing')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Draft' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Analyzing' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Complete' })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Complete'));
+    fireEvent.click(screen.getByRole('button', { name: 'Complete' }));
     expect(onStatusFilterMock).toHaveBeenCalledWith('COMPLETE');
   });
 
@@ -99,6 +99,7 @@ describe('AssessmentTable', () => {
   it('shows empty state when no assessments match', () => {
     render(<AssessmentTable {...defaultProps} assessments={[]} searchQuery="No Match" />);
     expect(screen.getByText(/No results found/i)).toBeInTheDocument();
-    expect(screen.getByText(/No Match/i)).toBeInTheDocument();
+    const noMatchElements = screen.getAllByText(/No Match/i);
+    expect(noMatchElements.length).toBeGreaterThan(0);
   });
 });
