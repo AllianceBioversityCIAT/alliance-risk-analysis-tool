@@ -23,3 +23,8 @@
 **Vulnerability:** Application threw 404 for missing resources and 403 for unauthorized existing resources, allowing attackers to enumerate valid resource IDs.
 **Learning:** Checking existence before ownership leaks information. Ownership must be verified simultaneously with existence via the database query.
 **Prevention:** Use `findFirst({ where: { id, userId } })` and return 404 for any missing or unauthorized records uniformly.
+
+## 2026-05-08 - Added Radix UI Dropdown Menu
+**Vulnerability:** N/A - Not a vulnerability, but a UI fix.
+**Learning:** The project was using `DropdownMenuPrimitive.Root` without properly importing `@radix-ui/react-dropdown-menu`. Tests failed due to `undefined`.
+**Prevention:** Ensure new UI primitives are fully installed and correctly imported in standard wrapper components.
