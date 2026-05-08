@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-05-08 - Prevent Information Disclosure via IDOR
+**Vulnerability:** Application threw 404 for missing resources and 403 for unauthorized existing resources, allowing attackers to enumerate valid resource IDs.
+**Learning:** Checking existence before ownership leaks information. Ownership must be verified simultaneously with existence via the database query.
+**Prevention:** Use `findFirst({ where: { id, userId } })` and return 404 for any missing or unauthorized records uniformly.
