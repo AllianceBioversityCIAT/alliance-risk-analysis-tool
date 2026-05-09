@@ -1,0 +1,6 @@
+1. We need to prevent IDOR and resource enumeration by replacing `findUnique` followed by a manual ownership check (which throws `ForbiddenException`) with a single `findFirst` query with a compound condition (e.g. `{ id, userId }`) that throws a `NotFoundException` if the record isn't found.
+2. Search and update occurrences of `findUnique` for resources owned by a `userId`.
+3. Replace the logic in `AssessmentsService.findOne`, `GapDetectionService.validateOwnership`, `ReportService.validateOwnership`, `RiskAnalysisService.validateOwnership`, and any other applicable query.
+4. Update tests to mock `findFirst` instead of `findUnique` and remove tests expecting `ForbiddenException`.
+5. Update `Sentinel` journal (`.jules/sentinel.md`) with the `IDOR` related finding.
+6. Commit the changes and open PR.
