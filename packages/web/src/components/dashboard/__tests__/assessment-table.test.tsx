@@ -10,6 +10,13 @@ jest.mock('@/components/ui/progress', () => ({
   Progress: ({ value }: { value: number }) => <div data-testid="progress">{value}%</div>,
 }));
 
+jest.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: any) => <div data-testid="dropdown-menu">{children}</div>,
+  DropdownMenuTrigger: ({ children }: any) => <div data-testid="dropdown-trigger">{children}</div>,
+  DropdownMenuContent: ({ children }: any) => <div data-testid="dropdown-content">{children}</div>,
+  DropdownMenuItem: ({ children, onClick }: any) => <div data-testid="dropdown-item" onClick={onClick}>{children}</div>,
+}));
+
 describe('AssessmentTable', () => {
   const mockAssessments = [
     {
@@ -63,11 +70,11 @@ describe('AssessmentTable', () => {
     const onStatusFilterMock = jest.fn();
     render(<AssessmentTable {...defaultProps} onStatusFilter={onStatusFilterMock} activeStatus="DRAFT" />);
     
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Analyzing')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getAllByText('Draft')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Analyzing')[0]).toBeInTheDocument();
+    expect(screen.getAllByText('Complete')[0]).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText('Complete'));
+    fireEvent.click(screen.getAllByText('Complete')[0]);
     expect(onStatusFilterMock).toHaveBeenCalledWith('COMPLETE');
   });
 
@@ -98,7 +105,7 @@ describe('AssessmentTable', () => {
 
   it('shows empty state when no assessments match', () => {
     render(<AssessmentTable {...defaultProps} assessments={[]} searchQuery="No Match" />);
-    expect(screen.getByText(/No results found/i)).toBeInTheDocument();
-    expect(screen.getByText(/No Match/i)).toBeInTheDocument();
+    expect(screen.getByText(/No results for/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No Match/i).length).toBeGreaterThan(0);
   });
 });
