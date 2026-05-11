@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
 import { JobType } from '@alliance-risk/shared';
@@ -13,11 +13,12 @@ export class ReportService {
   ) {}
 
   private async validateOwnership(assessmentId: string, userId: string) {
-    const assessment = await this.prisma.assessment.findUnique({
-      where: { id: assessmentId },
+    // SECURITY: Use findFirst with compound conditions (id, userId) to prevent IDOR
+    // and resource enumeration (Information Disclosure via "Not Found").
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, userId },
     });
     if (!assessment) throw new NotFoundException('Assessment not found');
-    if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
     return assessment;
   }
 
