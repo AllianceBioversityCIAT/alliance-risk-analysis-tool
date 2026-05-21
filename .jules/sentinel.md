@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-05-21 - Prevent Information Leakage via IDOR in Resource Queries
+**Vulnerability:** Several backend services used `findUnique` followed by an in-memory ownership check (`if (resource.userId !== userId) throw new ForbiddenException()`). This allowed an attacker to determine if a specific record ID existed in the database even if they did not own it, leading to resource enumeration via a 403 response compared to a 404 response for missing records.
+**Learning:** Returning 403 when a resource belongs to another user implicitly reveals that the resource exists.
+**Prevention:** Query for the resource using `findFirst` and include both the record ID and the user's ID in the `where` clause. If the query returns null, always return a 404 `NotFoundException` to mask the existence of resources belonging to others.
