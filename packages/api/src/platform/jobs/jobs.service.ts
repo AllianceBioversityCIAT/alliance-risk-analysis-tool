@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
@@ -88,14 +87,14 @@ export class JobsService {
    * Poll job status. Validates ownership.
    */
   async findOne(id: string, userId: string): Promise<Job> {
-    const job = await this.prisma.job.findUnique({ where: { id } });
+    // SECURITY: Use findFirst to prevent IDOR and resource enumeration
+    // Returning NotFoundException instead of ForbiddenException prevents leaking existence
+    const job = await this.prisma.job.findFirst({
+      where: { id, createdById: userId },
+    });
 
     if (!job) {
       throw new NotFoundException(`Job ${id} not found`);
-    }
-
-    if (job.createdById !== userId) {
-      throw new ForbiddenException('You do not own this job');
     }
 
     return job;
