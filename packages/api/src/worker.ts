@@ -4,6 +4,7 @@ import { AppModule } from './app.module';
 import { JobsService } from './platform/jobs/jobs.service';
 import { PrismaService } from './infrastructure/database/prisma.service';
 import { JobType } from '@alliance-risk/shared';
+import * as crypto from 'crypto';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let cachedApp: any;
@@ -57,7 +58,18 @@ function getErrorMessage(err: unknown): string {
 
 function isWorkerAdminAuthorized(event: WorkerEvent, logger: Logger): boolean {
   const expectedToken = process.env.WORKER_ADMIN_TOKEN;
-  if (!expectedToken || event.authToken !== expectedToken) {
+
+  if (!expectedToken || !event.authToken) {
+    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
+    return false;
+  }
+
+  // SECURITY: Use timingSafeEqual with SHA-256 hashing to prevent timing attacks
+  // on token comparison and to mask the length of the expected token.
+  const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
+  const providedHash = crypto.createHash('sha256').update(event.authToken).digest();
+
+  if (!crypto.timingSafeEqual(expectedHash, providedHash)) {
     logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
     return false;
   }
