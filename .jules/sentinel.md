@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-03-24 - [CRITICAL] Information Disclosure / Existence Leakage in Ownership Validation
+**Vulnerability:** Ownership validation checks (e.g., `validateOwnership` in various services) retrieved records using `findUnique` and threw a `ForbiddenException` if the `userId` mismatched the requestor's ID, exposing the existence of other users' data (Existence Leakage / Information Disclosure).
+**Learning:** Returning `403 Forbidden` after finding a record not belonging to a user indicates that the record does exist. This allows attackers to enumerate IDs and discern what data exists in the system.
+**Prevention:** Verify record ownership at the database level by employing `findFirst` with a compound condition (e.g., `where: { id: entityId, userId }`) and throw a `404 NotFoundException` if the record is missing. Avoid in-memory access control checks after `findUnique`.
