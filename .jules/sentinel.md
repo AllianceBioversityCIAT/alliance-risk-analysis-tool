@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2024-06-04 - [Fix IDOR / Information Leakage in Assessment Fetching]
+**Vulnerability:** Information Leakage / IDOR in `AssessmentsService.findOne()`. Using `findUnique` and throwing a 403 `ForbiddenException` for non-owned resources allows attackers to enumerate valid assessment IDs.
+**Learning:** Checking ownership in memory after fetching the record leaks the existence of the record to unauthorized users.
+**Prevention:** Verify record ownership at the database level. Use Prisma's `findFirst` with a compound condition (e.g., `where: { id, userId }`) and throw a 404 `NotFoundException` if the query returns nothing. Ensure tests are updated to expect `NotFoundException` instead of `ForbiddenException` when accessing unowned resources.
