@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-03-12 - Prevent Timing Attacks in Token Comparison
+**Vulnerability:** The Worker Lambda (`worker.ts`) used string comparison (`!==`) to verify the `WORKER_ADMIN_TOKEN` against the provided `authToken`, making it susceptible to timing attacks where an attacker could theoretically guess the token character by character based on response times.
+**Learning:** Standard string comparisons stop at the first mismatching character, leaking information about the expected string's contents. `crypto.timingSafeEqual` prevents this, but requires buffers of equal length.
+**Prevention:** Always use `crypto.timingSafeEqual` combined with hashing (like SHA-256) of both the expected and provided values when comparing sensitive tokens or API keys. This ensures equal buffer lengths, preventing fatal `TypeError`s while mitigating timing attacks.
