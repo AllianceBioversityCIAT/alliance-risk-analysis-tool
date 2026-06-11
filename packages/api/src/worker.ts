@@ -1,5 +1,6 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { AppModule } from './app.module';
 import { JobsService } from './platform/jobs/jobs.service';
 import { PrismaService } from './infrastructure/database/prisma.service';
@@ -57,12 +58,21 @@ function getErrorMessage(err: unknown): string {
 
 function isWorkerAdminAuthorized(event: WorkerEvent, logger: Logger): boolean {
   const expectedToken = process.env.WORKER_ADMIN_TOKEN;
-  if (!expectedToken || event.authToken !== expectedToken) {
-    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
-    return false;
+
+  // SECURITY: Mitigate timing attacks by using constant-time comparison with equal length buffers.
+  // Hashing both tokens with SHA-256 ensures the buffers are the same length, preventing
+  // TypeError: Input buffers must have the same byte length.
+  if (expectedToken && event.authToken) {
+    const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
+    const providedHash = crypto.createHash('sha256').update(event.authToken).digest();
+
+    if (crypto.timingSafeEqual(expectedHash, providedHash)) {
+      return true;
+    }
   }
 
-  return true;
+  logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
+  return false;
 }
 
 async function handleParameterizedSql(
