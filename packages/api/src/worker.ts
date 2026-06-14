@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
+import * as crypto from 'crypto';
 import { JobsService } from './platform/jobs/jobs.service';
 import { PrismaService } from './infrastructure/database/prisma.service';
 import { JobType } from '@alliance-risk/shared';
@@ -57,8 +58,19 @@ function getErrorMessage(err: unknown): string {
 
 function isWorkerAdminAuthorized(event: WorkerEvent, logger: Logger): boolean {
   const expectedToken = process.env.WORKER_ADMIN_TOKEN;
-  if (!expectedToken || event.authToken !== expectedToken) {
-    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
+
+  if (!expectedToken || !event.authToken) {
+    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt: missing token`);
+    return false;
+  }
+
+  // SECURITY: Hash tokens before using timingSafeEqual to ensure equal buffer lengths,
+  // preventing fatal TypeErrors and mitigating timing attacks for sensitive operations.
+  const expectedHash = crypto.createHash('sha256').update(expectedToken).digest();
+  const providedHash = crypto.createHash('sha256').update(event.authToken).digest();
+
+  if (!crypto.timingSafeEqual(expectedHash, providedHash)) {
+    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt: invalid token`);
     return false;
   }
 

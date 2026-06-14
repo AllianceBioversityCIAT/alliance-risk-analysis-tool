@@ -18,3 +18,8 @@
 **Vulnerability:** The Worker Lambda (`worker.ts`) accepted a `run-sql` action payload and executed arbitrary SQL via `prisma.$executeRawUnsafe()` without any authentication or authorization.
 **Learning:** Administrative backdoors that rely on obscurity (Lambda ARN, VPC isolation) are insufficient security controls. Any endpoint that executes raw SQL must have proper authentication.
 **Fix:** Added `WORKER_ADMIN_TOKEN` (auto-generated 64-char secret in Secrets Manager: `alliance-risk/worker-admin-token`). The `run-sql` action now requires `authToken` in the payload matching the env var. `migrate-remote.sh` fetches the token from Secrets Manager before invoking.
+
+## 2026-03-12 - Timing attack and TypeError via unequal length string comparison
+**Vulnerability:** Worker auth token comparison in `worker.ts` used simple strict equality (`!==`), making it vulnerable to timing attacks. Using `crypto.timingSafeEqual` directly on user input could also crash the app with a `TypeError` if lengths mismatch.
+**Learning:** When comparing sensitive tokens like API keys, raw `timingSafeEqual` is dangerous if the attacker controls the length, as Node.js throws if buffer lengths differ.
+**Prevention:** Always use `crypto.timingSafeEqual` combined with hashing (e.g., SHA-256) of both the expected and provided values to enforce equal buffer lengths and prevent timing attacks safely.
