@@ -2,7 +2,6 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
@@ -14,14 +13,11 @@ import { GapDetectionHandler } from './handlers/gap-detection.handler';
 import { RiskAnalysisHandler } from './handlers/risk-analysis.handler';
 import { ReportGenerationHandler } from './handlers/report-generation.handler';
 import type { Job } from '@prisma/client';
-
 type JobStatusPrisma = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';
-
 @Injectable()
 export class JobsService {
   private readonly logger = new Logger(JobsService.name);
   private readonly lambdaClient: LambdaClient;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly configService: ConfigService,
@@ -35,7 +31,6 @@ export class JobsService {
       region: this.configService.get<string>('AWS_REGION') ?? 'us-east-1',
     });
   }
-
   /**
    * Create a new job, invoke Worker Lambda (or run locally in dev).
    * Returns the job ID immediately.
@@ -53,11 +48,8 @@ export class JobsService {
         createdById: userId,
       },
     });
-
     this.logger.log(`Created job ${job.id} (type=${type})`);
-
     const environment = this.configService.get<string>('ENVIRONMENT') ?? 'development';
-
     if (environment === 'development' || environment === 'test') {
       // Run in-process without invoking a real Lambda
       this.executeLocally(job.id).catch((err: Error) =>
@@ -80,27 +72,19 @@ export class JobsService {
         );
       }
     }
-
     return job.id;
   }
-
   /**
    * Poll job status. Validates ownership.
    */
   async findOne(id: string, userId: string): Promise<Job> {
-    const job = await this.prisma.job.findUnique({ where: { id } });
-
+    // SECURITY: Use findFirst with createdById condition to prevent IDOR and existence leakage
+    const job = await this.prisma.job.findFirst({ where: { id, createdById: userId } });
     if (!job) {
       throw new NotFoundException(`Job ${id} not found`);
     }
-
-    if (job.createdById !== userId) {
-      throw new ForbiddenException('You do not own this job');
-    }
-
     return job;
   }
-
   /**
    * Update job status (called by worker).
    */
@@ -124,7 +108,6 @@ export class JobsService {
       },
     });
   }
-
   /**
    * Route to appropriate handler and manage full status lifecycle.
    */
@@ -134,16 +117,13 @@ export class JobsService {
       this.logger.error(`Job ${jobId} not found for processing`);
       return;
     }
-
     await this.updateStatus(jobId, JobStatus.PROCESSING);
     await this.prisma.job.update({
       where: { id: jobId },
       data: { attempts: { increment: 1 } },
     });
-
     try {
       let result: unknown;
-
       if (job.type === JobType.AI_PREVIEW) {
         result = await this.aiPreviewHandler.execute(job.input as unknown as Parameters<AiPreviewHandler['execute']>[0]);
       } else if (job.type === JobType.PARSE_DOCUMENT) {
@@ -162,10 +142,8 @@ export class JobsService {
       } else {
         throw new Error(`No handler registered for job type: ${job.type}`);
       }
-
       await this.updateStatus(jobId, JobStatus.COMPLETED, result);
       this.logger.log(`Job ${jobId} completed`);
-
       // Chain: PARSE_DOCUMENT → GAP_DETECTION (only when ALL documents are parsed)
       if (job.type === JobType.PARSE_DOCUMENT) {
         const input = job.input as { assessmentId?: string };
@@ -173,10 +151,8 @@ export class JobsService {
           const allDocs = await this.prisma.assessmentDocument.findMany({
             where: { assessmentId: input.assessmentId },
           });
-
           const allParsed =
             allDocs.length > 0 && allDocs.every((d) => d.status === 'PARSED');
-
           if (allParsed) {
             this.logger.log(
               `All ${allDocs.length} document(s) parsed for assessment ${input.assessmentId}. Chaining GAP_DETECTION.`,
@@ -202,15 +178,12 @@ export class JobsService {
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
       this.logger.error(`Job ${jobId} failed: ${errorMsg}`);
-
       // Check if max attempts reached
       const updatedJob = await this.prisma.job.findUnique({ where: { id: jobId } });
       const maxAttempts = updatedJob?.maxAttempts ?? 3;
       const attempts = updatedJob?.attempts ?? 1;
-
       if (attempts >= maxAttempts) {
         await this.updateStatus(jobId, JobStatus.FAILED, undefined, errorMsg);
-
         // Notify handler of permanent failure (e.g. update document status)
         if (job.type === JobType.PARSE_DOCUMENT && 'onFailure' in this.parseDocumentHandler) {
           const input = job.input as { documentId?: string };
@@ -232,7 +205,6 @@ export class JobsService {
       }
     }
   }
-
   /**
    * In-process execution for local development.
    */
