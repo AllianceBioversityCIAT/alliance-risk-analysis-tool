@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
 import { UpdateRecommendationDto, UpdateAnalystCommentDto } from './dto';
@@ -19,11 +19,10 @@ export class RiskAnalysisService {
   ) {}
 
   private async validateOwnership(assessmentId: string, userId: string): Promise<void> {
-    const assessment = await this.prisma.assessment.findUnique({
-      where: { id: assessmentId },
+    const assessment = await this.prisma.assessment.findFirst({
+      where: { id: assessmentId, userId },
     });
     if (!assessment) throw new NotFoundException('Assessment not found');
-    if (assessment.userId !== userId) throw new ForbiddenException('Access denied');
   }
 
   async findByAssessment(
@@ -46,15 +45,12 @@ export class RiskAnalysisService {
   ): Promise<Recommendation> {
     await this.validateOwnership(assessmentId, userId);
 
-    const recommendation = await this.prisma.recommendation.findUnique({
-      where: { id: recId },
+    const recommendation = await this.prisma.recommendation.findFirst({
+      where: { id: recId, riskScore: { assessmentId } },
       include: { riskScore: true },
     });
 
     if (!recommendation) throw new NotFoundException('Recommendation not found');
-    if (recommendation.riskScore.assessmentId !== assessmentId) {
-      throw new ForbiddenException('Recommendation does not belong to this assessment');
-    }
 
     return this.prisma.recommendation.update({
       where: { id: recId },
@@ -73,14 +69,11 @@ export class RiskAnalysisService {
   ): Promise<RiskScore> {
     await this.validateOwnership(assessmentId, userId);
 
-    const riskScore = await this.prisma.riskScore.findUnique({
-      where: { id: scoreId },
+    const riskScore = await this.prisma.riskScore.findFirst({
+      where: { id: scoreId, assessmentId },
     });
 
     if (!riskScore) throw new NotFoundException('Risk score not found');
-    if (riskScore.assessmentId !== assessmentId) {
-      throw new ForbiddenException('Risk score does not belong to this assessment');
-    }
 
     return this.prisma.riskScore.update({
       where: { id: scoreId },
