@@ -4,15 +4,15 @@ import {
   NotFoundException,
 
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
-import { InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
-import { JobStatus, JobType } from '@alliance-risk/shared';
-import { PrismaService } from '../../infrastructure/database/prisma.service';
-import { AiPreviewHandler } from './handlers/ai-preview.handler';
-import { ParseDocumentHandler } from './handlers/parse-document.handler';
-import { GapDetectionHandler } from './handlers/gap-detection.handler';
-import { RiskAnalysisHandler } from './handlers/risk-analysis.handler';
-import { ReportGenerationHandler } from './handlers/report-generation.handler';
+import {  ConfigService } from '@nestjs/config';
+import {  InvokeCommand, LambdaClient } from '@aws-sdk/client-lambda';
+import {  JobStatus, JobType } from '@alliance-risk/shared';
+import {  PrismaService } from '../../infrastructure/database/prisma.service';
+import {  AiPreviewHandler } from './handlers/ai-preview.handler';
+import {  ParseDocumentHandler } from './handlers/parse-document.handler';
+import {  GapDetectionHandler } from './handlers/gap-detection.handler';
+import {  RiskAnalysisHandler } from './handlers/risk-analysis.handler';
+import {  ReportGenerationHandler } from './handlers/report-generation.handler';
 import type { Job } from '@prisma/client';
 
 type JobStatusPrisma = 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'FAILED';

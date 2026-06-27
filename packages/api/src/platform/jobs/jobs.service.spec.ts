@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { NotFoundException, } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { AiPreviewHandler } from './handlers/ai-preview.handler';
 import { ParseDocumentHandler } from './handlers/parse-document.handler';
