@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException, } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { AiPreviewHandler } from './handlers/ai-preview.handler';
 import { ParseDocumentHandler } from './handlers/parse-document.handler';
@@ -21,6 +21,7 @@ jest.mock('@aws-sdk/client-lambda', () => ({
 const mockPrisma = {
   job: {
     create: jest.fn(),
+    findFirst: jest.fn(),
     findUnique: jest.fn(),
     update: jest.fn(),
   },
@@ -108,7 +109,7 @@ describe('JobsService', () => {
     it('executes locally when ENVIRONMENT is test', async () => {
       const job = makeJob();
       mockPrisma.job.create.mockResolvedValueOnce(job);
-      // processJob calls findUnique (once to get job) + once to check attempts after processing
+      // processJob calls findFirst (once to get job) + once to check attempts after processing
       mockPrisma.job.findUnique
         .mockResolvedValueOnce(job)
         .mockResolvedValueOnce({ ...job, attempts: 1 });
@@ -147,7 +148,7 @@ describe('JobsService', () => {
   describe('findOne()', () => {
     it('returns the job when ownership matches', async () => {
       const job = makeJob();
-      mockPrisma.job.findUnique.mockResolvedValue(job);
+      mockPrisma.job.findFirst = jest.fn().mockResolvedValue(job);
 
       const result = await service.findOne(job.id, 'user-1');
 
@@ -155,19 +156,19 @@ describe('JobsService', () => {
     });
 
     it('throws NotFoundException when job does not exist', async () => {
-      mockPrisma.job.findUnique.mockResolvedValue(null);
+      mockPrisma.job.findFirst = jest.fn().mockResolvedValue(null);
 
       await expect(service.findOne('non-existent', 'user-1')).rejects.toThrow(
         NotFoundException,
       );
     });
 
-    it('throws ForbiddenException when user does not own the job', async () => {
+    it('throws NotFoundException when user does not own the job', async () => {
       const job = makeJob({ createdById: 'user-1' });
-      mockPrisma.job.findUnique.mockResolvedValue(job);
+      mockPrisma.job.findFirst = jest.fn().mockResolvedValue(null);
 
       await expect(service.findOne(job.id, 'other-user')).rejects.toThrow(
-        ForbiddenException,
+        NotFoundException,
       );
     });
   });
@@ -226,7 +227,7 @@ describe('JobsService', () => {
     it('processes an AI_PREVIEW job to COMPLETED', async () => {
       const job = makeJob({ type: JobType.AI_PREVIEW, attempts: 0 });
       mockPrisma.job.findUnique
-        .mockResolvedValueOnce(job)              // first findUnique in processJob
+        .mockResolvedValueOnce(job)              // first findFirst in processJob
         .mockResolvedValueOnce({ ...job, attempts: 1 }); // after increment
       mockPrisma.job.update.mockResolvedValue({});
       mockAiPreviewHandler.execute.mockResolvedValue({
@@ -247,8 +248,8 @@ describe('JobsService', () => {
 
     it('marks job as FAILED after max attempts reached', async () => {
       const job = makeJob({ type: JobType.AI_PREVIEW, attempts: 2 });
-      // processJob: first findUnique = initial job fetch
-      // second findUnique = check attempts after failure
+      // processJob: first findFirst = initial job fetch
+      // second findFirst = check attempts after failure
       mockPrisma.job.findUnique
         .mockResolvedValueOnce(job)
         .mockResolvedValueOnce({ ...job, attempts: 3, maxAttempts: 3 }); // at max
