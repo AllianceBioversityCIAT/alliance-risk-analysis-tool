@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException, BadRequestException } from '@nestjs/common';
+import { NotFoundException, BadRequestException } from '@nestjs/common';
 import { AssessmentsService } from './assessments.service';
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
@@ -39,6 +39,7 @@ const mockPrisma = {
   assessment: {
     create: jest.fn().mockResolvedValue(mockAssessment),
     findMany: jest.fn().mockResolvedValue([mockAssessment]),
+    findFirst: jest.fn().mockResolvedValue(mockAssessment),
     findUnique: jest.fn().mockResolvedValue(mockAssessment),
     update: jest.fn().mockResolvedValue(mockAssessment),
     delete: jest.fn().mockResolvedValue(mockAssessment),
@@ -48,6 +49,7 @@ const mockPrisma = {
     create: jest.fn().mockResolvedValue(mockDocument),
     update: jest.fn().mockResolvedValue(mockDocument),
     findMany: jest.fn().mockResolvedValue([]),
+    findFirst: jest.fn().mockResolvedValue(mockDocument),
     findUnique: jest.fn().mockResolvedValue(mockDocument),
   },
   assessmentComment: {
@@ -80,6 +82,7 @@ describe('AssessmentsService', () => {
 
     service = module.get<AssessmentsService>(AssessmentsService);
     jest.clearAllMocks();
+    mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
     mockPrisma.assessment.findUnique.mockResolvedValue(mockAssessment);
   });
 
@@ -101,12 +104,14 @@ describe('AssessmentsService', () => {
     });
 
     it('should throw NotFoundException when not found', async () => {
-      mockPrisma.assessment.findUnique.mockResolvedValue(null);
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
       await expect(service.findOne('bad-id', 'user-1')).rejects.toThrow(NotFoundException);
     });
 
-    it('should throw ForbiddenException when user does not own assessment', async () => {
-      await expect(service.findOne('assess-1', 'other-user')).rejects.toThrow(ForbiddenException);
+    it('should throw NotFoundException when user does not own assessment (preventing IDOR and existence leakage)', async () => {
+      // Simulate that findFirst returns null because the assessment does not belong to the user
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
+      await expect(service.findOne('assess-1', 'other-user')).rejects.toThrow(NotFoundException);
     });
   });
 
@@ -179,7 +184,7 @@ describe('AssessmentsService', () => {
 
   describe('triggerParseDocument', () => {
     beforeEach(() => {
-      mockPrisma.assessmentDocument.findUnique.mockResolvedValue(mockDocument);
+      mockPrisma.assessmentDocument.findFirst.mockResolvedValue(mockDocument);
       mockPrisma.assessmentDocument.update.mockResolvedValue({ ...mockDocument, status: 'UPLOADED' });
       mockJobs.create.mockResolvedValue('job-1');
     });
@@ -222,7 +227,7 @@ describe('AssessmentsService', () => {
     });
 
     it('should throw NotFoundException when document does not exist', async () => {
-      mockPrisma.assessmentDocument.findUnique.mockResolvedValue(null);
+      mockPrisma.assessmentDocument.findFirst.mockResolvedValue(null);
       await expect(
         service.triggerParseDocument('assess-1', 'bad-doc', 'user-1'),
       ).rejects.toThrow(NotFoundException);
