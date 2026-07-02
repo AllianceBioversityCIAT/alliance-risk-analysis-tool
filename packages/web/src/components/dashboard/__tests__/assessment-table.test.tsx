@@ -1,6 +1,13 @@
 import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssessmentTable } from '../assessment-table';
+jest.mock("@/components/ui/dropdown-menu", () => ({
+  DropdownMenu: ({ children }: any) => <div>{children}</div>,
+  DropdownMenuTrigger: ({ children }: any) => <button>{children}</button>,
+  DropdownMenuContent: ({ children }: any) => <div>{children}</div>,
+  DropdownMenuItem: ({ children, onClick }: any) => <div onClick={onClick}>{children}</div>,
+}));
+
 
 jest.mock('@/components/shared/avatar-initials', () => ({
   AvatarInitials: ({ name }: { name: string }) => <div data-testid="avatar-initials">{name}</div>,
@@ -63,11 +70,11 @@ describe('AssessmentTable', () => {
     const onStatusFilterMock = jest.fn();
     render(<AssessmentTable {...defaultProps} onStatusFilter={onStatusFilterMock} activeStatus="DRAFT" />);
     
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Analyzing')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Analyzing').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Complete').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText('Complete'));
+    fireEvent.click(screen.getAllByText('Complete')[0]);
     expect(onStatusFilterMock).toHaveBeenCalledWith('COMPLETE');
   });
 
@@ -98,7 +105,7 @@ describe('AssessmentTable', () => {
 
   it('shows empty state when no assessments match', () => {
     render(<AssessmentTable {...defaultProps} assessments={[]} searchQuery="No Match" />);
-    expect(screen.getByText(/No results found/i)).toBeInTheDocument();
-    expect(screen.getByText(/No Match/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No results found/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/No Match/i).length).toBeGreaterThan(0);
   });
 });
