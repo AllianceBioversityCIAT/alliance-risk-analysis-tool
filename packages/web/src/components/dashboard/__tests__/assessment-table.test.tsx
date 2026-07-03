@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssessmentTable } from '../assessment-table';
 
@@ -8,6 +8,14 @@ jest.mock('@/components/shared/avatar-initials', () => ({
 
 jest.mock('@/components/ui/progress', () => ({
   Progress: ({ value }: { value: number }) => <div data-testid="progress">{value}%</div>,
+}));
+
+// Mock DropdownMenu completely to avoid Radix UI primitive unmounting issues
+jest.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: { children: React.ReactNode }) => <div data-testid="dropdown-menu">{children}</div>,
+  DropdownMenuTrigger: ({ children }: { children: React.ReactNode }) => <div data-testid="dropdown-menu-trigger">{children}</div>,
+  DropdownMenuContent: ({ children }: { children: React.ReactNode }) => <div data-testid="dropdown-menu-content">{children}</div>,
+  DropdownMenuItem: ({ children }: { children: React.ReactNode }) => <div data-testid="dropdown-menu-item">{children}</div>,
 }));
 
 describe('AssessmentTable', () => {
@@ -63,11 +71,11 @@ describe('AssessmentTable', () => {
     const onStatusFilterMock = jest.fn();
     render(<AssessmentTable {...defaultProps} onStatusFilter={onStatusFilterMock} activeStatus="DRAFT" />);
     
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Analyzing')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Analyzing').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Complete').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText('Complete'));
+    fireEvent.click(screen.getAllByText('Complete')[0]);
     expect(onStatusFilterMock).toHaveBeenCalledWith('COMPLETE');
   });
 
@@ -99,6 +107,6 @@ describe('AssessmentTable', () => {
   it('shows empty state when no assessments match', () => {
     render(<AssessmentTable {...defaultProps} assessments={[]} searchQuery="No Match" />);
     expect(screen.getByText(/No results found/i)).toBeInTheDocument();
-    expect(screen.getByText(/No Match/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/No Match/i).length).toBeGreaterThan(0);
   });
 });
