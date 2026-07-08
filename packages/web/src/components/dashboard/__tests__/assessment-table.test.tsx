@@ -10,6 +10,13 @@ jest.mock('@/components/ui/progress', () => ({
   Progress: ({ value }: { value: number }) => <div data-testid="progress">{value}%</div>,
 }));
 
+jest.mock('@/components/ui/dropdown-menu', () => ({
+  DropdownMenu: ({ children }: any) => <div data-testid="dropdown-menu">{children}</div>,
+  DropdownMenuTrigger: ({ children }: any) => <button data-testid="dropdown-menu-trigger">{children}</button>,
+  DropdownMenuContent: ({ children }: any) => <div data-testid="dropdown-menu-content">{children}</div>,
+  DropdownMenuItem: ({ children }: any) => <div data-testid="dropdown-menu-item">{children}</div>,
+}));
+
 describe('AssessmentTable', () => {
   const mockAssessments = [
     {
@@ -63,11 +70,11 @@ describe('AssessmentTable', () => {
     const onStatusFilterMock = jest.fn();
     render(<AssessmentTable {...defaultProps} onStatusFilter={onStatusFilterMock} activeStatus="DRAFT" />);
     
-    expect(screen.getByText('Draft')).toBeInTheDocument();
-    expect(screen.getByText('Analyzing')).toBeInTheDocument();
-    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.getAllByText('Draft').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Analyzing').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Complete').length).toBeGreaterThan(0);
 
-    fireEvent.click(screen.getByText('Complete'));
+    fireEvent.click(screen.getAllByText('Complete')[0]);
     expect(onStatusFilterMock).toHaveBeenCalledWith('COMPLETE');
   });
 
@@ -99,6 +106,9 @@ describe('AssessmentTable', () => {
   it('shows empty state when no assessments match', () => {
     render(<AssessmentTable {...defaultProps} assessments={[]} searchQuery="No Match" />);
     expect(screen.getByText(/No results found/i)).toBeInTheDocument();
-    expect(screen.getByText(/No Match/i)).toBeInTheDocument();
+
+    // Check that "No Match" appears anywhere in the document
+    const noMatchElements = screen.queryAllByText(/No Match/i);
+    expect(noMatchElements.length).toBeGreaterThan(0);
   });
 });
