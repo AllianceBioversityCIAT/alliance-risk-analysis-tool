@@ -51,9 +51,8 @@ export class RiskAnalysisService {
       include: { riskScore: true },
     });
 
-    if (!recommendation) throw new NotFoundException('Recommendation not found');
-    if (recommendation.riskScore.assessmentId !== assessmentId) {
-      throw new ForbiddenException('Recommendation does not belong to this assessment');
+    if (!recommendation || recommendation.riskScore.assessmentId !== assessmentId) {
+      throw new NotFoundException('Recommendation not found');
     }
 
     return this.prisma.recommendation.update({
@@ -77,9 +76,8 @@ export class RiskAnalysisService {
       where: { id: scoreId },
     });
 
-    if (!riskScore) throw new NotFoundException('Risk score not found');
-    if (riskScore.assessmentId !== assessmentId) {
-      throw new ForbiddenException('Risk score does not belong to this assessment');
+    if (!riskScore || riskScore.assessmentId !== assessmentId) {
+      throw new NotFoundException('Risk score not found');
     }
 
     return this.prisma.riskScore.update({
