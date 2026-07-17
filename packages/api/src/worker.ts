@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'crypto';
 import { NestFactory } from '@nestjs/core';
 import { Logger } from '@nestjs/common';
 import { AppModule } from './app.module';
@@ -57,7 +58,16 @@ function getErrorMessage(err: unknown): string {
 
 function isWorkerAdminAuthorized(event: WorkerEvent, logger: Logger): boolean {
   const expectedToken = process.env.WORKER_ADMIN_TOKEN;
-  if (!expectedToken || event.authToken !== expectedToken) {
+  if (!expectedToken || typeof event.authToken !== 'string') {
+    logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
+    return false;
+  }
+
+  // SECURITY: Use timingSafeEqual and hash both tokens to prevent timing attacks and handle arbitrary length mismatch.
+  const expectedHash = createHash('sha256').update(expectedToken).digest();
+  const providedHash = createHash('sha256').update(event.authToken).digest();
+
+  if (!timingSafeEqual(expectedHash, providedHash)) {
     logger.error(`Unauthorized ${event.action ?? 'worker'} attempt`);
     return false;
   }
