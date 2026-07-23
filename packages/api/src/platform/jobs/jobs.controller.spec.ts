@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { JobsController } from './jobs.controller';
 import { JobsService } from './jobs.service';
 import type { UserInfo } from '@alliance-risk/shared';
@@ -71,22 +71,11 @@ describe('JobsController', () => {
       expect(result.result).toBeNull();
     });
 
-    it('throws NotFoundException for non-existent job', async () => {
+    it('throws NotFoundException for non-existent job or if not owned', async () => {
       mockJobsService.findOne.mockRejectedValue(new NotFoundException('Job not found'));
 
       await expect(controller.findOne('non-existent', mockUser)).rejects.toThrow(
         NotFoundException,
-      );
-    });
-
-    it('throws ForbiddenException when user does not own the job', async () => {
-      mockJobsService.findOne.mockRejectedValue(
-        new ForbiddenException('You do not own this job'),
-      );
-
-      const otherUser: UserInfo = { ...mockUser, userId: 'other-user', username: 'other' };
-      await expect(controller.findOne('job-uuid-1', otherUser)).rejects.toThrow(
-        ForbiddenException,
       );
     });
   });

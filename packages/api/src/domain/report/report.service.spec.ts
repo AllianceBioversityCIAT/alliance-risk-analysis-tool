@@ -23,6 +23,7 @@ const mockAssessment = {
 const mockPrisma = {
   assessment: {
     findUnique: jest.fn().mockResolvedValue(mockAssessment),
+    findFirst: jest.fn().mockResolvedValue(mockAssessment),
   },
   riskScore: {
     findMany: jest.fn().mockResolvedValue([]),
@@ -48,6 +49,7 @@ describe('ReportService', () => {
     service = module.get<ReportService>(ReportService);
     jest.clearAllMocks();
     mockPrisma.assessment.findUnique.mockResolvedValue(mockAssessment);
+    mockPrisma.assessment.findFirst.mockResolvedValue(mockAssessment);
     mockPrisma.riskScore.findMany.mockResolvedValue([]);
   });
 
@@ -60,8 +62,8 @@ describe('ReportService', () => {
       expect(Array.isArray(report.categories)).toBe(true);
     });
 
-    it('should throw NotFoundException for non-existent assessment', async () => {
-      mockPrisma.assessment.findUnique.mockResolvedValue(null);
+    it('should throw NotFoundException for non-existent assessment or if not owned', async () => {
+      mockPrisma.assessment.findFirst.mockResolvedValue(null);
       await expect(service.getReport('bad-id', 'user-1')).rejects.toThrow(NotFoundException);
     });
   });

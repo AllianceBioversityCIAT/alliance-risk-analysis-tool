@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
-import { NotFoundException, ForbiddenException } from '@nestjs/common';
+import { NotFoundException } from '@nestjs/common';
 import { JobsService } from './jobs.service';
 import { AiPreviewHandler } from './handlers/ai-preview.handler';
 import { ParseDocumentHandler } from './handlers/parse-document.handler';
@@ -22,6 +22,7 @@ const mockPrisma = {
   job: {
     create: jest.fn(),
     findUnique: jest.fn(),
+    findFirst: jest.fn(),
     update: jest.fn(),
   },
 };
@@ -147,27 +148,18 @@ describe('JobsService', () => {
   describe('findOne()', () => {
     it('returns the job when ownership matches', async () => {
       const job = makeJob();
-      mockPrisma.job.findUnique.mockResolvedValue(job);
+      mockPrisma.job.findFirst.mockResolvedValue(job);
 
       const result = await service.findOne(job.id, 'user-1');
 
       expect(result).toEqual(job);
     });
 
-    it('throws NotFoundException when job does not exist', async () => {
-      mockPrisma.job.findUnique.mockResolvedValue(null);
+    it('throws NotFoundException when job does not exist or not owned', async () => {
+      mockPrisma.job.findFirst.mockResolvedValue(null);
 
       await expect(service.findOne('non-existent', 'user-1')).rejects.toThrow(
         NotFoundException,
-      );
-    });
-
-    it('throws ForbiddenException when user does not own the job', async () => {
-      const job = makeJob({ createdById: 'user-1' });
-      mockPrisma.job.findUnique.mockResolvedValue(job);
-
-      await expect(service.findOne(job.id, 'other-user')).rejects.toThrow(
-        ForbiddenException,
       );
     });
   });
