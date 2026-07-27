@@ -8,7 +8,6 @@ dist/
 out/
 
 #docs
-docs/specs/
 docs/env*
 
 # Environment files
@@ -29,8 +28,7 @@ coverage/
 .DS_Store
 Thumbs.db
 
-# AI tools
-.agents/
+# AI tools (local-only; .agents/ is tracked for AKILI personas)
 .claude/
 .mcp.json
 
