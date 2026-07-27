@@ -6,23 +6,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 CGIAR Agricultural Risk Intelligence Tool (MVP). Multi-agent pipeline using AWS Bedrock models for document parsing, gap detection, risk analysis, and report generation across 7 risk categories.
 
+## Constitutional Baseline (AKILI-SPECS)
+
+These documents form the project constitution — consult before specs and implementation:
+
+| Document | Purpose |
+|----------|---------|
+| [`docs/prd.md`](docs/prd.md) | Product requirements, personas, scope, metrics |
+| [`docs/ux-ui/design.md`](docs/ux-ui/design.md) | UI/UX system blueprint and design tokens |
+| [`docs/trd/trd.md`](docs/trd/trd.md) | Technical architecture, API, data model, NFRs |
+| [`docs/infrastructure.md`](docs/infrastructure.md) | AWS deploy topology + **local environment contract** |
+| [`docs/specs/general-setup/`](docs/specs/general-setup/) | Module spec templates (requirements, design, tasks) |
+| [`AGENTS.md`](AGENTS.md) | Agent personas, model routing, skill map |
+
+Multi-agent personas for `/akili-execute` and `/akili-test`: [`.agents/`](.agents/)
+
+## Module Guides
+
+Child guides add package-specific rules (root rules always apply):
+
+| Guide | Scope |
+|-------|-------|
+| [`packages/api/CLAUDE.md`](packages/api/CLAUDE.md) | NestJS backend |
+| [`packages/web/CLAUDE.md`](packages/web/CLAUDE.md) | Next.js frontend |
+| [`packages/shared/CLAUDE.md`](packages/shared/CLAUDE.md) | Shared types and constants |
+| [`infra/CLAUDE.md`](infra/CLAUDE.md) | AWS CDK / CloudFormation |
+
 ## Before Implementing
 
-1. Read the Spec-Driven Development (SDD) documentation in `docs/specs/{module}/`. For every module, there MUST be at least 3 files:
-   - `requirements.md` (What are we building and why)
-   - `design.md` (How are we building it, architecture, data flow)
-   - `task.md` (Step-by-step implementation plan)
-2. Check OpenAPI spec at `docs/api/openapi.yaml`
-3. **CRITICAL:** Always read the specific `CLAUDE.md` for the package you are working in *before* writing code:
-   - Frontend changes: Read `packages/web/CLAUDE.md`
-   - Backend changes: Read `packages/api/CLAUDE.md`
-   - Infrastructure changes: Read `infra/CLAUDE.md`
-4. For UI/frontend work, consult the Figma design documentation in [`docs/figma-design/`](docs/figma-design/README.md):
-   - Design tokens (colors, typography, spacing): `docs/figma-design/design-tokens.md`
+1. Read constitutional docs above and the module spec in `docs/specs/{domain|enhancement|bugfix|epic}/<module>/` (minimum: `requirements.md`, `design.md`, `tasks.md`)
+2. Check OpenAPI spec at `docs/api/openapi.yaml` (when present)
+3. **CRITICAL:** Always read the specific `CLAUDE.md` for the package you are working in *before* writing code
+4. For UI/frontend work, consult [`docs/ux-ui/design.md`](docs/ux-ui/design.md) and Figma detail in [`docs/figma-design/`](docs/figma-design/README.md):
+   - Design tokens: `docs/figma-design/design-tokens.md`
    - CSS variable updates: `docs/figma-design/globals-update.md`
-   - Component patterns (22 reusable patterns): `docs/figma-design/component-patterns.md`
-   - Icon mapping (Material → Lucide): `docs/figma-design/icon-mapping.md`
-   - Per-screen implementation guides: `docs/figma-design/screens/`
+   - Component patterns: `docs/figma-design/component-patterns.md`
+   - Icon mapping: `docs/figma-design/icon-mapping.md`
+   - Per-screen guides: `docs/figma-design/screens/`
+5. Start local stack per [`docs/infrastructure.md` § Local Environment](docs/infrastructure.md#6-local-environment) — do not guess start commands
 
 ## Build & Development Commands
 
@@ -110,16 +131,19 @@ Steps 1-2 only needed when infrastructure or Prisma schema changes. For code-onl
 
 ### Local Development Setup
 
-Local dev uses a **local PostgreSQL database** (not the remote RDS, which is in a private VPC and unreachable from outside). Set in `packages/api/.env`:
+See the full contract in [`docs/infrastructure.md` § Local Environment](docs/infrastructure.md#6-local-environment).
+
+Quick start: local PostgreSQL (not remote RDS). Set in `packages/api/.env`:
 
 ```
 DATABASE_URL=postgresql://<your-user>@localhost:5432/alliance_risk
 ```
 
-After setting up the local database:
 ```bash
-pnpm --filter @alliance-risk/api exec prisma migrate deploy  # Apply migrations
-npx --prefix packages/api tsx prisma/seed.ts                  # Seed sample data
+pnpm --filter @alliance-risk/shared build
+pnpm --filter @alliance-risk/api exec prisma migrate deploy
+npx --prefix packages/api tsx prisma/seed.ts
+pnpm dev    # API :3001 + Web :3000
 ```
 
 ## Rules
@@ -139,3 +163,79 @@ npx --prefix packages/api tsx prisma/seed.ts                  # Seed sample data
 - Prisma schema lives in `packages/api/prisma/schema.prisma`
 - Shared package must be built (`pnpm --filter @alliance-risk/shared build`) before API or Web can import from it
 - RDS is in a private VPC — migrations must run via `pnpm migrate:remote` (authenticated via Secrets Manager token), not directly from local machines
+
+## Model Routing
+
+**Philosophy:** Match model capability to task demand — architecture and orchestration on deep-reasoning tiers; implementation on coder tiers; audit on a **different model** than the author (author ≠ auditor). Reserve frontier effort for propose/specify/verify and the orchestrating Leader. Fast/cheap models are for archive/formatting only — **`tasks.md` decomposition is T1, not cheap formatting**.
+
+### Capability Tiers
+
+| Tier | Name | Definition |
+|------|------|------------|
+| T1 | Architect | Architecture reasoning, task decomposition, live orchestration judgment |
+| T2 | Coder | Implementation and test authoring throughput |
+| T3 | Auditor | Independent deep review — must differ from Implementer model |
+| T4 | Context-Ingest | Large-repo scanning and synthesis |
+| T5 | Fast-Cheap | Formatting, archive, mechanical transforms |
+| T6 | Multimodal | Image/diagram-heavy work |
+
+### Phase → Tier Mapping
+
+| Phase | Role | Tier | Notes |
+|-------|------|------|-------|
+| `/akili-constitution`, `/akili-specify` | Architect | T1 | Baseline and spec design |
+| `/akili-execute` | Leader | T1 | Orchestration — no code |
+| `/akili-execute` | Implementer | T2 | One task scope |
+| `/akili-execute` | Reviewer | T3 | **Different model than Implementer** |
+| `/akili-test` | Leader | T1 | Test orchestration |
+| `/akili-test` | Tester | T2 | Prefer **different model than Implementer** |
+| `/akili-validate` | Auditor | T3 | Spec/implementation alignment |
+| Archive / formatting | — | T5 | Mechanical doc transforms |
+
+### Model Registry
+
+**Updated:** 2026-07
+
+| Tier | Claude Code | OpenCode | Fallback |
+|------|-------------|----------|----------|
+| T1 Architect | `opus` | `<CONFIRM SLUG>` | `opus` |
+| T2 Coder | `sonnet` | `<CONFIRM SLUG>` | `sonnet` |
+| T3 Auditor | `opus` | `<CONFIRM SLUG>` | `opus` |
+| T4 Context-Ingest | `haiku` | `<CONFIRM SLUG>` | `haiku` |
+| T5 Fast-Cheap | `haiku` | `<CONFIRM SLUG>` | `haiku` |
+| T6 Multimodal | `sonnet` | `<CONFIRM SLUG>` | `sonnet` |
+
+To change models, edit only this registry table. Never pin a dated model name where a floating alias exists. Model selection is guidance in command prompts — enforced bindings live only in agent wrappers (not enabled in this project).
+
+### Effort Dial
+
+Effort is **per-task**, orthogonal to tier — tier picks the model, effort picks how hard it thinks.
+
+| Signal | Effort |
+|--------|--------|
+| Trivial / mechanical | `low` |
+| Standard scope | `medium` |
+| Complex (algorithm, concurrency, security, ambiguity) | `xhigh` |
+| Correctness-critical | `max` |
+
+**Defaults by role:** T1 Leader/propose `high`; T2 Implementer/Tester `medium` (flex by task); T3 Reviewer `high`; T5 archive `low`.
+
+**Rules:** bump effort one level on every rework retry; never `max` a cheaper tier (escalate tier instead); under-specified tasks start one level higher; effort is not a verbosity dial.
+
+## Skill Map
+
+During `/akili-specify`, derive each task's skills from this map. During `/akili-execute` and `/akili-test`, the Leader assigns skills; Implementer/Tester must load them before writing code or tests.
+
+| Skill | Applies To | When to load |
+|-------|------------|--------------|
+| `nestjs-expert` | `packages/api/` | NestJS modules, guards, DTOs, services, job handlers |
+| `api-design-principles` | API endpoints | New routes, request/response contracts, error shapes |
+| `error-handling-patterns` | API + jobs | Exception filters, fail-closed validation, retry logic |
+| `aws-serverless` | `infra/`, Lambda | CDK/CFN, Lambda config, deploy scripts, VPC |
+| `shadcn-ui` | `packages/web/` | UI primitives, dialogs, forms, tables |
+| `tailwind-design-system` | `packages/web/` | Tailwind v4 utilities, CSS variables, responsive layout |
+| `vercel-react-best-practices` | `packages/web/` | React Query, App Router patterns, performance |
+
+## CodeGraph
+
+**Status:** Not initialized — `codegraph` CLI not installed. Use Explore subagents or targeted search for codebase analysis.
