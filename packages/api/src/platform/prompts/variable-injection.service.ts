@@ -1,4 +1,26 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+
+/** @akili-spec enhancements/multi-country-enablement */
+export function injectCountry(text: string, country: string): string {
+  if (!text) return text;
+  return text.replace(/\{\{country\}\}/g, country);
+}
+
+export function warnIfHardcodedKenyaWithoutPlaceholder(
+  logger: Pick<Logger, 'warn'>,
+  country: string,
+  ...texts: string[]
+): void {
+  if (country === 'Kenya') return;
+  for (const text of texts) {
+    if (text.includes('Kenya') && !text.includes('{{country}}')) {
+      logger.warn(
+        `Prompt contains hardcoded "Kenya" but assessment country is "${country}" and {{country}} placeholder is absent`,
+      );
+      return;
+    }
+  }
+}
 
 @Injectable()
 export class VariableInjectionService {
@@ -31,18 +53,34 @@ export class VariableInjectionService {
     return result;
   }
 
+  injectCountry(text: string, country: string): string {
+    return injectCountry(text, country);
+  }
+
   /**
    * Injects variables into both systemPrompt and userPromptTemplate of a prompt object.
    * Returns a new object with replaced values (does not mutate input).
+   * When country is provided, also replaces {{country}} in both prompts.
    */
   injectAll<T extends { systemPrompt: string; userPromptTemplate: string }>(
     prompt: T,
     categories: string[],
+    country?: string,
   ): T {
-    return {
+    const withCategories = {
       ...prompt,
       systemPrompt: this.inject(prompt.systemPrompt, categories),
       userPromptTemplate: this.inject(prompt.userPromptTemplate, categories),
+    };
+
+    if (!country) {
+      return withCategories;
+    }
+
+    return {
+      ...withCategories,
+      systemPrompt: injectCountry(withCategories.systemPrompt, country),
+      userPromptTemplate: injectCountry(withCategories.userPromptTemplate, country),
     };
   }
 }

@@ -5,6 +5,10 @@ import type { JobHandler } from '../job-handler.interface';
 import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
 import { GAP_DETECTION_CONFIG } from '../../../domain/gap-detection/gap-detection.config';
 import type { Core10FieldDefinition } from '../../../domain/gap-detection/gap-detection.config';
+import {
+  injectCountry,
+  warnIfHardcodedKenyaWithoutPlaceholder,
+} from '../../prompts/variable-injection.service';
 
 interface GapDetectionInput {
   assessmentId: string;
@@ -67,7 +71,7 @@ export class GapDetectionHandler implements JobHandler {
     let mergedMarkdown = '';
 
     if (assessment.intakeMode === 'UPLOAD') {
-      const result = await this.processUploadMode(input.assessmentId, isReAnalyze);
+      const result = await this.processUploadMode(input.assessmentId, assessment.country, isReAnalyze);
       bedrockTokensUsed = result.tokensUsed;
       mergedMarkdown = result.mergedMarkdown;
     } else {
@@ -97,7 +101,11 @@ export class GapDetectionHandler implements JobHandler {
 
   // ─── Upload Mode ─────────────────────────────────────────────────────────────
 
-  private async processUploadMode(assessmentId: string, isReAnalyze = false): Promise<{ tokensUsed: number; mergedMarkdown: string }> {
+  private async processUploadMode(
+    assessmentId: string,
+    country: string,
+    isReAnalyze = false,
+  ): Promise<{ tokensUsed: number; mergedMarkdown: string }> {
     // 1. Fetch ALL completed PARSE_DOCUMENT jobs for this assessment
     const parseJobs = await this.prisma.job.findMany({
       where: {
@@ -153,10 +161,19 @@ export class GapDetectionHandler implements JobHandler {
       throw new Error('No active gap_detector prompt found in database. Run seed first.');
     }
 
+    warnIfHardcodedKenyaWithoutPlaceholder(
+      this.logger,
+      country,
+      prompt.systemPrompt,
+      prompt.userPromptTemplate,
+    );
+
+    const systemPrompt = injectCountry(prompt.systemPrompt, country);
+
     // 4. Inject extracted data into user prompt template
-    let userPrompt = prompt.userPromptTemplate.replace(
-      /\{\{extracted_data\}\}/g,
-      extractedText,
+    let userPrompt = injectCountry(
+      prompt.userPromptTemplate.replace(/\{\{extracted_data\}\}/g, extractedText),
+      country,
     );
 
     // 4b. In re-analyze mode, fetch existing corrections and append to prompt
@@ -180,7 +197,7 @@ export class GapDetectionHandler implements JobHandler {
       const gapModel = BEDROCK_MODELS[AgentSection.GAP_DETECTOR];
       const { output, tokensUsed } = await this.bedrock.invokeModel({
         modelId: gapModel.modelId,
-        systemPrompt: prompt.systemPrompt,
+        systemPrompt,
         userPrompt,
         temperature: gapModel.temperature,
         maxTokens: gapModel.maxTokens,

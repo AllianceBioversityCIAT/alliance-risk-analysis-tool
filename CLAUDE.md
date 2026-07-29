@@ -158,7 +158,7 @@ pnpm dev    # API :3001 + Web :3000
 ## Key Constraints
 
 - ESLint 8.x is used (required for `eslint-config-next` and `@typescript-eslint` compatibility)
-- `pnpm.onlyBuiltDependencies` in root `package.json` whitelists packages needing postinstall scripts
+- `allowBuilds` in root `pnpm-workspace.yaml` whitelists packages needing postinstall scripts (moved from the now-ignored `pnpm.onlyBuiltDependencies` field in `package.json`)
 - Web test script includes `--passWithNoTests` since test files may not always exist
 - Prisma schema lives in `packages/api/prisma/schema.prisma`
 - Shared package must be built (`pnpm --filter @alliance-risk/shared build`) before API or Web can import from it

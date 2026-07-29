@@ -6,6 +6,7 @@ import {
   MaxLength,
 } from 'class-validator';
 import { IntakeMode } from '@alliance-risk/shared';
+import { IsSupportedCountry } from '../../../common/validators/is-supported-country.validator';
 
 export class CreateAssessmentDto {
   @IsString()
@@ -24,8 +25,7 @@ export class CreateAssessmentDto {
   companyType?: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(100)
+  @IsSupportedCountry()
   country?: string;
 
   @IsEnum(IntakeMode)

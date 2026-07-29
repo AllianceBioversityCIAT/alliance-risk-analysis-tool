@@ -20,6 +20,7 @@ export { AssessmentStatus, IntakeMode };
 export interface AssessmentFilters {
   status?: AssessmentStatus;
   search?: string;
+  country?: string;
   cursor?: string;
   limit?: number;
 }
@@ -36,6 +37,7 @@ export interface UpdateAssessmentData {
   name?: string;
   companyName?: string;
   companyType?: string;
+  country?: string;
   status?: AssessmentStatus;
   progress?: number;
   version?: number;
@@ -78,11 +80,13 @@ export function useAssessment(id: string | null, options: UseAssessmentOptions =
   });
 }
 
-export function useAssessmentStats() {
+export function useAssessmentStats(country?: string) {
   return useQuery<AssessmentStats>({
-    queryKey: ['assessment-stats'],
+    queryKey: ['assessment-stats', country],
     queryFn: async () => {
-      const response = await apiClient.get<AssessmentStats>('/api/assessments/stats');
+      const response = await apiClient.get<AssessmentStats>('/api/assessments/stats', {
+        params: country ? { country } : undefined,
+      });
       return response.data;
     },
     staleTime: 5 * 60 * 1000, // 5 minutes

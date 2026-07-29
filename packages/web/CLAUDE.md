@@ -83,6 +83,7 @@ src/
   providers/
     query-provider.tsx          # React Query client provider
     auth-provider.tsx           # AuthContext (user, isAuthenticated, isAdmin, login, logout)
+    country-filter-provider.tsx # Active country context + localStorage (alliance_active_country)
 ```
 
 ## Conventions

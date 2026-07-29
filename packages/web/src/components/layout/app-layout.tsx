@@ -3,10 +3,10 @@
 import { Suspense } from 'react';
 import { usePathname } from 'next/navigation';
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar';
-import { SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
 import { AppSidebar } from './app-sidebar';
 import { AppHeader } from './app-header';
+import { useCountryFilter } from '@/providers/country-filter-provider';
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -24,6 +24,7 @@ export function AppLayout({
   onSearch,
 }: AppLayoutProps) {
   const pathname = usePathname();
+  const { activeCountry, setActiveCountry } = useCountryFilter();
   // Assessment flow pages use their own teal sub-header instead of the standard AppHeader
   const isAssessmentFlow =
     pathname?.startsWith('/assessments/') &&
@@ -42,6 +43,8 @@ export function AppLayout({
               onStartAssessment={onStartAssessment}
               searchQuery={searchQuery}
               onSearch={onSearch}
+              activeCountry={activeCountry}
+              onCountryChange={setActiveCountry}
             />
           )}
           <main

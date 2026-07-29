@@ -2,7 +2,7 @@
 
 > **Status:** Living document (MVP baseline)  
 > **Last updated:** 2026-07-27  
-> **Geography:** Kenya (MVP); multi-country expansion is future work
+> **Geography:** Kenya, Ethiopia, Nigeria, Zambia (multi-country enablement, 2026-07)
 
 ---
 
@@ -75,7 +75,7 @@ Analysts need a guided tool that ingests documents, flags gaps, scores risk with
 - Report generation (web view + PDF download)
 - Admin: user management, prompt CMS (versioning, preview, comments, history)
 - Async job polling pattern for all long-running AI operations
-- Kenya-focused content and prompts
+- Multi-country support: Kenya, Ethiopia, Nigeria, Zambia
 
 ### Out of scope (MVP)
 

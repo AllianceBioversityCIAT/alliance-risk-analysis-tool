@@ -43,7 +43,9 @@ async function main() {
       name: 'Gap Detector - Default',
       // System prompt: defines the Core 10 schema, classification rules, and expected JSON output format.
       // This prompt instructs the AI to classify—not generate—data from the extracted document text.
-      systemPrompt: `You are an agricultural business plan analyzer. Your task is to extract and classify 10 mandatory business fields from the provided document text.
+      systemPrompt: `You are an agricultural business plan analyzer. Analyze this agricultural business in the context of {{country}}. Consider regulatory, climate, market, and financial conditions typical of {{country}} using general knowledge.
+
+Your task is to extract and classify 10 mandatory business fields from the provided document text.
 
 ## IMPORTANT: Multi-Document Analysis
 
@@ -91,7 +93,7 @@ You MUST return exactly 10 field entries, one for each Core 10 field.
 Return ONLY the JSON object, no additional text.`,
       // User prompt template: the {{extracted_data}} placeholder is replaced at runtime
       // with the truncated text extracted from the business plan PDF via AWS Textract.
-      userPromptTemplate: `Analyze the following extracted business plan text and classify each of the 10 Core 10 mandatory fields. The text may contain MULTIPLE documents separated by "## Document:" headers — extract information from ALL of them.
+      userPromptTemplate: `Analyze the following extracted business plan text for an enterprise operating in {{country}}. Classify each of the 10 Core 10 mandatory fields. The text may contain MULTIPLE documents separated by "## Document:" headers — extract information from ALL of them.
 
 ## Extracted Document Text
 
@@ -102,7 +104,9 @@ Remember: examine ALL document sections above. Financial spreadsheets often cont
     {
       section: AgentSection.risk_analysis,
       name: 'Risk Analysis - Default',
-      systemPrompt: `You are an expert agricultural risk analyst specializing in smallholder farming enterprises, agribusinesses, and agricultural value chains in developing countries. Your task is to perform a comprehensive risk assessment across 7 risk categories, each with 5 subcategories.
+      systemPrompt: `You are an expert agricultural risk analyst specializing in smallholder farming enterprises, agribusinesses, and agricultural value chains in developing countries. Analyze this agricultural business in the context of {{country}}. Consider regulatory, climate, market, and financial conditions typical of {{country}} using general knowledge.
+
+Your task is to perform a comprehensive risk assessment across 7 risk categories, each with 5 subcategories.
 
 CRITICAL: You MUST use the EXACT category names and subcategory names provided below. Do NOT rename, abbreviate, or substitute category names.
 
@@ -125,7 +129,7 @@ The category-level score is the average of its 5 subcategory scores, rounded to 
 - Base scores on EVIDENCE found in the documents. If information is missing for a subcategory, assign a higher risk score (60–80) because lack of information itself represents risk.
 - Be specific in evidence citations — reference actual data points, numbers, or statements from the documents.
 - Provide actionable, context-specific recommendations, not generic advice.
-- Consider the agricultural context of the country of operation when assessing risk levels.
+- Consider the agricultural context of {{country}} when assessing risk levels.
 - You MUST provide evidence, narrative, and recommendations for ALL 7 categories — not just the ones with the most data. Missing data is itself a risk signal.
 - Each subcategory MUST have a unique score — do NOT assign the same score to all subcategories in a category.
 
@@ -164,7 +168,7 @@ MANDATORY RULES:
 4. Each subcategory MUST have a non-null evidence string and mitigation string
 5. Recommendation priority must be one of: "HIGH", "MEDIUM", "LOW"
 6. Do NOT wrap the response in markdown code fences — return raw JSON only`,
-      userPromptTemplate: `Perform a comprehensive risk analysis on the following agricultural business. Evaluate ALL 7 risk categories with their 5 subcategories each, providing evidence-based scores and actionable recommendations.
+      userPromptTemplate: `Perform a comprehensive risk analysis on the following agricultural business operating in {{country}}. Evaluate ALL 7 risk categories with their 5 subcategories each, providing evidence-based scores and actionable recommendations.
 
 ## Business Data (Gap Field Extractions)
 
@@ -189,7 +193,9 @@ IMPORTANT INSTRUCTIONS:
     {
       section: AgentSection.report_generation,
       name: 'Report Generator - Default',
-      systemPrompt: `You are an expert report writer specializing in agricultural risk assessments for development finance institutions, impact investors, and agricultural development organizations. Your task is to synthesize risk analysis results into a clear, structured report.
+      systemPrompt: `You are an expert report writer specializing in agricultural risk assessments for development finance institutions, impact investors, and agricultural development organizations. Analyze this agricultural business in the context of {{country}}. Consider regulatory, climate, market, and financial conditions typical of {{country}} using general knowledge.
+
+Your task is to synthesize risk analysis results into a clear, structured report.
 
 ## Report Structure
 
@@ -231,7 +237,7 @@ Return ONLY a valid JSON object with this exact structure (no markdown, no expla
     "Financial management is the strongest area (25/100) but relies heavily on a single buyer for 70% of revenue."
   ]
 }`,
-      userPromptTemplate: `Generate a comprehensive risk assessment report based on the following risk analysis results. Synthesize the category scores, evidence, and recommendations into an executive summary, strengths, weaknesses, and key findings.
+      userPromptTemplate: `Generate a comprehensive risk assessment report for a business operating in {{country}} based on the following risk analysis results. Synthesize the category scores, evidence, and recommendations into an executive summary, strengths, weaknesses, and key findings.
 
 ## Risk Analysis Results
 

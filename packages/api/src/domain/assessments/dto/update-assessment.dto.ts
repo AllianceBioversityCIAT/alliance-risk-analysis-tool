@@ -1,5 +1,6 @@
 import { IsString, IsOptional, IsEnum, MaxLength, IsInt, Min, Max } from 'class-validator';
 import { AssessmentStatus } from '@alliance-risk/shared';
+import { IsSupportedCountry } from '../../../common/validators/is-supported-country.validator';
 
 export class UpdateAssessmentDto {
   @IsOptional()
@@ -16,6 +17,10 @@ export class UpdateAssessmentDto {
   @IsString()
   @MaxLength(100)
   companyType?: string;
+
+  @IsOptional()
+  @IsSupportedCountry()
+  country?: string;
 
   @IsOptional()
   @IsEnum(AssessmentStatus)

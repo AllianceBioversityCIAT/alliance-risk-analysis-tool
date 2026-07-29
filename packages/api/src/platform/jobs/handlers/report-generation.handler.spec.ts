@@ -65,9 +65,13 @@ function createRiskScores() {
 
 function createPrompt() {
   return {
-    systemPrompt: 'Generate a report',
-    userPromptTemplate: 'Analyze\n{{risk_results}}',
+    systemPrompt: 'Generate a report for {{country}}',
+    userPromptTemplate: 'Analyze {{country}}\n{{risk_results}}',
   };
+}
+
+function createNigeriaAssessment() {
+  return { ...createAssessment(), country: 'Nigeria' };
 }
 
 describe('ReportGenerationHandler', () => {
@@ -197,6 +201,50 @@ describe('ReportGenerationHandler', () => {
         correctedValue: null,
       },
     ]);
+  });
+
+  it('injects assessment country into narrative Bedrock prompts during execute', async () => {
+    mockPrisma.assessment.findUniqueOrThrow.mockResolvedValue(createNigeriaAssessment());
+    mockPrisma.riskScore.findMany.mockResolvedValue(createRiskScores());
+    mockPrisma.prompt.findFirst.mockResolvedValue(createPrompt());
+    mockPrisma.assessment.update.mockResolvedValue({});
+    mockPrisma.job.findMany.mockResolvedValue([]);
+    mockPrisma.assessmentDocument.findMany.mockResolvedValue([]);
+    mockPrisma.gapField.findMany.mockResolvedValue([]);
+    mockBedrock.invokeModel.mockResolvedValueOnce({
+      output: JSON.stringify({
+        executiveSummary: 'Summary',
+        strengths: ['Strong demand'],
+        weaknesses: ['Weak controls'],
+        keyFindings: ['Finding'],
+      }),
+      tokensUsed: 100,
+    });
+
+    await handler.execute({
+      assessmentId: 'assessment-1',
+      reportConfig: {
+        includeRadarChart: false,
+        includeCategoryDetails: false,
+        includeSubcategoryCharts: false,
+        subcategoryChartType: 'bar',
+        includeFinancialCharts: false,
+        includeRecommendations: false,
+        includeEvidenceTraces: false,
+        includeMethodology: false,
+        includeCompanyProfile: false,
+        includeRiskHeatmap: false,
+        includeActionPlan: false,
+        includeAppendix: false,
+      },
+    });
+
+    expect(mockBedrock.invokeModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining('Nigeria'),
+        userPrompt: expect.stringContaining('Nigeria'),
+      }),
+    );
   });
 
   it('uses fallback action-plan timeframes during execute when Bedrock assignment fails', async () => {

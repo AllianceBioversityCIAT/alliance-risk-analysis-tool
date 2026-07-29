@@ -12,6 +12,7 @@ import { Progress } from '@/components/ui/progress';
 import { AvatarInitials } from '@/components/shared/avatar-initials';
 import { StatusBadge } from '@/components/shared/status-badge';
 import type { AssessmentStatus } from '@/components/shared/status-badge';
+import { CountryBadge } from '@/components/shared/country-badge';
 import { TableCell, TableRow } from '@/components/ui/table';
 
 export interface AssessmentRowData {
@@ -19,6 +20,7 @@ export interface AssessmentRowData {
   name: string;
   companyName: string;
   companyType?: string;
+  country?: string;
   status: string;
   progress: number;
   updatedAt: string;
@@ -58,6 +60,11 @@ export function AssessmentTableRow({
           <div>
             <p className="text-sm font-semibold text-foreground">{assessment.name}</p>
             <p className="text-xs text-muted-foreground mt-0.5">{assessment.companyName}</p>
+            {assessment.country && (
+              <div className="mt-1.5">
+                <CountryBadge country={assessment.country} />
+              </div>
+            )}
           </div>
         </div>
       </TableCell>

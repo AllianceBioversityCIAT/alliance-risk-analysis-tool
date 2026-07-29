@@ -2,6 +2,7 @@
 
 import { Loader2 } from 'lucide-react';
 import { AssessmentStatus } from '@alliance-risk/shared';
+import { CountryBadge } from '@/components/shared/country-badge';
 
 function statusLabel(status: string | undefined): string {
   switch (status) {
@@ -18,9 +19,16 @@ export interface AssessmentTopBarProps {
   shortId: string;
   progress: number;
   status: string;
+  country?: string;
 }
 
-export function AssessmentTopBar({ name, shortId, progress, status }: Readonly<AssessmentTopBarProps>) {
+export function AssessmentTopBar({
+  name,
+  shortId,
+  progress,
+  status,
+  country,
+}: Readonly<AssessmentTopBarProps>) {
   const isAnalyzing = status === AssessmentStatus.ANALYZING;
 
   return (
@@ -32,6 +40,7 @@ export function AssessmentTopBar({ name, shortId, progress, status }: Readonly<A
           <span className="text-[10px] text-white/50 font-mono shrink-0">
             {shortId}
           </span>
+          {country && <CountryBadge country={country} variant="onDark" />}
         </div>
 
         {/* Right: progress + status */}

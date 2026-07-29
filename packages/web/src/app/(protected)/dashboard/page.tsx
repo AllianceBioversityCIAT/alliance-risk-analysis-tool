@@ -15,6 +15,7 @@ import {
   type AssessmentFilters,
 } from '@/hooks/use-assessments';
 import { useSearch } from '@/providers/search-provider';
+import { useCountryFilter } from '@/providers/country-filter-provider';
 import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
 
 const PAGE_SIZE = 10;
@@ -23,6 +24,7 @@ const DEBOUNCE_MS = 300;
 export default function DashboardPage() {
   const router = useRouter();
   const { searchQuery } = useSearch();
+  const { activeCountry } = useCountryFilter();
   const [currentPage, setCurrentPage] = useState(1);
   const [cursors, setCursors] = useState<(string | undefined)[]>([undefined]);
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -42,14 +44,21 @@ export default function DashboardPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Sync debounced search + status filter into filters
+  // Reset pagination when country changes
+  useEffect(() => {
+    setCurrentPage(1);
+    setCursors([undefined]);
+  }, [activeCountry]);
+
+  // Sync debounced search + status filter + country into filters
   useEffect(() => {
     setFilters((prev) => ({
       ...prev,
       search: debouncedSearch || undefined,
       status: statusFilter,
+      country: activeCountry,
     }));
-  }, [debouncedSearch, statusFilter]);
+  }, [debouncedSearch, statusFilter, activeCountry]);
 
   const handleStatusFilter = useCallback((status: string | undefined) => {
     setStatusFilter(status as AssessmentStatus | undefined);
@@ -57,7 +66,7 @@ export default function DashboardPage() {
     setCursors([undefined]);
   }, []);
 
-  const { data: stats, isLoading: statsLoading } = useAssessmentStats();
+  const { data: stats, isLoading: statsLoading } = useAssessmentStats(activeCountry);
   const { data: assessmentsData, isLoading: assessmentsLoading } = useAssessments({
     ...filters,
     cursor: cursors[currentPage - 1],
@@ -70,6 +79,7 @@ export default function DashboardPage() {
     name: a.name,
     companyName: a.companyName,
     companyType: (a as unknown as Record<string, unknown>).companyType as string | undefined,
+    country: a.country,
     status: a.status,
     progress: a.progress,
     updatedAt: a.updatedAt,
@@ -184,6 +194,7 @@ export default function DashboardPage() {
         hasPrevPage={hasPrevPage}
         isLoading={assessmentsLoading}
         searchQuery={debouncedSearch}
+        activeCountry={activeCountry}
         activeStatus={statusFilter}
         onStatusFilter={handleStatusFilter}
         onNextPage={handleNextPage}

@@ -5,6 +5,10 @@ import type { JobHandler } from '../job-handler.interface';
 import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
 import { RISK_ANALYSIS_CONFIG } from '../../../domain/risk-analysis/risk-analysis.config';
 import type { CategoryDefinition } from '../../../domain/risk-analysis/risk-analysis.config';
+import {
+  injectCountry,
+  warnIfHardcodedKenyaWithoutPlaceholder,
+} from '../../prompts/variable-injection.service';
 
 interface RiskAnalysisInput {
   assessmentId: string;
@@ -68,7 +72,7 @@ export class RiskAnalysisHandler implements JobHandler {
     );
 
     // 1. Verify assessment exists (throws if not found)
-    await this.prisma.assessment.findUniqueOrThrow({
+    const assessment = await this.prisma.assessment.findUniqueOrThrow({
       where: { id: input.assessmentId },
     });
 
@@ -125,6 +129,13 @@ export class RiskAnalysisHandler implements JobHandler {
       throw new Error('No active risk_analysis prompt found in database. Run seed first.');
     }
 
+    warnIfHardcodedKenyaWithoutPlaceholder(
+      this.logger,
+      assessment.country,
+      prompt.systemPrompt,
+      prompt.userPromptTemplate,
+    );
+
     // 6. Determine target categories
     const allCategories = RISK_ANALYSIS_CONFIG.categories as unknown as CategoryDefinition[];
     const targetCategories = isSingleCategory
@@ -140,13 +151,18 @@ export class RiskAnalysisHandler implements JobHandler {
       .join('\n\n');
 
     // 7. Inject placeholders into both system and user prompt templates
-    const systemPrompt = prompt.systemPrompt
-      .replace(/\{\{categories\}\}/g, categoriesText);
+    const systemPrompt = injectCountry(
+      prompt.systemPrompt.replace(/\{\{categories\}\}/g, categoriesText),
+      assessment.country,
+    );
 
-    const userPrompt = prompt.userPromptTemplate
-      .replace(/\{\{business_data\}\}/g, businessData + additionalContext)
-      .replace(/\{\{document_content\}\}/g, documentContent)
-      .replace(/\{\{categories\}\}/g, categoriesText);
+    const userPrompt = injectCountry(
+      prompt.userPromptTemplate
+        .replace(/\{\{business_data\}\}/g, businessData + additionalContext)
+        .replace(/\{\{document_content\}\}/g, documentContent)
+        .replace(/\{\{categories\}\}/g, categoriesText),
+      assessment.country,
+    );
 
     // 7b. Update progress only for full runs
     if (!isSingleCategory) {

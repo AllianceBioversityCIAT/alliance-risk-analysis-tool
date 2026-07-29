@@ -27,6 +27,8 @@ interface AssessmentTableProps {
   isLoading?: boolean;
   /** Active search query — drives contextual heading and empty state */
   searchQuery?: string;
+  /** Active country filter — drives country-specific empty state */
+  activeCountry?: string;
   /** Active status filter — drives pill highlight */
   activeStatus?: string;
   onStatusFilter?: (status: string | undefined) => void;
@@ -89,6 +91,7 @@ export function AssessmentTable({
   hasPrevPage,
   isLoading = false,
   searchQuery = '',
+  activeCountry,
   activeStatus,
   onStatusFilter,
   onNextPage,
@@ -221,7 +224,11 @@ export function AssessmentTable({
                 ) : (
                   <div className="flex flex-col items-center gap-2">
                     <FileSearch className="h-10 w-10 text-muted-foreground/50" />
-                    <p className="text-sm font-medium text-foreground">No assessments yet</p>
+                    <p className="text-sm font-medium text-foreground">
+                      {activeCountry
+                        ? `No assessments for ${activeCountry} yet`
+                        : 'No assessments yet'}
+                    </p>
                     <p className="text-sm text-muted-foreground">
                       Click &ldquo;Start New Assessment&rdquo; to create your first risk assessment.
                     </p>

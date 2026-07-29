@@ -70,8 +70,13 @@ describe('AssessmentsController', () => {
 
   describe('getStats', () => {
     it('should return assessment stats', async () => {
-      const result = await controller.getStats(mockUser);
+      const result = await controller.getStats({}, mockUser);
       expect(result).toEqual({ active: 0, drafts: 1, completed: 0, total: 1 });
+    });
+
+    it('should pass country filter to service', async () => {
+      await controller.getStats({ country: 'Nigeria' }, mockUser);
+      expect(mockService.getStats).toHaveBeenCalledWith(mockUser.userId, 'Nigeria');
     });
   });
 

@@ -31,7 +31,8 @@ import {
 } from '@/components/ui/select';
 import { IntakeModeCard, FormatBadges, FeatureList } from './intake-mode-card';
 import { useCreateAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
-import { IntakeMode } from '@alliance-risk/shared';
+import { IntakeMode, SUPPORTED_COUNTRIES, type SupportedCountryLabel } from '@alliance-risk/shared';
+import { useCountryFilter } from '@/providers/country-filter-provider';
 import { cn } from '@/lib/utils';
 import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
 
@@ -49,6 +50,7 @@ const businessInfoSchema = z.object({
   name: z.string().min(2, 'Assessment name must be at least 2 characters'),
   companyName: z.string().min(2, 'Company name must be at least 2 characters'),
   companyType: z.string().min(1, 'Please select a company type'),
+  country: z.string().min(1, 'Please select a country'),
 });
 
 type BusinessInfoFormValues = z.infer<typeof businessInfoSchema>;
@@ -63,6 +65,7 @@ type Step = 'business-info' | 'intake-mode';
 
 export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: StartAssessmentModalProps) {
   const router = useRouter();
+  const { activeCountry } = useCountryFilter();
   const [step, setStep] = useState<Step>('business-info');
   const [selectedMode, setSelectedMode] = useState<IntakeMode | null>(null);
   const [formValues, setFormValues] = useState<BusinessInfoFormValues | null>(null);
@@ -80,20 +83,29 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
           name: draftAssessment.name,
           companyName: draftAssessment.companyName,
           companyType: draftAssessment.companyType ?? '',
+          country: draftAssessment.country ?? activeCountry,
         }
-      : { name: '', companyName: '', companyType: '' },
+      : { name: '', companyName: '', companyType: '', country: activeCountry },
   });
 
-  // Reset form values when draftAssessment changes
+  // Reset form values when draftAssessment or activeCountry changes
   useEffect(() => {
     if (draftAssessment) {
       form.reset({
         name: draftAssessment.name,
         companyName: draftAssessment.companyName,
         companyType: draftAssessment.companyType ?? '',
+        country: draftAssessment.country ?? activeCountry,
+      });
+    } else if (open) {
+      form.reset({
+        name: '',
+        companyName: '',
+        companyType: '',
+        country: activeCountry,
       });
     }
-  }, [draftAssessment, form]);
+  }, [draftAssessment, activeCountry, open, form]);
 
   async function handleClose() {
     // If form has valid data and not resuming an existing draft, save as new draft
@@ -102,11 +114,12 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
 
     if (hasData && !isResumingDraft) {
       try {
+        const selectedCountry = currentValues.country as SupportedCountryLabel;
         await createAssessment({
           name: currentValues.name,
           companyName: currentValues.companyName,
           companyType: currentValues.companyType || undefined,
-          country: 'Kenya',
+          country: selectedCountry || activeCountry,
           intakeMode: IntakeMode.UPLOAD, // Default mode for drafts
         });
       } catch {
@@ -119,7 +132,7 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
       setStep('business-info');
       setSelectedMode(null);
       setFormValues(null);
-      form.reset({ name: '', companyName: '', companyType: '' });
+      form.reset({ name: '', companyName: '', companyType: '', country: activeCountry });
     }, 300);
   }
 
@@ -136,23 +149,22 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
       let assessmentId: string;
 
       if (isResumingDraft && draftAssessment) {
-        // Update existing draft
         await updateAssessment({
           id: draftAssessment.id,
           data: {
             name: formValues.name,
             companyName: formValues.companyName,
             companyType: formValues.companyType,
+            country: formValues.country as SupportedCountryLabel,
           },
         });
         assessmentId = draftAssessment.id;
       } else {
-        // Create new assessment
         const assessment = await createAssessment({
           name: formValues.name,
           companyName: formValues.companyName,
           companyType: formValues.companyType,
-          country: 'Kenya',
+          country: formValues.country as SupportedCountryLabel,
           intakeMode: mode,
         });
         assessmentId = assessment.id;
@@ -164,7 +176,7 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
         setStep('business-info');
         setSelectedMode(null);
         setFormValues(null);
-        form.reset({ name: '', companyName: '', companyType: '' });
+        form.reset({ name: '', companyName: '', companyType: '', country: activeCountry });
       }, 300);
 
       switch (mode) {
@@ -254,15 +266,31 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
                   )}
                 />
 
-                {/* Country — locked to Kenya for MVP */}
-                <div className="space-y-1.5">
-                  <label className="text-sm font-medium text-foreground">Country</label>
-                  <div className="flex h-9 items-center px-3 rounded-md border border-input bg-muted text-sm text-muted-foreground">
-                    <span className="mr-2 text-base">🇰🇪</span>
-                    Kenya
-                    <span className="ml-auto text-xs">(MVP)</span>
-                  </div>
-                </div>
+                <FormField
+                  control={form.control}
+                  name="country"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Country</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select country..." />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {SUPPORTED_COUNTRIES.map((c) => (
+                            <SelectItem key={c.label} value={c.label}>
+                              <span className="mr-2">{c.flag}</span>
+                              {c.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
 
                 <div className="flex justify-end gap-2 pt-2">
                   <Button type="button" variant="outline" onClick={handleClose}>

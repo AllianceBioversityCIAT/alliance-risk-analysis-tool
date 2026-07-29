@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
-import { JobType, ALLOWED_DOCUMENT_MIME_TYPES, MAX_FILE_SIZE_PDF, MAX_FILE_SIZE_OTHER } from '@alliance-risk/shared';
+import { JobType, ALLOWED_DOCUMENT_MIME_TYPES, MAX_FILE_SIZE_PDF, MAX_FILE_SIZE_OTHER, DEFAULT_COUNTRY } from '@alliance-risk/shared';
 import {
   CreateAssessmentDto,
   UpdateAssessmentDto,
@@ -35,7 +35,7 @@ export class AssessmentsService {
         name: dto.name,
         companyName: dto.companyName,
         companyType: dto.companyType,
-        country: dto.country ?? 'Kenya',
+        country: dto.country ?? DEFAULT_COUNTRY,
         intakeMode: dto.intakeMode as unknown as import('@prisma/client').$Enums.IntakeMode,
         userId,
       },
@@ -51,6 +51,7 @@ export class AssessmentsService {
     const where = {
       userId,
       ...(query.status && { status: query.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
+      ...(query.country && { country: query.country }),
       ...(query.search && {
         OR: [
           { name: { contains: query.search, mode: 'insensitive' as const } },
@@ -88,12 +89,19 @@ export class AssessmentsService {
   }
 
   async update(id: string, dto: UpdateAssessmentDto, userId: string): Promise<Assessment> {
-    await this.findOne(id, userId); // Ownership check
+    const assessment = await this.findOne(id, userId); // Ownership check
+
+    if (dto.country !== undefined && assessment.status !== 'DRAFT') {
+      throw new BadRequestException(
+        'Country can only be changed while assessment is in DRAFT status',
+      );
+    }
 
     const updateData = {
       ...(dto.name && { name: dto.name }),
       ...(dto.companyName && { companyName: dto.companyName }),
       ...(dto.companyType !== undefined && { companyType: dto.companyType }),
+      ...(dto.country !== undefined && { country: dto.country }),
       ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
       ...(dto.progress !== undefined && { progress: dto.progress }),
       version: { increment: 1 },
@@ -107,6 +115,7 @@ export class AssessmentsService {
           ...(dto.name && { name: dto.name }),
           ...(dto.companyName && { companyName: dto.companyName }),
           ...(dto.companyType !== undefined && { companyType: dto.companyType }),
+          ...(dto.country !== undefined && { country: dto.country }),
           ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
           ...(dto.progress !== undefined && { progress: dto.progress }),
           version: dto.version + 1,
@@ -134,12 +143,16 @@ export class AssessmentsService {
     await this.prisma.assessment.delete({ where: { id } });
   }
 
-  async getStats(userId: string): Promise<{ active: number; drafts: number; completed: number; total: number }> {
+  async getStats(
+    userId: string,
+    country?: string,
+  ): Promise<{ active: number; drafts: number; completed: number; total: number }> {
+    const baseWhere = { userId, ...(country && { country }) };
     const [active, drafts, completed, total] = await Promise.all([
-      this.prisma.assessment.count({ where: { userId, status: 'ANALYZING' } }),
-      this.prisma.assessment.count({ where: { userId, status: 'DRAFT' } }),
-      this.prisma.assessment.count({ where: { userId, status: 'COMPLETE' } }),
-      this.prisma.assessment.count({ where: { userId } }),
+      this.prisma.assessment.count({ where: { ...baseWhere, status: 'ANALYZING' } }),
+      this.prisma.assessment.count({ where: { ...baseWhere, status: 'DRAFT' } }),
+      this.prisma.assessment.count({ where: { ...baseWhere, status: 'COMPLETE' } }),
+      this.prisma.assessment.count({ where: baseWhere }),
     ]);
     return { active, drafts, completed, total };
   }
