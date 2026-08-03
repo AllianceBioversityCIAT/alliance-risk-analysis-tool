@@ -82,6 +82,98 @@ function SortIcon({ active, direction }: { active: boolean; direction: SortDir }
     : <ArrowDown className="h-3 w-3 ml-1" />;
 }
 
+function getHeading(searchQuery: string, activeStatus: string | undefined): string {
+  if (searchQuery.length > 0) return `Results for "${searchQuery}"`;
+  if (activeStatus) {
+    const label = STATUS_PILLS.find((p) => p.key === activeStatus)?.label ?? '';
+    return `${label} Assessments`;
+  }
+  return 'Active Assessments';
+}
+
+function FilteredEmptyState({ searchQuery }: { searchQuery: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <FileSearch className="h-10 w-10 text-muted-foreground/50" />
+      <p className="text-sm font-medium text-foreground">No results found</p>
+      <p className="text-sm text-muted-foreground">
+        {searchQuery
+          ? <>No results for &ldquo;{searchQuery}&rdquo;. Try a different search term.</>
+          : 'No assessments match this filter.'}
+      </p>
+    </div>
+  );
+}
+
+function NoAssessmentsEmptyState({ activeCountry }: { activeCountry: string | undefined }) {
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <FileSearch className="h-10 w-10 text-muted-foreground/50" />
+      <p className="text-sm font-medium text-foreground">
+        {activeCountry ? `No assessments for ${activeCountry} yet` : 'No assessments yet'}
+      </p>
+      <p className="text-sm text-muted-foreground">
+        Click &ldquo;Start New Assessment&rdquo; to create your first risk assessment.
+      </p>
+    </div>
+  );
+}
+
+interface AssessmentTableBodyProps {
+  isLoading: boolean;
+  sortedAssessments: AssessmentRowData[];
+  isFiltering: boolean;
+  searchQuery: string;
+  activeCountry: string | undefined;
+  onView?: (id: string) => void;
+  onEdit?: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onResume?: (assessment: AssessmentRowData) => void;
+}
+
+function AssessmentTableBody({
+  isLoading,
+  sortedAssessments,
+  isFiltering,
+  searchQuery,
+  activeCountry,
+  onView,
+  onEdit,
+  onDelete,
+  onResume,
+}: AssessmentTableBodyProps) {
+  if (isLoading) {
+    return <>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)}</>;
+  }
+
+  if (sortedAssessments.length === 0) {
+    return (
+      <TableRow>
+        <td colSpan={5} className="py-16 text-center">
+          {isFiltering
+            ? <FilteredEmptyState searchQuery={searchQuery} />
+            : <NoAssessmentsEmptyState activeCountry={activeCountry} />}
+        </td>
+      </TableRow>
+    );
+  }
+
+  return (
+    <>
+      {sortedAssessments.map((assessment) => (
+        <AssessmentTableRow
+          key={assessment.id}
+          assessment={assessment}
+          onView={onView}
+          onEdit={onEdit}
+          onDelete={onDelete}
+          onResume={onResume}
+        />
+      ))}
+    </>
+  );
+}
+
 export function AssessmentTable({
   assessments,
   total,
@@ -107,11 +199,7 @@ export function AssessmentTable({
   const startRecord = (currentPage - 1) * pageSize + 1;
   const endRecord = Math.min(currentPage * pageSize, total);
   const isFiltering = searchQuery.length > 0 || !!activeStatus;
-  const heading = searchQuery.length > 0
-    ? `Results for "${searchQuery}"`
-    : activeStatus
-      ? `${STATUS_PILLS.find((p) => p.key === activeStatus)?.label ?? ''} Assessments`
-      : 'Active Assessments';
+  const heading = getHeading(searchQuery, activeStatus);
 
   const handleSort = (key: SortKey) => {
     if (sortKey === key) {
@@ -206,48 +294,17 @@ export function AssessmentTable({
           </TableRow>
         </TableHeader>
         <TableBody>
-          {isLoading ? (
-            Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)
-          ) : sortedAssessments.length === 0 ? (
-            <TableRow>
-              <td colSpan={5} className="py-16 text-center">
-                {isFiltering ? (
-                  <div className="flex flex-col items-center gap-2">
-                    <FileSearch className="h-10 w-10 text-muted-foreground/50" />
-                    <p className="text-sm font-medium text-foreground">No results found</p>
-                    <p className="text-sm text-muted-foreground">
-                      {searchQuery
-                        ? <>No results for &ldquo;{searchQuery}&rdquo;. Try a different search term.</>
-                        : 'No assessments match this filter.'}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center gap-2">
-                    <FileSearch className="h-10 w-10 text-muted-foreground/50" />
-                    <p className="text-sm font-medium text-foreground">
-                      {activeCountry
-                        ? `No assessments for ${activeCountry} yet`
-                        : 'No assessments yet'}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Click &ldquo;Start New Assessment&rdquo; to create your first risk assessment.
-                    </p>
-                  </div>
-                )}
-              </td>
-            </TableRow>
-          ) : (
-            sortedAssessments.map((assessment) => (
-              <AssessmentTableRow
-                key={assessment.id}
-                assessment={assessment}
-                onView={onView}
-                onEdit={onEdit}
-                onDelete={onDelete}
-                onResume={onResume}
-              />
-            ))
-          )}
+          <AssessmentTableBody
+            isLoading={isLoading}
+            sortedAssessments={sortedAssessments}
+            isFiltering={isFiltering}
+            searchQuery={searchQuery}
+            activeCountry={activeCountry}
+            onView={onView}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onResume={onResume}
+          />
         </TableBody>
       </Table>
 
