@@ -65,3 +65,11 @@ export {
   MAX_FILE_SIZE_OTHER,
 } from './constants/document.constants';
 export type { AllowedDocumentMimeType } from './constants/document.constants';
+export {
+  SUPPORTED_COUNTRIES,
+  SUPPORTED_COUNTRY_LABELS,
+  DEFAULT_COUNTRY,
+  isSupportedCountry,
+  getCountryFlag,
+} from './constants/supported-countries';
+export type { SupportedCountry, SupportedCountryLabel } from './constants/supported-countries';

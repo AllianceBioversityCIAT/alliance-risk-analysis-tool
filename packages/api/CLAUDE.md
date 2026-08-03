@@ -72,8 +72,8 @@ src/
       │  GET    /:id/comments     # List comments
       assessments.service.ts      # Business logic + Prisma + S3 + JobsService
       dto/                        # CreateAssessmentDto, UpdateAssessmentDto,
-                                  # ListAssessmentsQueryDto, RequestUploadDto,
-                                  # CreateAssessmentCommentDto
+                                  # ListAssessmentsQueryDto, AssessmentStatsQueryDto,
+                                  # RequestUploadDto, CreateAssessmentCommentDto
 
     gap-detection/
       gap-detection.module.ts     # Imports DatabaseModule, JobsModule, BedrockModule
@@ -204,6 +204,8 @@ src/
 
   # ── Common ────────────────────────────────────────────────────────────────
   common/
+    validators/
+      is-supported-country.validator.ts  # @IsSupportedCountry() — class-validator decorator over @alliance-risk/shared allowlist
     decorators/
       public.decorator.ts         # @Public() — bypasses JwtAuthGuard globally
       current-user.decorator.ts   # @CurrentUser() — extracts UserClaims from request

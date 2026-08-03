@@ -61,6 +61,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
 import { AxiosError } from 'axios';
+import { CountryBadge } from '@/components/shared/country-badge';
 
 // Group gap fields by category preserving insertion order
 function groupByCategory(fields: GapFieldResponse[]) {
@@ -351,6 +352,9 @@ export default function GapDetectorClient() {
                 <span className="text-[10px] text-white/50 font-mono shrink-0">
                   {assessment.id.substring(0, 8).toUpperCase()}
                 </span>
+                {assessment.country && (
+                  <CountryBadge country={assessment.country} variant="onDark" />
+                )}
               </div>
               <div className="flex items-center gap-3 shrink-0">
                 <span className="text-sm font-bold text-white">{completeness}%</span>

@@ -188,6 +188,7 @@ describe('RiskAnalysisHandler', () => {
     (prisma.assessment.findUniqueOrThrow as jest.Mock).mockResolvedValue({
       id: mockAssessmentId,
       companyName: 'Test Farm',
+      country: 'Nigeria',
       intakeMode: 'UPLOAD',
     });
 
@@ -201,8 +202,8 @@ describe('RiskAnalysisHandler', () => {
     (prisma.dataEntry.findMany as jest.Mock).mockResolvedValue([]);
 
     (prisma.prompt.findFirst as jest.Mock).mockResolvedValue({
-      systemPrompt: 'You are a risk analyst.',
-      userPromptTemplate: 'Analyze: {{business_data}} Documents: {{document_content}}',
+      systemPrompt: 'You are a risk analyst for {{country}}.',
+      userPromptTemplate: 'Analyze in {{country}}: {{business_data}} Documents: {{document_content}}',
     });
 
     (prisma.riskScore.findMany as jest.Mock).mockImplementation(async (args) => {
@@ -319,6 +320,23 @@ describe('RiskAnalysisHandler', () => {
     expect(prisma.recommendation.deleteMany).toHaveBeenCalledWith({
       where: { riskScoreId: { in: ['existing-score-1', 'existing-score-2'] } },
     });
+  });
+
+  it('should inject assessment country into Bedrock prompts', async () => {
+    setupDefaultMocks();
+    (bedrock.invokeModel as jest.Mock).mockResolvedValue({
+      output: JSON.stringify(mockAIResponse),
+      tokensUsed: 5000,
+    });
+
+    await handler.execute({ assessmentId: mockAssessmentId });
+
+    expect(bedrock.invokeModel).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining('Nigeria'),
+        userPrompt: expect.stringContaining('Nigeria'),
+      }),
+    );
   });
 
   it('should compute correct overall score as average', async () => {

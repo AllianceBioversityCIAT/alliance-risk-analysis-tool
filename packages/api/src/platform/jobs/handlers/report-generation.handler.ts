@@ -16,6 +16,10 @@ import type {
   ReportGenerationStage,
   ReportGenerationProgress,
 } from '@alliance-risk/shared';
+import {
+  injectCountry,
+  warnIfHardcodedKenyaWithoutPlaceholder,
+} from '../../prompts/variable-injection.service';
 
 interface ReportGenerationInput {
   assessmentId: string;
@@ -109,6 +113,15 @@ export class ReportGenerationHandler implements JobHandler {
       throw new Error('No active report_generation prompt found in database. Run seed first.');
     }
 
+    warnIfHardcodedKenyaWithoutPlaceholder(
+      this.logger,
+      assessment.country,
+      prompt.systemPrompt,
+      prompt.userPromptTemplate,
+    );
+
+    const systemPrompt = injectCountry(prompt.systemPrompt, assessment.country);
+
     // 3. Build prompt with all scores, narratives, recommendations
     const riskResultsText = riskScores
       .map((s) => {
@@ -138,8 +151,13 @@ export class ReportGenerationHandler implements JobHandler {
       .filter(Boolean)
       .join('\n');
 
-    const userPrompt = prompt.userPromptTemplate
-      .replace(/\{\{risk_results\}\}/g, `${contextHeader}\n\n${riskResultsText}`);
+    const userPrompt = injectCountry(
+      prompt.userPromptTemplate.replace(
+        /\{\{risk_results\}\}/g,
+        `${contextHeader}\n\n${riskResultsText}`,
+      ),
+      assessment.country,
+    );
 
     // 4. Invoke Bedrock for executive summary + strengths/weaknesses
     await this.reportStage(context.jobId, stages, 'GENERATING_SUMMARY');
@@ -150,7 +168,7 @@ export class ReportGenerationHandler implements JobHandler {
       const rgModel = BEDROCK_MODELS[AgentSection.REPORT_GENERATION];
       const { output, tokensUsed } = await this.bedrock.invokeModel({
         modelId: rgModel.modelId,
-        systemPrompt: prompt.systemPrompt,
+        systemPrompt,
         userPrompt,
         temperature: rgModel.temperature,
         maxTokens: rgModel.maxTokens,
@@ -177,7 +195,7 @@ export class ReportGenerationHandler implements JobHandler {
     let financialMetrics: FinancialMetrics | undefined;
     if (input.reportConfig?.includeFinancialCharts) {
       await this.reportStage(context.jobId, stages, 'EXTRACTING_FINANCIAL');
-      financialMetrics = await this.extractFinancialMetrics(input.assessmentId);
+      financialMetrics = await this.extractFinancialMetrics(input.assessmentId, assessment.country);
       if (financialMetrics) {
         bedrockTokensUsed += 500; // approximate tokens for financial extraction
       }
@@ -377,6 +395,7 @@ ${promptLines.join('\n')}`,
 
   private async extractFinancialMetrics(
     assessmentId: string,
+    country: string,
   ): Promise<FinancialMetrics | undefined> {
     try {
       // Fetch merged document content from completed parse jobs
@@ -406,7 +425,7 @@ ${promptLines.join('\n')}`,
       const { output } = await this.bedrock.invokeModel({
         modelId: rgModel.modelId,
         systemPrompt: 'You are a financial data extraction specialist. Extract structured financial metrics from documents. Return ONLY valid JSON.',
-        userPrompt: `Extract financial metrics from the following documents. Return a JSON object with this exact structure:
+        userPrompt: `Extract financial metrics for an agricultural business operating in ${country}. Return a JSON object with this exact structure:
 {
   "revenue": [{"year": 2024, "amount": 1000000, "currency": "USD"}],
   "costs": [{"category": "Operations", "amount": 500000}],

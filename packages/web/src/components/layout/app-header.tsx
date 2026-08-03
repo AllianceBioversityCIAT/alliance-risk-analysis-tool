@@ -11,19 +11,21 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
+import {
+  SUPPORTED_COUNTRIES,
+  getCountryFlag,
+  type SupportedCountryLabel,
+} from '@alliance-risk/shared';
 
 interface AppHeaderProps {
   title: string;
   onStartAssessment?: () => void;
   className?: string;
-  /** Controlled search value — when provided, the search bar is functional */
   searchQuery?: string;
-  /** Called on every keystroke — parent is responsible for debouncing */
   onSearch?: (value: string) => void;
+  activeCountry: SupportedCountryLabel;
+  onCountryChange: (country: SupportedCountryLabel) => void;
 }
-
-// MVP: Kenya only
-const CONTEXT_OPTIONS = [{ label: 'Kenya', flag: '🇰🇪' }];
 
 export function AppHeader({
   title,
@@ -31,8 +33,11 @@ export function AppHeader({
   className,
   searchQuery = '',
   onSearch,
+  activeCountry,
+  onCountryChange,
 }: AppHeaderProps) {
   const hasSearch = onSearch !== undefined;
+  const activeFlag = getCountryFlag(activeCountry);
 
   return (
     <header
@@ -41,10 +46,8 @@ export function AppHeader({
         className,
       )}
     >
-      {/* Sidebar toggle */}
       <SidebarTrigger className="-ml-2" />
 
-      {/* Left: Title + divider + context selector */}
       <div className="flex items-center gap-3 flex-1">
         <h1 className="text-xl font-bold text-[#1F2937] whitespace-nowrap">{title}</h1>
         <span className="w-px h-6 bg-border shrink-0" />
@@ -53,15 +56,20 @@ export function AppHeader({
             <Button
               variant="ghost"
               className="h-8 px-2 gap-1.5 text-sm font-semibold text-[#374151] hover:bg-muted"
+              aria-label="Select country context"
             >
-              <span className="text-base">🇰🇪</span>
-              <span>Kenya</span>
+              <span className="text-base">{activeFlag}</span>
+              <span>{activeCountry}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {CONTEXT_OPTIONS.map((opt) => (
-              <DropdownMenuItem key={opt.label}>
+            {SUPPORTED_COUNTRIES.map((opt) => (
+              <DropdownMenuItem
+                key={opt.label}
+                onClick={() => onCountryChange(opt.label)}
+                className={cn(activeCountry === opt.label && 'bg-muted font-medium')}
+              >
                 <span className="mr-2 text-base">{opt.flag}</span>
                 {opt.label}
               </DropdownMenuItem>
@@ -70,7 +78,6 @@ export function AppHeader({
         </DropdownMenu>
       </div>
 
-      {/* Right: CTA + divider + search + notification */}
       <div className="flex items-center gap-3">
         {onStartAssessment && (
           <Button
@@ -84,7 +91,6 @@ export function AppHeader({
 
         <span className="w-px h-6 bg-border shrink-0" />
 
-        {/* Search input — functional when onSearch is provided, decorative otherwise */}
         <div className="relative hidden sm:block">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
           <Input
@@ -95,12 +101,10 @@ export function AppHeader({
             aria-label="Search assessments"
             className={cn(
               'h-9 pl-8 bg-[#F9FAFB] border-border rounded-lg text-sm transition-all',
-              // Widen slightly when active to fit the clear button
               searchQuery ? 'w-72 pr-8' : 'w-64',
               !hasSearch && 'cursor-default',
             )}
           />
-          {/* Clear button — only shown when there is a query */}
           {hasSearch && searchQuery && (
             <button
               type="button"
@@ -113,7 +117,6 @@ export function AppHeader({
           )}
         </div>
 
-        {/* Notification bell */}
         <Button variant="ghost" size="icon" className="relative h-9 w-9">
           <Bell className="h-4 w-4 text-[#374151]" />
           <span

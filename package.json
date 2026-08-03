@@ -1,17 +1,6 @@
 {
   "name": "alliance-risk-analysis-tool",
   "private": true,
-  "pnpm": {
-    "onlyBuiltDependencies": [
-      "canvas",
-      "@nestjs/core",
-      "@prisma/engines",
-      "esbuild",
-      "prisma",
-      "sharp",
-      "unrs-resolver"
-    ]
-  },
   "scripts": {
     "dev:api": "pnpm --filter @alliance-risk/api dev",
     "dev:web": "pnpm --filter @alliance-risk/web dev",

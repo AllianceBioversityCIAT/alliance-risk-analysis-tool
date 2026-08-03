@@ -19,6 +19,7 @@ import {
   ListAssessmentsQueryDto,
   RequestUploadDto,
   CreateAssessmentCommentDto,
+  AssessmentStatsQueryDto,
 } from './dto';
 
 import type { UserClaims } from '../../common/guards/jwt-auth.guard';
@@ -44,8 +45,11 @@ export class AssessmentsController {
   }
 
   @Get('stats')
-  getStats(@CurrentUser() user: UserClaims) {
-    return this.assessmentsService.getStats(user.userId);
+  getStats(
+    @Query() query: AssessmentStatsQueryDto,
+    @CurrentUser() user: UserClaims,
+  ) {
+    return this.assessmentsService.getStats(user.userId, query.country);
   }
 
   @Get(':id')

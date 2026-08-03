@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/sileo';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryProvider } from '@/providers/query-provider';
 import { AuthProvider } from '@/providers/auth-provider';
+import { CountryFilterProvider } from '@/providers/country-filter-provider';
 import './globals.css';
 
 const inter = Inter({
@@ -27,10 +28,12 @@ export default function RootLayout({
       <body className={inter.className}>
         <QueryProvider>
           <AuthProvider>
-            <TooltipProvider>
-              {children}
-              <Toaster />
-            </TooltipProvider>
+            <CountryFilterProvider>
+              <TooltipProvider>
+                {children}
+                <Toaster />
+              </TooltipProvider>
+            </CountryFilterProvider>
           </AuthProvider>
         </QueryProvider>
       </body>

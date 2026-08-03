@@ -110,6 +110,20 @@ describe('AssessmentsService', () => {
     });
   });
 
+  describe('findAll', () => {
+    it('should filter by country when query param is present', async () => {
+      await service.findAll('user-1', { country: 'Nigeria', limit: 10 });
+      expect(mockPrisma.assessment.count).toHaveBeenCalledWith({
+        where: expect.objectContaining({ userId: 'user-1', country: 'Nigeria' }),
+      });
+      expect(mockPrisma.assessment.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: expect.objectContaining({ userId: 'user-1', country: 'Nigeria' }),
+        }),
+      );
+    });
+  });
+
   describe('getStats', () => {
     it('should return stats for user', async () => {
       mockPrisma.assessment.count.mockResolvedValue(1);
@@ -118,6 +132,35 @@ describe('AssessmentsService', () => {
       expect(result).toHaveProperty('drafts');
       expect(result).toHaveProperty('completed');
       expect(result).toHaveProperty('total');
+    });
+
+    it('should filter stats by country when provided', async () => {
+      mockPrisma.assessment.count.mockResolvedValue(1);
+      await service.getStats('user-1', 'Ethiopia');
+      expect(mockPrisma.assessment.count).toHaveBeenCalledWith({
+        where: { userId: 'user-1', country: 'Ethiopia', status: 'ANALYZING' },
+      });
+    });
+  });
+
+  describe('update', () => {
+    it('should allow country update when assessment is DRAFT', async () => {
+      await service.update('assess-1', { country: 'Zambia' }, 'user-1');
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ country: 'Zambia' }),
+        }),
+      );
+    });
+
+    it('should reject country update when assessment is not DRAFT', async () => {
+      mockPrisma.assessment.findUnique.mockResolvedValue({
+        ...mockAssessment,
+        status: 'ANALYZING',
+      });
+      await expect(
+        service.update('assess-1', { country: 'Zambia' }, 'user-1'),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

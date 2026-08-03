@@ -6,6 +6,7 @@ export interface AssessmentSummary {
   id: string;
   name: string;
   companyName: string;
+  country: string;
   status: AssessmentStatus;
   intakeMode: IntakeMode;
   progress: number;

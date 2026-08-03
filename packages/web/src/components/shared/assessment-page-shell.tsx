@@ -61,6 +61,7 @@ export function AssessmentPageShell({
               shortId={assessment.id.substring(0, 8).toUpperCase()}
               progress={assessment.progress ?? 0}
               status={assessment.status}
+              country={assessment.country}
             />
           </div>
         )}

@@ -74,6 +74,22 @@ describe('VariableInjectionService', () => {
     });
   });
 
+  describe('injectCountry', () => {
+    it('should replace {{country}} with the assessment country', () => {
+      const result = service.injectCountry('Analyze in {{country}}', 'Nigeria');
+      expect(result).toBe('Analyze in Nigeria');
+    });
+
+    it('should leave unknown placeholders unchanged', () => {
+      const result = service.injectCountry('Field: {{unknown}}', 'Nigeria');
+      expect(result).toBe('Field: {{unknown}}');
+    });
+
+    it('should handle empty text', () => {
+      expect(service.injectCountry('', 'Kenya')).toBe('');
+    });
+  });
+
   describe('injectAll', () => {
     it('should inject into both systemPrompt and userPromptTemplate', () => {
       const prompt = {
@@ -99,6 +115,18 @@ describe('VariableInjectionService', () => {
 
       expect(prompt.systemPrompt).toBe('Analyze {{category_1}}');
       expect(prompt.userPromptTemplate).toBe('Focus on {{categories}}');
+    });
+
+    it('should inject country when provided', () => {
+      const prompt = {
+        systemPrompt: 'Context: {{country}}',
+        userPromptTemplate: 'Business in {{country}}',
+      };
+
+      const result = service.injectAll(prompt, ['Financial'], 'Ethiopia');
+
+      expect(result.systemPrompt).toBe('Context: Ethiopia');
+      expect(result.userPromptTemplate).toBe('Business in Ethiopia');
     });
   });
 });
