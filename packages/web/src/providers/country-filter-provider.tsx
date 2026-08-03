@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   type ReactNode,
 } from 'react';
@@ -50,8 +51,13 @@ export function CountryFilterProvider({ children }: Readonly<{ children: ReactNo
     }
   }, []);
 
+  const value = useMemo(
+    () => ({ activeCountry: internalActiveCountry, setActiveCountry }),
+    [internalActiveCountry, setActiveCountry],
+  );
+
   return (
-    <CountryFilterContext.Provider value={{ activeCountry: internalActiveCountry, setActiveCountry }}>
+    <CountryFilterContext.Provider value={value}>
       {children}
     </CountryFilterContext.Provider>
   );
