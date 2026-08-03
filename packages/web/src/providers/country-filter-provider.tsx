@@ -35,14 +35,14 @@ function readStoredCountry(): SupportedCountryLabel {
 }
 
 export function CountryFilterProvider({ children }: Readonly<{ children: ReactNode }>) {
-  const [activeCountry, setActiveCountryState] = useState<SupportedCountryLabel>(DEFAULT_COUNTRY);
+  const [internalActiveCountry, setInternalActiveCountry] = useState<SupportedCountryLabel>(DEFAULT_COUNTRY);
 
   useEffect(() => {
-    setActiveCountryState(readStoredCountry());
+    setInternalActiveCountry(readStoredCountry());
   }, []);
 
   const setActiveCountry = useCallback((country: SupportedCountryLabel) => {
-    setActiveCountryState(country);
+    setInternalActiveCountry(country);
     try {
       localStorage.setItem(STORAGE_KEY, country);
     } catch {
@@ -51,7 +51,7 @@ export function CountryFilterProvider({ children }: Readonly<{ children: ReactNo
   }, []);
 
   return (
-    <CountryFilterContext.Provider value={{ activeCountry, setActiveCountry }}>
+    <CountryFilterContext.Provider value={{ activeCountry: internalActiveCountry, setActiveCountry }}>
       {children}
     </CountryFilterContext.Provider>
   );
