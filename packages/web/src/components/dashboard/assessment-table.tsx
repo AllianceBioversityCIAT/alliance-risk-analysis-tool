@@ -91,7 +91,7 @@ function getHeading(searchQuery: string, activeStatus: string | undefined): stri
   return 'Active Assessments';
 }
 
-function FilteredEmptyState({ searchQuery }: { searchQuery: string }) {
+function FilteredEmptyState({ searchQuery }: Readonly<{ searchQuery: string }>) {
   return (
     <div className="flex flex-col items-center gap-2">
       <FileSearch className="h-10 w-10 text-muted-foreground/50" />
@@ -105,7 +105,7 @@ function FilteredEmptyState({ searchQuery }: { searchQuery: string }) {
   );
 }
 
-function NoAssessmentsEmptyState({ activeCountry }: { activeCountry: string | undefined }) {
+function NoAssessmentsEmptyState({ activeCountry }: Readonly<{ activeCountry: string | undefined }>) {
   return (
     <div className="flex flex-col items-center gap-2">
       <FileSearch className="h-10 w-10 text-muted-foreground/50" />
@@ -141,7 +141,7 @@ function AssessmentTableBody({
   onEdit,
   onDelete,
   onResume,
-}: AssessmentTableBodyProps) {
+}: Readonly<AssessmentTableBodyProps>) {
   if (isLoading) {
     return <>{Array.from({ length: 5 }).map((_, i) => <TableRowSkeleton key={i} />)}</>;
   }
@@ -192,7 +192,7 @@ export function AssessmentTable({
   onEdit,
   onDelete,
   onResume,
-}: AssessmentTableProps) {
+}: Readonly<AssessmentTableProps>) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
