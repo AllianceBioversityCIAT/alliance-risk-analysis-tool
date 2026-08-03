@@ -34,7 +34,7 @@ function readStoredCountry(): SupportedCountryLabel {
   return DEFAULT_COUNTRY;
 }
 
-export function CountryFilterProvider({ children }: { children: ReactNode }) {
+export function CountryFilterProvider({ children }: Readonly<{ children: ReactNode }>) {
   const [activeCountry, setActiveCountryState] = useState<SupportedCountryLabel>(DEFAULT_COUNTRY);
 
   useEffect(() => {
