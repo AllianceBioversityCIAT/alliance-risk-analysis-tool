@@ -10,7 +10,7 @@ interface CountryBadgeProps {
   variant?: 'default' | 'onDark';
 }
 
-export function CountryBadge({ country, className, variant = 'default' }: CountryBadgeProps) {
+export function CountryBadge({ country, className, variant = 'default' }: Readonly<CountryBadgeProps>) {
   const flag = getCountryFlag(country as Parameters<typeof getCountryFlag>[0]);
 
   if (variant === 'onDark') {
