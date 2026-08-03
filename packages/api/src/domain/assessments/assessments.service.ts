@@ -88,6 +88,17 @@ export class AssessmentsService {
     return assessment;
   }
 
+  private buildAssessmentUpdateFields(dto: UpdateAssessmentDto) {
+    return {
+      ...(dto.name && { name: dto.name }),
+      ...(dto.companyName && { companyName: dto.companyName }),
+      ...(dto.companyType !== undefined && { companyType: dto.companyType }),
+      ...(dto.country !== undefined && { country: dto.country }),
+      ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
+      ...(dto.progress !== undefined && { progress: dto.progress }),
+    };
+  }
+
   async update(id: string, dto: UpdateAssessmentDto, userId: string): Promise<Assessment> {
     const assessment = await this.findOne(id, userId); // Ownership check
 
@@ -97,29 +108,13 @@ export class AssessmentsService {
       );
     }
 
-    const updateData = {
-      ...(dto.name && { name: dto.name }),
-      ...(dto.companyName && { companyName: dto.companyName }),
-      ...(dto.companyType !== undefined && { companyType: dto.companyType }),
-      ...(dto.country !== undefined && { country: dto.country }),
-      ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
-      ...(dto.progress !== undefined && { progress: dto.progress }),
-      version: { increment: 1 },
-    };
+    const fields = this.buildAssessmentUpdateFields(dto);
 
     // Optimistic locking: if version is provided, verify it matches
     if (dto.version !== undefined) {
       const result = await this.prisma.assessment.updateMany({
         where: { id, version: dto.version },
-        data: {
-          ...(dto.name && { name: dto.name }),
-          ...(dto.companyName && { companyName: dto.companyName }),
-          ...(dto.companyType !== undefined && { companyType: dto.companyType }),
-          ...(dto.country !== undefined && { country: dto.country }),
-          ...(dto.status && { status: dto.status as unknown as import('@prisma/client').$Enums.AssessmentStatus }),
-          ...(dto.progress !== undefined && { progress: dto.progress }),
-          version: dto.version + 1,
-        },
+        data: { ...fields, version: dto.version + 1 },
       });
 
       if (result.count === 0) {
@@ -134,7 +129,7 @@ export class AssessmentsService {
     // No version provided — backward compatible, skip conflict check
     return this.prisma.assessment.update({
       where: { id },
-      data: updateData,
+      data: { ...fields, version: { increment: 1 } },
     });
   }
 
