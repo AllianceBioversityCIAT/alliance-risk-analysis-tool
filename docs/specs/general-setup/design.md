@@ -147,3 +147,4 @@ Cross-link TRD ADRs when extending platform-wide decisions.
 - [ ] Shared types updated before API/Web implementation
 - [ ] UX references design tokens, not raw hex values
 - [ ] Migration path documented if schema changes
+- [ ] Every claim about a file's current imports/exports/consumers is verified by reading that file directly, not assumed (KZ-003)
