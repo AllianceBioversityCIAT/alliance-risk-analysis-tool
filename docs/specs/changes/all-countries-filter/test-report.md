@@ -19,7 +19,7 @@
 
 - **Suites planned:** Frontend unit only. This spec is Web-only (NFR-ACF-001) with zero backend/shared-package change, and the existing "omit `country` = all" API behavior is inherited, untouched, and out of this spec's test scope — no backend, integration, or E2E suite was needed.
 - **Testers spawned:** 1 (single substantial suite, Standard depth, per the Deployment Rule).
-- **New tests added:** 4 — 2 in `use-assessments.test.ts` (Gap 1), 1 in `start-assessment-modal.test.tsx` (Gap 2), plus the Tester's inner-loop verification confirmed all pre-existing tests still pass.
+- **New tests added:** 3 — 2 in `use-assessments.test.ts` (Gap 1), 1 in `start-assessment-modal.test.tsx` (Gap 2). The Tester's inner-loop verification additionally confirmed all pre-existing tests still pass.
 - **Total suite result:** 19/19 new-and-existing targeted tests pass; full-package run 112/114 (2 pre-existing, unrelated failures — see §9).
 - **Product bugs found:** None.
 
@@ -35,7 +35,7 @@ Not applicable. NFR-ACF-001 requires zero backend/`@alliance-risk/shared` change
 
 **Command:** `cd packages/web && npx jest --testPathPattern="country-filter-provider|app-header|start-assessment-modal|use-assessments"`
 
-**Result:** 4 suites, 19/19 tests passed (10 pre-existing/execute-phase + 4 new from this test pass + 1 pre-existing use-assessments test).
+**Result:** 4 suites, 19/19 tests passed (16 pre-existing — 7 provider + 3 header + 4 modal + 2 use-assessments — plus 3 new from this test pass).
 
 New tests added this pass:
 - `use-assessments.test.ts` — `useAssessments({ country: undefined })` never sends a literal/empty/sentinel `country` param
