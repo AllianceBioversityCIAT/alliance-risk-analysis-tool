@@ -136,3 +136,24 @@ After all three tasks PASSed individually, ran the full package suite to confirm
 - **Decisions made:** Executed T-002/T-003/T-004 as one parallel wave per the dependency graph; deferred the pre-existing `assessment-table.test.tsx` failure as out-of-scope (documented here for traceability, not remediated).
 - **Issues encountered:** None blocking. See per-task ADVISORY notes above (all non-gating).
 - **Final verification result:** Full-package build ✓, full-package lint ✓, 109/111 tests passing (2 pre-existing unrelated failures documented above).
+
+---
+
+## 4. Summary — All Tasks Complete
+
+All 4 tasks in `tasks.md` (T-001–T-004) are `[x]`. Zero backend, zero `@alliance-risk/shared` change (NFR-ACF-001 held throughout — verified per-task and at the end). One Pivot Record (T-001, a `tasks.md` wording defect, not a design/requirements flaw) resolved with user approval, no rework attempts consumed across the whole spec. 4 requirement/NFR/BR IDs fully covered: FR-ACF-001, FR-ACF-002, FR-ACF-003, FR-ACF-004, FR-ACF-005, NFR-ACF-001, NFR-ACF-002, BR-ACF-001.
+
+| Task | Files | Requirements | Attempts | Outcome |
+|------|-------|--------------|----------|---------|
+| T-001 | `country-filter-provider.tsx` (+test) | FR-ACF-002/003/004, NFR-ACF-001/002, BR-ACF-001 | 1 (Pivot on tasks.md wording, no rework) | `[x]` |
+| T-002 | `app-header.tsx` (+test, +shared mock) | FR-ACF-001 | 1 | `[x]` |
+| T-003 | `dashboard/page.tsx` | FR-ACF-002 | 1 | `[x]` |
+| T-004 | `start-assessment-modal.tsx` (+test) | FR-ACF-005 | 1 | `[x]` |
+
+**Commits:** `71a46de` (T-001), `411c13a` (T-002/T-003/T-004).
+
+**Known pre-existing gap (not introduced, not fixed by this spec):** `assessment-table.test.tsx` has 2 failing assertions (ambiguous `getByText('Draft')` match) that predate this spec — confirmed via stash/isolation. Out of scope for `changes/all-countries-filter`; worth a separate ticket.
+
+**Manual QA checklist** (`tasks.md` §7) — not yet run by a human; recommend the analyst persona walk through it against a local `pnpm dev` before merging, since automated coverage doesn't exercise the full visual flow (flag rendering, localStorage across a real browser session restart, etc.).
+
+**Next command:** None — spec complete. Recommend `/akili-test` for broader regression coverage if desired, or proceed straight to PR.
