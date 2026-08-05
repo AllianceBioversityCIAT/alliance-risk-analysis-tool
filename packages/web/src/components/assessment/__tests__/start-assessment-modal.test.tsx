@@ -104,4 +104,25 @@ describe('StartAssessmentModal', () => {
     );
     expect(options.every((o) => !o.textContent?.includes('All countries'))).toBe(true);
   });
+
+  it('auto-draft-saves with country: "Kenya" when closing before finishing while "All countries" is active', async () => {
+    mockUseCountryFilter.mockReturnValue({ activeCountry: 'ALL_COUNTRIES', setActiveCountry: jest.fn() });
+    const onOpenChange = jest.fn();
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(<StartAssessmentModal open onOpenChange={onOpenChange} />);
+
+    // Start filling the form but do not submit step 1 — close via Cancel,
+    // which triggers handleClose's existing auto-draft-save path.
+    await user.type(screen.getByPlaceholderText(/kenya dairy farm/i), 'Draft Assessment');
+    await user.type(screen.getByPlaceholderText(/sunrise agro/i), 'Draft Co');
+
+    await user.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+    await waitFor(() => {
+      expect(mockCreateAssessment).toHaveBeenCalledWith(
+        expect.objectContaining({ country: 'Kenya' }),
+      );
+    });
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+  });
 });
