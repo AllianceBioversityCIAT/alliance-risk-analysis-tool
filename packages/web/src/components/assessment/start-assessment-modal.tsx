@@ -31,8 +31,8 @@ import {
 } from '@/components/ui/select';
 import { IntakeModeCard, FormatBadges, FeatureList } from './intake-mode-card';
 import { useCreateAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
-import { IntakeMode, SUPPORTED_COUNTRIES, type SupportedCountryLabel } from '@alliance-risk/shared';
-import { useCountryFilter } from '@/providers/country-filter-provider';
+import { DEFAULT_COUNTRY, IntakeMode, SUPPORTED_COUNTRIES, type SupportedCountryLabel } from '@alliance-risk/shared';
+import { ALL_COUNTRIES_FILTER, useCountryFilter } from '@/providers/country-filter-provider';
 import { cn } from '@/lib/utils';
 import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
 
@@ -66,6 +66,7 @@ type Step = 'business-info' | 'intake-mode';
 export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: StartAssessmentModalProps) {
   const router = useRouter();
   const { activeCountry } = useCountryFilter();
+  const defaultCountry = activeCountry === ALL_COUNTRIES_FILTER ? DEFAULT_COUNTRY : activeCountry;
   const [step, setStep] = useState<Step>('business-info');
   const [selectedMode, setSelectedMode] = useState<IntakeMode | null>(null);
   const [formValues, setFormValues] = useState<BusinessInfoFormValues | null>(null);
@@ -83,29 +84,29 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
           name: draftAssessment.name,
           companyName: draftAssessment.companyName,
           companyType: draftAssessment.companyType ?? '',
-          country: draftAssessment.country ?? activeCountry,
+          country: draftAssessment.country ?? defaultCountry,
         }
-      : { name: '', companyName: '', companyType: '', country: activeCountry },
+      : { name: '', companyName: '', companyType: '', country: defaultCountry },
   });
 
-  // Reset form values when draftAssessment or activeCountry changes
+  // Reset form values when draftAssessment or defaultCountry changes
   useEffect(() => {
     if (draftAssessment) {
       form.reset({
         name: draftAssessment.name,
         companyName: draftAssessment.companyName,
         companyType: draftAssessment.companyType ?? '',
-        country: draftAssessment.country ?? activeCountry,
+        country: draftAssessment.country ?? defaultCountry,
       });
     } else if (open) {
       form.reset({
         name: '',
         companyName: '',
         companyType: '',
-        country: activeCountry,
+        country: defaultCountry,
       });
     }
-  }, [draftAssessment, activeCountry, open, form]);
+  }, [draftAssessment, defaultCountry, open, form]);
 
   async function handleClose() {
     // If form has valid data and not resuming an existing draft, save as new draft
@@ -119,7 +120,7 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
           name: currentValues.name,
           companyName: currentValues.companyName,
           companyType: currentValues.companyType || undefined,
-          country: selectedCountry || activeCountry,
+          country: selectedCountry || defaultCountry,
           intakeMode: IntakeMode.UPLOAD, // Default mode for drafts
         });
       } catch {
@@ -132,7 +133,7 @@ export function StartAssessmentModal({ open, onOpenChange, draftAssessment }: St
       setStep('business-info');
       setSelectedMode(null);
       setFormValues(null);
-      form.reset({ name: '', companyName: '', companyType: '', country: activeCountry });
+      form.reset({ name: '', companyName: '', companyType: '', country: defaultCountry });
     }, 300);
   }
 

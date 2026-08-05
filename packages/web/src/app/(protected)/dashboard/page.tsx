@@ -15,7 +15,7 @@ import {
   type AssessmentFilters,
 } from '@/hooks/use-assessments';
 import { useSearch } from '@/providers/search-provider';
-import { useCountryFilter } from '@/providers/country-filter-provider';
+import { useCountryFilter, resolveListCountryParam } from '@/providers/country-filter-provider';
 import type { AssessmentRowData } from '@/components/dashboard/assessment-table-row';
 
 const PAGE_SIZE = 10;
@@ -56,7 +56,7 @@ export default function DashboardPage() {
       ...prev,
       search: debouncedSearch || undefined,
       status: statusFilter,
-      country: activeCountry,
+      country: resolveListCountryParam(activeCountry),
     }));
   }, [debouncedSearch, statusFilter, activeCountry]);
 
@@ -66,7 +66,9 @@ export default function DashboardPage() {
     setCursors([undefined]);
   }, []);
 
-  const { data: stats, isLoading: statsLoading } = useAssessmentStats(activeCountry);
+  const { data: stats, isLoading: statsLoading } = useAssessmentStats(
+    resolveListCountryParam(activeCountry),
+  );
   const { data: assessmentsData, isLoading: assessmentsLoading } = useAssessments({
     ...filters,
     cursor: cursors[currentPage - 1],
@@ -194,7 +196,7 @@ export default function DashboardPage() {
         hasPrevPage={hasPrevPage}
         isLoading={assessmentsLoading}
         searchQuery={debouncedSearch}
-        activeCountry={activeCountry}
+        activeCountry={resolveListCountryParam(activeCountry)}
         activeStatus={statusFilter}
         onStatusFilter={handleStatusFilter}
         onNextPage={handleNextPage}

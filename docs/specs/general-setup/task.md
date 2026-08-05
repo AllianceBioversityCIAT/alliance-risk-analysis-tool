@@ -163,3 +163,4 @@ Before approving tasks.md:
 - [ ] Skills listed match project Skill Map
 - [ ] Cross-package tasks ordered: shared → api → web
 - [ ] Infra/migration tasks precede code that depends on schema
+- [ ] A foundation task's "Done when" never requires full-package build/typecheck success before a dependent consumer task lands — scope it to the task's own files/tests (KZ-004)
