@@ -11,11 +11,16 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { cn } from '@/lib/utils';
+import { SUPPORTED_COUNTRIES } from '@alliance-risk/shared';
 import {
-  SUPPORTED_COUNTRIES,
-  getCountryFlag,
-  type SupportedCountryLabel,
-} from '@alliance-risk/shared';
+  ALL_COUNTRIES_FILTER,
+  type CountryFilterValue,
+} from '@/providers/country-filter-provider';
+
+const countryOptions: { value: CountryFilterValue; label: string; flag: string }[] = [
+  { value: ALL_COUNTRIES_FILTER, label: 'All countries', flag: '🌍' },
+  ...SUPPORTED_COUNTRIES.map((c) => ({ value: c.label, label: c.label, flag: c.flag })),
+];
 
 interface AppHeaderProps {
   title: string;
@@ -23,8 +28,8 @@ interface AppHeaderProps {
   className?: string;
   searchQuery?: string;
   onSearch?: (value: string) => void;
-  activeCountry: SupportedCountryLabel;
-  onCountryChange: (country: SupportedCountryLabel) => void;
+  activeCountry: CountryFilterValue;
+  onCountryChange: (country: CountryFilterValue) => void;
 }
 
 export function AppHeader({
@@ -37,7 +42,7 @@ export function AppHeader({
   onCountryChange,
 }: AppHeaderProps) {
   const hasSearch = onSearch !== undefined;
-  const activeFlag = getCountryFlag(activeCountry);
+  const activeOption = countryOptions.find((opt) => opt.value === activeCountry);
 
   return (
     <header
@@ -58,17 +63,17 @@ export function AppHeader({
               className="h-8 px-2 gap-1.5 text-sm font-semibold text-[#374151] hover:bg-muted"
               aria-label="Select country context"
             >
-              <span className="text-base">{activeFlag}</span>
-              <span>{activeCountry}</span>
+              <span className="text-base">{activeOption?.flag}</span>
+              <span>{activeOption?.label}</span>
               <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start">
-            {SUPPORTED_COUNTRIES.map((opt) => (
+            {countryOptions.map((opt) => (
               <DropdownMenuItem
-                key={opt.label}
-                onClick={() => onCountryChange(opt.label)}
-                className={cn(activeCountry === opt.label && 'bg-muted font-medium')}
+                key={opt.value}
+                onClick={() => onCountryChange(opt.value)}
+                className={cn(activeCountry === opt.value && 'bg-muted font-medium')}
               >
                 <span className="mr-2 text-base">{opt.flag}</span>
                 {opt.label}

@@ -69,3 +69,70 @@
 - **Decisions made:** Amended T-001's "Done when" wording in `tasks.md` to scope the typecheck gate correctly (see amendment above); no requirements/design change.
 - **Issues encountered:** Spec-internal contradiction in `tasks.md`'s acceptance criterion (resolved via Pivot, user-approved).
 - **Final verification result:** `pnpm --filter @alliance-risk/web test -- --testPathPattern=country-filter-provider` → 7/7 passed. Isolated `tsc --noEmit` sweep → zero new errors outside `app-header.tsx` (T-002 scope, tracked as a PR-level gate).
+
+---
+
+### T-002, T-003, T-004 — Consumers (parallel wave)
+
+- **Status:** `[x]` PASS (all three, first attempt)
+- **Date:** 2026-08-05
+- **Attempts run:** 1 each — all three PASSed on the first Reviewer pass, 0 rework consumed
+
+All three tasks depend only on T-001 (already `[x]`) and touch disjoint files, so per the Leader's Parallel Execution rule (width cap 2–4, all 3 genuinely independent tasks here) they were executed as one parallel wave: 3 Implementers spawned concurrently, then 3 Reviewers spawned concurrently once each Implementer reported.
+
+#### T-002: Header renders "All countries" option
+
+- **Implementer model:** Sonnet (general-purpose subagent, fallback sub-prompt)
+- **Skills instructed:** `shadcn-ui`, `tailwind-design-system`
+- **Effort:** medium
+- **Files changed:**
+  - `packages/web/src/components/layout/app-header.tsx` (modified)
+  - `packages/web/src/components/layout/__tests__/app-header.test.tsx` (new)
+  - `packages/web/__mocks__/radix-ui.js` (extended — additive-only `DropdownMenu` mock; no shadcn `DropdownMenu` had ever been rendered in a test in this repo before)
+- **Implementer verification:**
+  - `pnpm --filter @alliance-risk/web test --testPathPattern=app-header` → 3/3 passed
+  - `pnpm --filter @alliance-risk/web build` → `✓ Compiled successfully`, static export succeeded — confirms T-002 is the task that restores the full-package build per T-001's amended "Done when" note
+- **Implementer report — Not Done / Assumptions:** Added an explicit `countryOptions` array type annotation (`{ value: CountryFilterValue; label: string; flag: string }[]`) not spelled out in design.md, because TS otherwise widens `value` to plain `string`; judged in-scope/minimal, not a deviation. Confirmed `app-layout.tsx` (DD-ACF-004) needed zero changes, verified by successful build.
+- **Reviewer model:** Opus (general-purpose subagent, fresh context, diff-only)
+- **Reviewer verdict:** `STATUS: PASS` — all FR-ACF-001 clauses (5 options, sentinel first, no `getCountryFlag()` call on sentinel, `SUPPORTED_COUNTRIES` read-only) verified against source; DD-ACF-004 pass-through independently confirmed via `app-layout.tsx` source read; `radix-ui.js` mock confirmed additive-only, no existing mock altered.
+  - **ADVISORY (non-gating):** optional-chaining on `activeOption?.flag/.label` is defensive but currently unreachable (types guarantee full coverage) — informational only.
+
+#### T-003: Dashboard translates the sentinel before querying
+
+- **Implementer model:** Sonnet (general-purpose subagent, fallback sub-prompt)
+- **Skills instructed:** `vercel-react-best-practices`
+- **Effort:** medium
+- **Files changed:** `packages/web/src/app/(protected)/dashboard/page.tsx` (modified) — no new test file, per tasks.md T-003 (behavior covered by T-001's unit tests)
+- **Implementer verification:**
+  - `pnpm --filter @alliance-risk/web lint` → clean, no `react-hooks/exhaustive-deps` warning
+  - `pnpm --filter @alliance-risk/web build` → isolated `tsc --noEmit` confirmed zero errors from this file; the one remaining package error was T-002's (in-flight concurrently), reproduced identically via stash/restore before this task's edit existed
+- **Implementer report — Not Done / Assumptions:** None.
+- **Reviewer model:** Opus (general-purpose subagent, fresh context, diff-only)
+- **Reviewer verdict:** `STATUS: PASS` — FR-ACF-002 satisfied via `resolveListCountryParam` at all three consumer sites; `useAssessmentStats`/`AssessmentTable` prop types confirmed compatible against source; effect dependency array unchanged, helper called inline as design §4.3 requires; DD-ACF-003 honored (`assessment-table.tsx` untouched).
+  - **ADVISORY (non-gating):** `resolveListCountryParam(activeCountry)` is called 3× per render instead of once via a hoisted variable — purely cosmetic, the helper is a trivial pure ternary, no correctness/perf impact, not worth a rework round.
+
+#### T-004: Start-assessment modal never defaults to the sentinel
+
+- **Implementer model:** Sonnet (general-purpose subagent, fallback sub-prompt)
+- **Skills instructed:** `shadcn-ui`, `vercel-react-best-practices`
+- **Effort:** medium
+- **Files changed:**
+  - `packages/web/src/components/assessment/start-assessment-modal.tsx` (modified)
+  - `packages/web/src/components/assessment/__tests__/start-assessment-modal.test.tsx` (extended)
+- **Implementer verification:** `pnpm --filter @alliance-risk/web test --testPathPattern=start-assessment-modal` → 4/4 passed (2 pre-existing regression + 2 new sentinel-guard tests)
+- **Implementer report — Not Done / Assumptions:** Deliberately left one additional `activeCountry` reference unchanged — a `form.reset(...)` call inside `handleModeSelect`, which fires only after a successful create/update, right before the modal closes and navigates away. Design.md §4.4 names exactly 4 replacement sites and this is not one of them; judged as inert internal RHF state with no observable path to violating FR-ACF-005.
+- **Reviewer model:** Opus (general-purpose subagent, fresh context, diff-only)
+- **Reviewer verdict:** `STATUS: PASS` — both FR-ACF-005 scenarios (explicit create default = Kenya, 4-option Select; auto-draft-save = Kenya) verified against source; all 4 enumerated design.md §4.4 replacement sites confirmed correctly converted (searched the full file for every `activeCountry` reference). The Reviewer independently re-verified the `handleModeSelect` judgment call: confirmed design.md §4.4's text names only 4 sites (not this one), and independently traced that the stale value written there is never submitted, never auto-draft-saved, and never visibly rendered as the raw sentinel — concluded non-gating.
+  - **ADVISORY (non-gating):** optionally, line 180 could also use `defaultCountry` for symmetry / to close a theoretical single-frame edge case; not required, no correctness impact. A direct test asserting `handleClose`'s create-payload country would tighten traceability but wasn't required by task scope.
+
+#### Combined post-wave verification (Leader, inline)
+
+After all three tasks PASSed individually, ran the full package suite to confirm the combined state (not just per-task isolation):
+
+- `pnpm --filter @alliance-risk/web build` → **clean**, full static export succeeds (19/19 pages) — confirms T-001's amended "Done when" note: the PR-level build gate is now green now that T-002 has landed.
+- `pnpm --filter @alliance-risk/web lint` → clean, no warnings.
+- `pnpm --filter @alliance-risk/web test` → **109/111 passed**, 1 suite failed (`assessment-table.test.tsx`, 2 tests: `getByText('Draft')` ambiguous match, a `decorative` non-boolean DOM attribute warning). Confirmed via `git stash`/isolated run against the T-001-only-committed base that this failure **pre-exists this spec's changes** (in fact, the base-only run showed 4/4 failing in that file; with T-002/T-003/T-004 applied it drops to 2/4 failing — an incidental improvement from T-002's additive `DropdownMenu` mock, not a regression). Not caused by, and not fixed as part of, this spec — out of scope for `changes/all-countries-filter`.
+- **Requirements covered (this wave):** FR-ACF-001, FR-ACF-002, FR-ACF-005
+- **Decisions made:** Executed T-002/T-003/T-004 as one parallel wave per the dependency graph; deferred the pre-existing `assessment-table.test.tsx` failure as out-of-scope (documented here for traceability, not remediated).
+- **Issues encountered:** None blocking. See per-task ADVISORY notes above (all non-gating).
+- **Final verification result:** Full-package build ✓, full-package lint ✓, 109/111 tests passing (2 pre-existing unrelated failures documented above).

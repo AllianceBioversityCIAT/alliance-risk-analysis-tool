@@ -70,7 +70,7 @@
 
 ### T-002: Header renders "All countries" option `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Skills:** `shadcn-ui`, `tailwind-design-system`
 - **Size:** M
 - **Dependencies:** T-001
@@ -91,7 +91,7 @@
 
 ### T-003: Dashboard translates the sentinel before querying `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Skills:** `vercel-react-best-practices`
 - **Size:** S
 - **Dependencies:** T-001
@@ -113,7 +113,7 @@
 
 ### T-004: Start-assessment modal never defaults to the sentinel `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Skills:** `shadcn-ui`, `vercel-react-best-practices`
 - **Size:** M
 - **Dependencies:** T-001
