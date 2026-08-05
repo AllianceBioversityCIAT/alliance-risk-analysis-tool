@@ -154,6 +154,6 @@ All 4 tasks in `tasks.md` (T-001–T-004) are `[x]`. Zero backend, zero `@allian
 
 **Known pre-existing gap (not introduced, not fixed by this spec):** `assessment-table.test.tsx` has 2 failing assertions (ambiguous `getByText('Draft')` match) that predate this spec — confirmed via stash/isolation. Out of scope for `changes/all-countries-filter`; worth a separate ticket.
 
-**Manual QA checklist** (`tasks.md` §7) — not yet run by a human; recommend the analyst persona walk through it against a local `pnpm dev` before merging, since automated coverage doesn't exercise the full visual flow (flag rendering, localStorage across a real browser session restart, etc.).
+**Manual QA checklist** (`tasks.md` §7) — completed by the user 2026-08-05, all 6 items checked (fresh-profile default, per-country filtering, "All countries" restore, create-modal Kenya default + 4-option list, auto-draft-save country, real-country persistence across reload). No issues reported.
 
-**Next command:** None — spec complete. Recommend `/akili-test` for broader regression coverage if desired, or proceed straight to PR.
+**Next command:** None — spec complete, code + manual QA both green. Recommend proceeding to PR; `/akili-validate` is optional (spec-to-code alignment re-audit) if extra assurance is wanted before merge.

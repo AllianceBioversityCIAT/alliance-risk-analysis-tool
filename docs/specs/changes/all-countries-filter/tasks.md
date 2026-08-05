@@ -182,12 +182,12 @@ At ~240 LOC across 4 production files with no backend/shared-package surface, th
 
 ## 7. Manual QA Checklist (post-implementation)
 
-- [ ] Fresh browser profile (no `localStorage`) → dashboard lands on "All countries," shows assessments from every country
-- [ ] Select each of the 4 real countries → list/stats filter correctly (no regression)
-- [ ] Select "All countries" again → list/stats show everything again
-- [ ] Open "Start New Assessment" while "All countries" is active → country field defaults to Kenya, dropdown shows only 4 options
-- [ ] Close the modal mid-fill (auto-draft path) while "All countries" is active → resulting draft has `country: "Kenya"`
-- [ ] Reload the page after selecting "Zambia" → filter restores to "Zambia," not "All countries"
+- [x] Fresh browser profile (no `localStorage`) → dashboard lands on "All countries," shows assessments from every country
+- [x] Select each of the 4 real countries → list/stats filter correctly (no regression)
+- [x] Select "All countries" again → list/stats show everything again
+- [x] Open "Start New Assessment" while "All countries" is active → country field defaults to Kenya, dropdown shows only 4 options
+- [x] Close the modal mid-fill (auto-draft path) while "All countries" is active → resulting draft has `country: "Kenya"`
+- [x] Reload the page after selecting "Zambia" → filter restores to "Zambia," not "All countries"
 
 ---
 
