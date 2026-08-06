@@ -247,7 +247,7 @@ export function UserManagement() {
       </div>
 
       {/* Table */}
-      <div className="rounded-lg border bg-card">
+      <div className="rounded-lg border bg-card" data-clarity-mask="true">
         <Table>
           <TableHeader>
             <TableRow>
