@@ -532,6 +532,7 @@ export function DocumentViewer({
         style={{ fontSize: `${FONT_SIZES[fontIdx]}rem` }}
       >
         <div
+          data-clarity-mask="true"
           className={cn(
             'doc-viewer-prose prose prose-sm max-w-none',
             'prose-headings:font-semibold prose-headings:text-foreground',

@@ -8,7 +8,7 @@ NestJS 10 backend (CommonJS, port 3001).
 pnpm dev              # nest start --watch
 pnpm build            # nest build
 pnpm test             # jest
-pnpm test -- --testPathPattern=<pattern>
+pnpm test --testPathPattern=<pattern>
 pnpm lint             # eslint "{src,test}/**/*.ts"
 pnpm test:e2e         # jest --config ./test/jest-e2e.json
 ```

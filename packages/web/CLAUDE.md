@@ -8,7 +8,7 @@ Next.js 15 frontend with App Router (port 3000). Static export for S3 + CloudFro
 pnpm dev              # next dev --port 3000
 pnpm build            # next build
 pnpm test             # jest --passWithNoTests
-pnpm test -- --testPathPattern=<pattern>
+pnpm test --testPathPattern=<pattern>
 pnpm lint             # next lint
 ```
 
@@ -45,6 +45,9 @@ src/
 
   components/
     ui/                         # shadcn/ui components (15 components)
+    analytics/
+      google-analytics.tsx      # GA4 conditional loader + pageview tracker (null-guarded)
+      microsoft-clarity.tsx     # Clarity conditional loader (null-guarded)
     auth/
       login-form.tsx            # Email + password + remember me
       forgot-password-form.tsx  # Two-step: email → code + new password
@@ -67,6 +70,7 @@ src/
       change-history.tsx        # Version change timeline
 
   hooks/
+    use-analytics-pageview.ts   # Fires GA4 page_view on mount + route change (no-ops if GA unconfigured)
     use-prompts.ts              # React Query hooks for prompt CRUD
     use-users.ts                # React Query hooks for user CRUD + groups
     use-job-polling.ts          # Polls GET /api/jobs/:id every 3s until terminal state
@@ -178,6 +182,17 @@ Amber banner appears between heading and filters when validation rejects fields.
 
 ### Data Completeness
 Only VERIFIED fields count toward completeness percentage. PARTIAL fields reduce the percentage and show as "remaining".
+
+## Analytics
+
+Google Analytics 4 and Microsoft Clarity are wired in as conditional, client-only scripts, mounted once in `src/app/layout.tsx` as siblings alongside the providers:
+
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID` — GA4 Measurement ID (`G-XXXXXXXXXX`). Consumed by `src/components/analytics/google-analytics.tsx`.
+- `NEXT_PUBLIC_CLARITY_ID` — Microsoft Clarity Project ID. Consumed by `src/components/analytics/microsoft-clarity.tsx`.
+
+Both components render `null` entirely when their env var is absent — no script tag, no network request. See `packages/web/.env.example` for the documented (empty) vars.
+
+**Manual post-setup step:** once the Clarity project exists, its dashboard masking mode must be set to **Strict** before enabling in production — this is a Clarity project-dashboard setting, not something the snippet can configure.
 
 ## ESLint
 
