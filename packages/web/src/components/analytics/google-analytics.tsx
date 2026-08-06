@@ -21,7 +21,7 @@ export interface GoogleAnalyticsProps {
  * pageview tracking is disabled so `GAPageviewTracker` (below) is the single
  * source of `page_view` events (fixes Judgment Day C3; see FR-TRK-002).
  */
-export function GoogleAnalytics({ measurementId }: GoogleAnalyticsProps) {
+export function GoogleAnalytics({ measurementId }: Readonly<GoogleAnalyticsProps>) {
   if (!measurementId) {
     return null;
   }

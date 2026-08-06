@@ -22,7 +22,7 @@ interface MicrosoftClarityProps {
  * `packages/web/CLAUDE.md`'s Analytics section). The highest-risk rendered
  * content additionally carries a `data-clarity-mask="true"` attribute.
  */
-export function MicrosoftClarity({ projectId }: MicrosoftClarityProps) {
+export function MicrosoftClarity({ projectId }: Readonly<MicrosoftClarityProps>) {
   if (!projectId) return null;
 
   // The explicit `id` prop is required: an inline script with no `id` and no
