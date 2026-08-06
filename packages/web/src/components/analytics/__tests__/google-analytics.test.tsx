@@ -58,5 +58,18 @@ describe('GoogleAnalytics', () => {
     expect(bootstrap).not.toBeNull();
     expect(bootstrap?.textContent).toContain('send_page_view: false');
     expect(bootstrap?.textContent).toContain("gtag('config', 'G-TEST00000'");
+
+    // FR-TRK-003 (non-blocking load). Nothing else in this file pins the
+    // load strategy itself — a switch to `beforeInteractive` would pass
+    // every other assertion here while blocking first paint (Judgment Day
+    // round-1 suspect S5). `next/script` marks the DOM element it creates
+    // with a `data-nscript="<strategy>"` attribute, so this is directly
+    // assertable. Merged into this test rather than a separate `it()`:
+    // `next/script`'s `LoadCache`/`ScriptCache` are module-level singletons
+    // keyed by `id`/`src` (see the file-level comment above) — a second test
+    // rendering this same `measurementId` would short-circuit before
+    // creating any element, exactly the hazard this file exists to avoid.
+    expect(loader?.getAttribute('data-nscript')).toBe('afterInteractive');
+    expect(bootstrap?.getAttribute('data-nscript')).toBe('afterInteractive');
   });
 });
