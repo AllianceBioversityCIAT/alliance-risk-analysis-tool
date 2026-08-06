@@ -66,6 +66,8 @@ log "Setting NEXT_PUBLIC_* environment variables from stack outputs..."
 export NEXT_PUBLIC_API_URL="${API_URL}"
 export NEXT_PUBLIC_COGNITO_USER_POOL_ID="${COGNITO_POOL_ID}"
 export NEXT_PUBLIC_COGNITO_CLIENT_ID="${COGNITO_CLIENT_ID}"
+export NEXT_PUBLIC_GA_MEASUREMENT_ID="${NEXT_PUBLIC_GA_MEASUREMENT_ID:-}"
+export NEXT_PUBLIC_CLARITY_ID="${NEXT_PUBLIC_CLARITY_ID:-}"
 
 log "Building @alliance-risk/shared..."
 pnpm --filter @alliance-risk/shared build
