@@ -69,7 +69,7 @@
 
 - ~~C1's real verification only becomes meaningful once `layout.tsx` mounts `<GoogleAnalytics />`~~ — **resolved by T-003**, confirmed by Reviewer via headless-Chrome runtime check.
 - ~~T-004's grep-`out/`-for-ID check depends on T-003's wiring~~ — **resolved by T-003**, 16/16 HTML + 15/15 `.txt` files confirmed.
-- **PR description must include:** "Clarity project dashboard masking mode must be set to Strict before enabling in production" (T-002's C4/N2 substitute verification) — still outstanding, Leader action at PR-open time.
+- ~~PR description must include: "Clarity project dashboard masking mode must be set to Strict before enabling in production"~~ — **resolved 2026-08-06**, user confirmed Strict masking mode is set in the Clarity project dashboard. T-002's C4/N2 mitigation is now fully in place (code-side `data-clarity-mask` attributes + dashboard setting).
 - Repo-wide observation (not this spec's scope, not actioned): the `pnpm ... test -- --testPathPattern=<pattern>` form documented in root `CLAUDE.md` produces a false "No tests found, exiting with code 0" in this repo's current pnpm/Jest setup. All three Reviewers hit this independently. Worth a separate doc-fix outside this spec.
 
 ## 4. Spec Complete
