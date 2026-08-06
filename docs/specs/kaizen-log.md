@@ -13,8 +13,44 @@ keep it at 10 rows or fewer.
 | KZ-002 | `/akili-validate`'s Build Integrity phase should isolate spec-caused failures from unrelated, pre-existing working-tree drift (e.g. a half-edited tooling config) before treating a wrapper-script failure as a verdict signal | enhancements/multi-country-enablement | Medium | Methodology | — (no local edit — upstream candidate) | Deferred |
 | KZ-003 | `design.md` must not assert a file's current imports/exports/consumers from memory — verify by reading the file before writing the claim | changes/all-countries-filter | Medium | Product | `docs/specs/general-setup/design.md` §7 | Applied |
 | KZ-004 | A foundation task's "Done when" must never require full-package build/typecheck success before its dependent consumer task lands — scope the check to the task's own files | changes/all-countries-filter | High | Product | `docs/specs/general-setup/task.md` §8 | Applied |
+| KZ-005 | The documented `pnpm --filter <pkg> test -- --testPathPattern=<pattern>` command (double `--`) is broken in this repo's pnpm — false green on `web`, hard failure on `api`. Use single `--testPathPattern=` | enhancements/tracking-analytics | Medium | Product | Root `CLAUDE.md`, `packages/api/CLAUDE.md`, `packages/web/CLAUDE.md` (test command examples) | Applied |
+| KZ-006 | Judgment Day round-2 re-judgment findings routed to `tasks.md` only (not `design.md`) let the design-of-record silently drift from shipped code — backport design-decision fixes to `design.md` too | enhancements/tracking-analytics | Medium | Methodology | — (no local edit — upstream candidate for `judgment-day` skill) | Deferred |
+| KZ-007 | A verification command added specifically to fix a "vacuous check" finding (e.g. Judgment Day C1) must itself be checked for the same vacuity class before being recorded as closing the finding | enhancements/tracking-analytics | Medium | Methodology | — (no local edit — upstream candidate for `judgment-day`/`akili-validate`) | Deferred |
 
 ## Entries
+
+### 2026-08-06 — enhancements/tracking-analytics
+
+**Metrics**
+
+| Signal | Value | Source |
+|---|---|---|
+| Tasks executed | 4 | tasks.md |
+| Reviewer FAIL rework attempts | 0 (all 4 tasks PASS on attempt 1) | execution.md |
+| HALTs / FATAL_FAILs | 0 | execution.md |
+| Pivots | 0 | execution.md |
+| PRODUCT_BUGs | 0 | test-report.md |
+| Judgment-day severe findings | 3 confirmed SEVERE (both judges) + 1 corroborated (C1–C4), pre-implementation; round-2 re-judgment surfaced 4 sub-severe (N1–N4) | judgment.md |
+| Validation FAIL / WARN | 0 FAIL / 12 WARN (all resolved before archive) | validation-report.md |
+
+**Lessons**
+
+- **KZ-005 — The repo's documented test-verification command is broken.** (Product, Medium)
+  - Root cause: `pnpm --filter <pkg> test -- --testPathPattern=<pattern>` (double `--`) forwards a literal `--` into Jest's arg parser, which then reads the pattern as a positional argument instead of a flag. On `web` (which has `--passWithNoTests`) this silently reports "No tests found, exiting with code 0" — a false green. On `api` (no `--passWithNoTests`) it hard-fails with "0 matches". Reproduced independently 4 times within this one spec (3 execute-time Reviewers on `web`, 1 validate-time auditor), plus reproduced again on `api` during this archive's Kaizen investigation.
+  - Evidence: `execution.md` — T-001/T-002/T-004 ADVISORY notes; `validation-report.md` §5 W8.
+  - Standardization: dropped the extra `--` in root `CLAUDE.md` (2 examples) and both `packages/api/CLAUDE.md` / `packages/web/CLAUDE.md` (1 line each). **Status: Applied 2026-08-06 (user-approved, "Apply all").**
+
+- **KZ-006 — Judgment Day round-2 fixes routed only to `tasks.md` let `design.md` drift from the shipped code.** (Methodology, Medium)
+  - Root cause: round-2 re-judgment findings N1–N4 were fixed with the instruction "fix in `tasks.md`" (per `judgment.md`'s own record), with no parallel instruction to backport the same correction into `design.md` when the finding concerns a design decision rather than a pure task/execution detail. The code correctly followed `tasks.md`, but `design.md` was left asserting three things the shipped code contradicts (a UA-era field name, a rejected deploy-script analogy, a nonexistent snippet parameter) — undiscovered until `/akili-validate` had to spend a full pass rediscovering and re-fixing all three.
+  - Evidence: `judgment.md` (Round 2 — "Fix in tasks.md" for N1/N2); `validation-report.md` §8.2 (W1–W3).
+  - Standardization proposal: no local edit — the root cause is in the `judgment-day` skill's round-2 fix-round guidance (project-agnostic). Recommend upstreaming: when an N-series (or any re-judgment) finding concerns a design decision, the fix instruction should name `design.md` as a required backport target alongside `tasks.md`, not `tasks.md` alone.
+  - Status: **Deferred (upstream candidate)** — recorded for methodology maintainers; no in-repo action beyond this spec's own one-time correction (already applied via `/akili-validate`).
+
+- **KZ-007 — A fix for a "vacuous verification" finding is not automatically immune to the same defect.** (Methodology, Medium)
+  - Root cause: Judgment Day C1 found that this spec's original build-check couldn't catch a missing Suspense boundary because the unconfigured build never exercised the code path. The fix added a *new* build-check command specifically to close that gap. That new command later turned out to have its own, different vacuity: `/akili-validate` found it (and a sibling "unconfigured" check) silently picked up a developer's local `.env.local`, producing a *configured* bundle under a check documented as unconfigured evidence (W9) — the identical defect class recurring one level removed, inside the very fix meant to close the first instance.
+  - Evidence: `judgment.md` C1; `validation-report.md` §5 W9.
+  - Standardization proposal: no local edit — recommend upstreaming to `judgment-day`/`akili-validate`: any verification command introduced as the remedy for a "does this check actually exercise the defect" finding should itself be re-examined against that same question before the finding is recorded as closed, not assumed safe because it was written in response to critique.
+  - Status: **Deferred (upstream candidate)** — recorded for methodology maintainers; this spec's own instance was fixed directly (`/akili-validate` W9 remediation).
 
 ### 2026-08-05 — changes/all-countries-filter
 

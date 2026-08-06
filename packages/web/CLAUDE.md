@@ -8,7 +8,7 @@ Next.js 15 frontend with App Router (port 3000). Static export for S3 + CloudFro
 pnpm dev              # next dev --port 3000
 pnpm build            # next build
 pnpm test             # jest --passWithNoTests
-pnpm test -- --testPathPattern=<pattern>
+pnpm test --testPathPattern=<pattern>
 pnpm lint             # next lint
 ```
 
@@ -45,6 +45,9 @@ src/
 
   components/
     ui/                         # shadcn/ui components (15 components)
+    analytics/
+      google-analytics.tsx      # GA4 conditional loader + pageview tracker (null-guarded)
+      microsoft-clarity.tsx     # Clarity conditional loader (null-guarded)
     auth/
       login-form.tsx            # Email + password + remember me
       forgot-password-form.tsx  # Two-step: email → code + new password
@@ -67,6 +70,7 @@ src/
       change-history.tsx        # Version change timeline
 
   hooks/
+    use-analytics-pageview.ts   # Fires GA4 page_view on mount + route change (no-ops if GA unconfigured)
     use-prompts.ts              # React Query hooks for prompt CRUD
     use-users.ts                # React Query hooks for user CRUD + groups
     use-job-polling.ts          # Polls GET /api/jobs/:id every 3s until terminal state

@@ -73,10 +73,10 @@ pnpm --filter @alliance-risk/web <script>
 pnpm --filter @alliance-risk/shared <script>
 
 # Run a single test file (API)
-pnpm --filter @alliance-risk/api test -- --testPathPattern=app.controller
+pnpm --filter @alliance-risk/api test --testPathPattern=app.controller
 
 # Run a single test file (Web)
-pnpm --filter @alliance-risk/web test -- --testPathPattern=some.test
+pnpm --filter @alliance-risk/web test --testPathPattern=some.test
 ```
 
 ## Architecture
