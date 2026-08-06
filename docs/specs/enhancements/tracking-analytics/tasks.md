@@ -10,6 +10,7 @@
 | **Judgment Day** | `judgment.md` — APPROVED (round 2); N1/N2/N3/N4 folded into tasks below |
 | **Version** | 1.0 |
 | **Depth** | Lite |
+| **Correction (post-`/akili-validate`)** | T-001/T-002 verification commands corrected from `test -- --testPathPattern=...` to `test --testPathPattern=...` — the extra `--` makes this repo's pnpm/Jest report "No tests found, exiting with code 0" (a false green), reproduced independently by 3 separate Reviewers/auditors during `/akili-execute` and `/akili-validate`. Repo-wide (root `CLAUDE.md` uses the same form) — out of this spec's scope to fix globally. |
 
 ## 2. Dependency Graph
 
@@ -51,11 +52,11 @@ T-004 [INFRA] deploy-web.sh env wiring — independent of T-001–T-003, can run
   - Call `jest.resetModules()` (or clear `next/script`'s module-level load cache) between these two test cases — the cache is keyed by `src`/`id` and a prior test's load can make a later "not loaded" assertion falsely pass.
 - `packages/web/src/hooks/__tests__/use-analytics-pageview.test.ts` (or colocated in the component test): mock `usePathname`/`useSearchParams`, assert `window.gtag` is called once on mount and once per path change, and is not called when `window.gtag` is undefined.
 
-**Verification:** `pnpm --filter @alliance-risk/web test -- --testPathPattern=analytics`
+**Verification:** `pnpm --filter @alliance-risk/web test --testPathPattern=analytics`
 
 **Done when:**
 - Both test files pass.
-- `pnpm --filter @alliance-risk/web build` succeeds with no env vars set (NFR-TRK-010 unconfigured half).
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID= NEXT_PUBLIC_CLARITY_ID= pnpm --filter @alliance-risk/web build` succeeds (NFR-TRK-010 unconfigured half). **Use explicit empty overrides, not a bare command** — a bare `pnpm ... build` picks up any local `packages/web/.env.local`, which silently builds a *configured* bundle and invalidates this as unconfigured evidence (corrected W9, `/akili-validate` — the same defect class as C1, a check that passes for reasons unrelated to what it claims to prove).
 - `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-TEST00000 pnpm --filter @alliance-risk/web build` succeeds — this is the actual Suspense/static-export check (fixes Judgment Day C1; the unconfigured build alone does not exercise `useSearchParams()`).
 - Manual: `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-TEST00000 pnpm --filter @alliance-risk/web build && npx serve packages/web/out` (production build, **not** `pnpm dev` — `reactStrictMode: true` double-invokes effects in dev and would mask a real double-count bug), confirm in GA4 DebugView exactly one `page_view` on load and exactly one per subsequent navigation.
 
@@ -84,7 +85,7 @@ T-004 [INFRA] deploy-web.sh env wiring — independent of T-001–T-003, can run
   - Renders with no `projectId` → assert `document.querySelector('script#ms-clarity')` is `null`.
   - Renders with `projectId="test123"` → assert the script tag exists with `id="ms-clarity"` and its content references the project ID.
 
-**Verification:** `pnpm --filter @alliance-risk/web test -- --testPathPattern=microsoft-clarity`
+**Verification:** `pnpm --filter @alliance-risk/web test --testPathPattern=microsoft-clarity`
 
 **Done when:**
 - Test file passes.
@@ -109,7 +110,7 @@ T-004 [INFRA] deploy-web.sh env wiring — independent of T-001–T-003, can run
 
 **Tests:** None new — covered by T-001/T-002's component tests plus the build check below.
 
-**Verification:** `pnpm --filter @alliance-risk/web build` (no env vars) and `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-TEST00000 NEXT_PUBLIC_CLARITY_ID=test123 pnpm --filter @alliance-risk/web build` (both vars) — both must succeed.
+**Verification:** `NEXT_PUBLIC_GA_MEASUREMENT_ID= NEXT_PUBLIC_CLARITY_ID= pnpm --filter @alliance-risk/web build` (explicit empty — see the W9 note on T-001, avoids `.env.local` contamination) and `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-TEST00000 NEXT_PUBLIC_CLARITY_ID=test123 pnpm --filter @alliance-risk/web build` (both vars) — both must succeed.
 
 **Done when:**
 - `layout.tsx` renders both components; grep confirms no other file imports `google-analytics.tsx`/`microsoft-clarity.tsx` directly (single mount point).
@@ -149,9 +150,9 @@ T-004 [INFRA] deploy-web.sh env wiring — independent of T-001–T-003, can run
 
 ## 3. PR Strategy
 
-**Estimated LOC:** ~150-160 (in line with `design.md` §12 budget, revised post-Judgment-Day).
+**Estimated LOC:** ~150-160 at spec-writing time; **actual came in at ~370** (test-file volume was undercounted — see `design.md` §12's variance note, recorded during `/akili-validate`).
 
-**Single PR recommended** — all 4 tasks are small, touch disjoint files (2 new components, 1 hook, 1 layout diff, 1 shell script), and there's no natural split boundary that reduces review burden below "read one small diff." A multi-PR split would only add coordination overhead for ~150 LOC.
+**Single PR recommended** — all 4 tasks are small, touch disjoint files (2 new components, 1 hook, 1 layout diff, 1 shell script), and there's no natural split boundary that reduces review burden below "read one small diff." A multi-PR split would only add coordination overhead, even at the actual ~370 LOC.
 
 **Suggested review order:** T-001 (core mechanism + the Judgment Day fixes) → T-002 (simpler, same pattern) → T-003 (wiring, easy to verify by inspection) → T-004 (shell script, independent, smallest diff).
 
