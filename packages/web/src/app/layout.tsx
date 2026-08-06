@@ -5,6 +5,8 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { QueryProvider } from '@/providers/query-provider';
 import { AuthProvider } from '@/providers/auth-provider';
 import { CountryFilterProvider } from '@/providers/country-filter-provider';
+import { GoogleAnalytics } from '@/components/analytics/google-analytics';
+import { MicrosoftClarity } from '@/components/analytics/microsoft-clarity';
 import './globals.css';
 
 const inter = Inter({
@@ -36,6 +38,8 @@ export default function RootLayout({
             </CountryFilterProvider>
           </AuthProvider>
         </QueryProvider>
+        <GoogleAnalytics measurementId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />
+        <MicrosoftClarity projectId={process.env.NEXT_PUBLIC_CLARITY_ID} />
       </body>
     </html>
   );

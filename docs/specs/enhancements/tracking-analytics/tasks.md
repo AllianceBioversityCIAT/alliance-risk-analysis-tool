@@ -95,7 +95,7 @@ T-004 [INFRA] deploy-web.sh env wiring — independent of T-001–T-003, can run
 
 ### T-003: Wire into layout.tsx + env documentation `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]`
 - **Skills:** `vercel-react-best-practices`
 - **Size:** S
 - **Dependencies:** T-001, T-002

@@ -179,6 +179,17 @@ Amber banner appears between heading and filters when validation rejects fields.
 ### Data Completeness
 Only VERIFIED fields count toward completeness percentage. PARTIAL fields reduce the percentage and show as "remaining".
 
+## Analytics
+
+Google Analytics 4 and Microsoft Clarity are wired in as conditional, client-only scripts, mounted once in `src/app/layout.tsx` as siblings alongside the providers:
+
+- `NEXT_PUBLIC_GA_MEASUREMENT_ID` — GA4 Measurement ID (`G-XXXXXXXXXX`). Consumed by `src/components/analytics/google-analytics.tsx`.
+- `NEXT_PUBLIC_CLARITY_ID` — Microsoft Clarity Project ID. Consumed by `src/components/analytics/microsoft-clarity.tsx`.
+
+Both components render `null` entirely when their env var is absent — no script tag, no network request. See `packages/web/.env.example` for the documented (empty) vars.
+
+**Manual post-setup step:** once the Clarity project exists, its dashboard masking mode must be set to **Strict** before enabling in production — this is a Clarity project-dashboard setting, not something the snippet can configure.
+
 ## ESLint
 
 - Extends `next/core-web-vitals`

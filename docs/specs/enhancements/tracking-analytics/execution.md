@@ -49,9 +49,29 @@
 - **Requirements covered:** BR-TRK-001, NFR-TRK-010 (partial — see below)
 - **Outstanding:** the full end-to-end grep-`out/`-for-the-ID check from `tasks.md` needs T-003's `layout.tsx` wiring to be meaningful; deferred to T-003's verification.
 
-## 3. Carry-Forward Notes for T-003
+### T-003: Wire into layout.tsx + env documentation `[FE]` — PASS (attempt 1)
 
-- **C1's real verification** (the `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-TEST00000 build` check) only becomes meaningful once `layout.tsx` mounts `<GoogleAnalytics />` — re-run and confirm `out/` actually contains the GA script/ID after T-003.
-- **T-004's grep-`out/`-for-ID check** similarly depends on T-003's wiring — run both var's build together and grep `out/**/*` (HTML + `_next/static/chunks/*.js`) after T-003 lands.
-- **PR description** must include: "Clarity project dashboard masking mode must be set to Strict before enabling in production" (T-002's C4/N2 substitute verification).
-- Repo-wide observation (not this spec's scope, not actioned): the `pnpm ... test -- --testPathPattern=<pattern>` form documented in root `CLAUDE.md` produces a false "No tests found, exiting with code 0" in this repo's current pnpm/Jest setup. Both Reviewers hit this independently. Worth a separate doc-fix outside this spec.
+- **Date:** 2026-08-06
+- **Implementer (sonnet):** Mounted `<GoogleAnalytics measurementId={process.env.NEXT_PUBLIC_GA_MEASUREMENT_ID} />` and `<MicrosoftClarity projectId={process.env.NEXT_PUBLIC_CLARITY_ID} />` as siblings in `<body>`, after `</QueryProvider>` (not nested in any provider). Created `packages/web/.env.example` (no real values) and added the "Analytics" section to `packages/web/CLAUDE.md`.
+  - Verification: both builds (unconfigured, and with `NEXT_PUBLIC_GA_MEASUREMENT_ID=G-TEST00000 NEXT_PUBLIC_CLARITY_ID=test123`) succeeded; grepped `out/**/*.html` and `.txt` RSC payloads and found both test IDs present in every page; grepped `_next/static/chunks/*.js` and did NOT find the literal IDs there (explained as expected — server-component env read passed via RSC props, not webpack `DefinePlugin`).
+  - Not Done/Assumptions: none outstanding.
+- **Reviewer (opus):** **STATUS: PASS.** Did not take the chunk-absence explanation on trust — independently rebuilt both variants from a clean `out`/`.next`, confirmed the layout chunk hash is byte-identical across builds (proving the ID isn't inlined client-side), then went further and **served the actual static export in headless Chrome** to observe runtime behavior directly:
+  - Unconfigured build: zero script tags injected, `window.gtag`/`window.clarity` both `undefined`, `dataLayer` empty — FR-TRK-001 negative case confirmed live, not just by unit test.
+  - Configured build: `window.gtag`/`window.clarity` both defined; `dataLayer` shows `js` → `config` (with `send_page_view:false` honored) → exactly one `page_view` on initial load, no duplicate; a real `<script src="https://www.clarity.ms/tag/test123">` was created *by the Clarity snippet itself* at runtime, proving the ID actually reached the live `gtag`/`clarity` calls, not just a static HTML string.
+  - **This is the task where C1 and C2 become genuinely verified for the first time** (T-001/T-004's builds ran before layout.tsx mounted anything, so those checks were structurally vacuous — documented at the time, not a defect). Reviewer confirms: all 17 routes remain statically prerendered in the configured build (**C1 closed** — DD-TRK-002's Suspense scoping holds under real exercise), and both IDs are present in 16/16 HTML + 15/15 `.txt` files (**C2 closed**).
+  - Bonus: this also empirically discharges FR-TRK-002's "no automated substitute" manual check — exactly one `page_view` per route, confirmed live in Chrome, without needing a real GA4 property.
+  - ADVISORY (non-blocking): `.env.example` only documents the 2 analytics vars, not `NEXT_PUBLIC_API_URL` (pre-existing, used elsewhere) — a dev copying it as a full template would get an incomplete `.env.local`; suggest a follow-up doc task, out of T-003's scope. `CLAUDE.md`'s `## Structure` tree wasn't updated to list the new `analytics/`/hook files — prose section covers it, tree is now slightly stale. Unauthenticated landing produces 2 `page_view`s (entry route + client redirect to `/login`) — correct per spec, but Product should know pageview counts include the auth-redirect hop. Grepping chunks for `googletagmanager`/`ga-gtag-init` is not a valid "GA is off" check (that logic ships even when unconfigured, since the client component is always imported) — the correct disable check is presence of the *configured ID* or absence of `script[data-nscript]` in the DOM, per requirements.md §9.
+- **Files changed:** `packages/web/src/app/layout.tsx`, `packages/web/.env.example` (new), `packages/web/CLAUDE.md`
+- **Requirements covered:** FR-TRK-001, FR-TRK-003, BR-TRK-001, NFR-TRK-011 — plus retroactively closes C1 (T-001) and C2 (T-004)'s real verification gates.
+- **Outstanding:** none for this task. Spec-wide outstanding item: PR description must state "Clarity project dashboard masking mode must be set to Strict before enabling in production" (T-002's C4/N2 substitute verification) — Leader action at PR time, not a task.
+
+## 3. Carry-Forward Notes (T-003, resolved) and Remaining Repo-Wide Observations
+
+- ~~C1's real verification only becomes meaningful once `layout.tsx` mounts `<GoogleAnalytics />`~~ — **resolved by T-003**, confirmed by Reviewer via headless-Chrome runtime check.
+- ~~T-004's grep-`out/`-for-ID check depends on T-003's wiring~~ — **resolved by T-003**, 16/16 HTML + 15/15 `.txt` files confirmed.
+- **PR description must include:** "Clarity project dashboard masking mode must be set to Strict before enabling in production" (T-002's C4/N2 substitute verification) — still outstanding, Leader action at PR-open time.
+- Repo-wide observation (not this spec's scope, not actioned): the `pnpm ... test -- --testPathPattern=<pattern>` form documented in root `CLAUDE.md` produces a false "No tests found, exiting with code 0" in this repo's current pnpm/Jest setup. All three Reviewers hit this independently. Worth a separate doc-fix outside this spec.
+
+## 4. Spec Complete
+
+All 4 tasks (T-001, T-002, T-003, T-004) PASSED on first Implementer attempt, with independent Reviewer verification (author `sonnet` ≠ auditor `opus` throughout). All 4 confirmed Judgment Day findings (C1–C4) are now verified fixed **in the running build**, not just in source: C1 and C2 specifically required T-003 to actually exercise, and both closed clean under real headless-Chrome verification. No HALTs, no rework rounds, no pivots.
