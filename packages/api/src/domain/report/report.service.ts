@@ -53,6 +53,7 @@ export class ReportService {
         companyName: assessment.companyName,
         companyType: assessment.companyType,
         country: assessment.country,
+        detectedCountry: assessment.detectedCountry,
         status: assessment.status as unknown as import('@alliance-risk/shared').AssessmentStatus,
         intakeMode: assessment.intakeMode as unknown as import('@alliance-risk/shared').IntakeMode,
         progress: assessment.progress,

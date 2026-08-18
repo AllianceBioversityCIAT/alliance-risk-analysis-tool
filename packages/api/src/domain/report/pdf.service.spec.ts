@@ -24,6 +24,7 @@ const createReport = (): ReportResponse => ({
     companyName: 'Bluewave Fisheries',
     companyType: 'SME',
     country: 'Kenya',
+    detectedCountry: null,
     status: AssessmentStatus.COMPLETE,
     intakeMode: IntakeMode.UPLOAD,
     progress: 100,
