@@ -100,6 +100,28 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
   return <File className={className} />;
 }
 
+// ─── Analyze Risks — submit error shape helpers (kept out of the component so
+// each is independently simple, reducing proceedToRiskAnalysis's own cognitive
+// complexity per SonarQube) ────────────────────────────────────────────────
+
+// Narrows a caught error to the specific 400 + invalidFields shape the
+// gap-fields/submit endpoint returns on AI validation rejection.
+function isInvalidFieldsError(
+  err: unknown,
+): err is AxiosError<{ invalidFields: InvalidField[] }> {
+  return (
+    err instanceof AxiosError &&
+    err.response?.status === 400 &&
+    Array.isArray(err.response?.data?.invalidFields)
+  );
+}
+
+function invalidFieldsToastTitle(count: number): string {
+  const fieldWord = count === 1 ? 'field' : 'fields';
+  const verbSuffix = count === 1 ? 's' : '';
+  return `${count} ${fieldWord} need${verbSuffix} more detail`;
+}
+
 // ─── Gap Analysis Steps ─────────────────────────────────────────────────────
 
 const GAP_PIPELINE_STEPS: import('@/components/shared/pipeline-stepper').PipelineStep[] = [
@@ -238,6 +260,31 @@ export default function GapDetectorClient() {
   const [showCountryMismatchDialog, setShowCountryMismatchDialog] = useState(false);
   const [showCountryMismatchHint, setShowCountryMismatchHint] = useState(false);
 
+  // Handles the one error shape that needs UI follow-up (banner, filter,
+  // refetch) — split out so proceedToRiskAnalysis's own branching stays flat.
+  const handleInvalidFieldsError = useCallback(
+    (err: AxiosError<{ invalidFields: InvalidField[] }>) => {
+      const invalidFields = err.response?.data.invalidFields ?? [];
+      if (invalidFields.length > 0) {
+        sileo.warning({
+          title: invalidFieldsToastTitle(invalidFields.length),
+          description: 'Please review the highlighted fields and provide meaningful information.',
+        });
+        setShowValidationBanner(true);
+        setActiveFilter('attention');
+      } else {
+        // Validation service unavailable — invalidFields is empty
+        sileo.error({
+          title: 'Validation temporarily unavailable',
+          description: 'Please try again in a moment.',
+        });
+      }
+      // Refetch gap fields to get updated statuses and feedback from server
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
+    },
+    [id, queryClient],
+  );
+
   const proceedToRiskAnalysis = useCallback(async () => {
     if (!id) return;
     setIsValidating(true);
@@ -245,27 +292,8 @@ export default function GapDetectorClient() {
       await apiClient.post(`/api/assessments/${id}/gap-fields/submit`);
       router.push(`/assessments/risk-scorecard?id=${id}`);
     } catch (err) {
-      // Handle validation failure — fields rejected by AI
-      const errData = err instanceof AxiosError ? err.response?.data : undefined;
-      if (err instanceof AxiosError && err.response?.status === 400 && errData && typeof errData === 'object' && Array.isArray(errData.invalidFields)) {
-        const invalidFields = errData.invalidFields as InvalidField[];
-        if (invalidFields.length > 0) {
-          const count = invalidFields.length;
-          sileo.warning({
-            title: `${count} field${count !== 1 ? 's' : ''} need${count === 1 ? 's' : ''} more detail`,
-            description: 'Please review the highlighted fields and provide meaningful information.',
-          });
-          setShowValidationBanner(true);
-          setActiveFilter('attention');
-        } else {
-          // Validation service unavailable — invalidFields is empty
-          sileo.error({
-            title: 'Validation temporarily unavailable',
-            description: 'Please try again in a moment.',
-          });
-        }
-        // Refetch gap fields to get updated statuses and feedback from server
-        queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
+      if (isInvalidFieldsError(err)) {
+        handleInvalidFieldsError(err);
       } else {
         sileo.error({
           title: 'Failed to start risk analysis',
@@ -275,7 +303,7 @@ export default function GapDetectorClient() {
     } finally {
       setIsValidating(false);
     }
-  }, [id, router, queryClient]);
+  }, [id, router, handleInvalidFieldsError]);
 
   // Thin wrapper: on a real country mismatch, ask for confirmation first;
   // otherwise proceed exactly as before (FR-CMV-002).
