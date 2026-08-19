@@ -142,6 +142,13 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
   const isHighRisk = score.level === RiskLevel.HIGH;
   const isCritical = score.level === RiskLevel.CRITICAL;
 
+  const handleHeaderKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setIsExpanded((prev) => !prev);
+    }
+  }, []);
+
   return (
     <div
       className={cn(
@@ -154,11 +161,18 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
             : 'border-border',
       )}
     >
-      {/* Card header */}
-      <button
-        type="button"
+      {/* Card header — a clickable container, not a <button>, because it holds the
+          real "Resync" <button> below it and HTML forbids nesting interactive
+          controls (button-in-button breaks hydration). role="button" + key
+          handling preserve the same keyboard/screen-reader behavior a real
+          button would have. */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setIsExpanded((e) => !e)}
-        className="w-full flex items-start justify-between gap-4 p-5 hover:bg-muted/30 transition-colors text-left"
+        onKeyDown={handleHeaderKeyDown}
+        aria-expanded={isExpanded}
+        className="w-full flex items-start justify-between gap-4 p-5 hover:bg-muted/30 transition-colors text-left cursor-pointer"
       >
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between gap-2 mb-2">
@@ -170,6 +184,7 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
               <button
                 type="button"
                 onClick={handleResync}
+                onKeyDown={(e) => e.stopPropagation()}
                 disabled={isProcessing}
                 className={cn(
                   'p-1.5 rounded-md text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors border border-transparent hover:border-primary/20',
@@ -211,7 +226,7 @@ export function CategoryScoreCard({ score, assessmentId, onResyncStateChange }: 
         <ChevronDown
           className={cn('h-4 w-4 text-muted-foreground shrink-0 mt-0.5 transition-transform', isExpanded && 'rotate-180')}
         />
-      </button>
+      </div>
 
       {/* Expanded content */}
       {isExpanded && (
