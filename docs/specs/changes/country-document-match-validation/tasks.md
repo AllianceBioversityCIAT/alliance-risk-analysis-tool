@@ -106,7 +106,7 @@ T-001, T-003 → T-005 [FE]
 
 ### T-004: Update the `gap_detector` prompt — local seed + production copy-paste text `[BE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` (PASS, attempt 1 — see execution.md; verified with a real live Bedrock call, not just mocks)
 - **Skills:** `nestjs-expert`
 - **Size:** M
 - **Dependencies:** T-003 (needs final field names/schema from the interface)

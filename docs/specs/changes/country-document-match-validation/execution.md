@@ -89,3 +89,27 @@
 **Decisions made:** none beyond the spec — implemented exactly as designed; the Implementer's `normalizeDetectedCountry()` helper is an internal refactor detail (extracting the normalization logic named inline in design.md §6.2 into its own private method) and doesn't deviate from the design's intent.
 **Issues encountered:** none — PASS on attempt 1.
 **Final verification result:** PASS. Per Leader's own judgment (not a task requirement), advisory A1's gap is real but low-risk given PASS-on-attempt-1 status and the Reviewer's mutation-testing confirmation of the actually-critical path (JD-01 reversion); not escalated to a new task per the "Advisory Never Becomes A Task" rule.
+
+---
+
+### Task T-004 — Update the `gap_detector` prompt: local seed + production copy-paste text `[BE]`
+
+- **Final Status:** PASS (attempt 1)
+- **Date:** 2026-08-18
+- **Implementer attempts:** 1
+
+**Attempt 1:**
+- **Files changed:** `packages/api/prisma/seed.ts` (+8 lines — the "## Country Detection" block + reordered Output Format schema, placed exactly per design.md §6.3), new file `docs/specs/changes/country-document-match-validation/prod-prompt-update.md` (production manual-update artifact per design.md §6.4)
+- **Implementer verification:**
+  - `npx tsx prisma/seed.ts` (run from `packages/api/`, not via `--prefix` from root — `--prefix` only affects module resolution, not cwd, so the documented root-level form needed a `cd` first; noted for future reference) → `Updated gap_detector prompt: Gap Detector - Default`
+  - **A real, live Bedrock call** (not mocked) using the now-updated prompt: `{{country}}` deliberately injected as `"Kenya"`, fake business-plan text describing Zambia operations → raw response `"detectedCountry": "Zambia", "detectedCountryConfidence": 0.95, "fields": [...]` — confirms the anti-anchoring instruction actually works (the model ignored the injected Kenya context and matched the real document text), and confirms both new keys appear before `fields` in raw response order
+  - `pnpm --filter @alliance-risk/api build` → exit 0
+  - One-off verification script deleted after use, confirmed via `git status`
+- **Reviewer verdict:** `STATUS: PASS` — independently verified byte-for-byte that the prompt text matches design.md §6.3 exactly (programmatic string comparison, not eyeballing), confirmed the schema matches `normalizeDetectedCountry()`'s actual parsing expectations (`SUPPORTED_COUNTRY_LABELS` enumeration + `>= 0.7` gate), confirmed `prod-prompt-update.md`'s every factual claim against its cited sources (handler lookup query, seed lookup query, `/admin/prompt-manager` route, `PUT /admin/prompts/:id/update` endpoint and its `PromptVersion` snapshot behavior), and confirmed scope via `git status --porcelain -uall` (exactly 2 entries, no stray files).
+  - **ADVISORY:** (1) noted that `tasks.md` still showed T-004 as `[ ]` at review time — expected, this is the Leader's post-PASS update, done below. (2) `design.md` §6.4 and `prod-prompt-update.md` now duplicate the prompt text in two places — recommend a one-line pointer from §6.4 to the doc for future discoverability; not acted on now (documentation-polish, non-blocking). (3) minor paste-hygiene note for the Admin doc, already adequately worded.
+
+**Requirements covered:** FR-CMV-001 (prompt-side instruction), BR-CMV-003
+**Design refs:** design.md §6.3, §6.4, §12 DD-CMV-005
+**Decisions made:** none beyond the spec.
+**Issues encountered:** none — PASS on attempt 1. One minor operational note (the `--prefix` vs `cd` command-form correction) worth folding into `CLAUDE.md`'s documented command at archive time, not urgent enough to block this task.
+**Final verification result:** PASS — real end-to-end Bedrock verification (not just unit-test mocks) is the strongest possible evidence for this task, since it's the only way to prove the anti-anchoring mitigation actually holds against a live model call.
