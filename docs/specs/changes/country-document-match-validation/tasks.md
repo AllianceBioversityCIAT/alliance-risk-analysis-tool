@@ -74,7 +74,7 @@ T-001, T-003 → T-005 [FE]
 
 ### T-003: Gap-detection handler — detect, gate, and persist `detectedCountry` `[BE]`
 
-- **Status:** `[x]` (PASS, attempt 1 — see execution.md; Reviewer additionally ran mutation testing confirming the JD-01 regression is caught)
+- **Status:** `[x]` (PASS, attempt 1 — see execution.md; Reviewer additionally ran mutation testing confirming the JD-01 regression is caught. **Re-opened twice post-validation** — DD-CMV-007 (widen `detectedCountry` beyond the 4-country allowlist) and DD-CMV-010 (manual `country_of_operation` correction takes precedence) — see execution.md's "T-003 (re-opened)" entries)
 - **Skills:** `nestjs-expert`, `error-handling-patterns`
 - **Size:** L (touches interface, `execute()`, `processUploadMode()`, and its test file)
 - **Dependencies:** T-002
@@ -127,7 +127,7 @@ T-001, T-003 → T-005 [FE]
 
 ### T-005: Gap detector UI — mismatch dialog, hint banner, and cache invalidation `[FE]`
 
-- **Status:** `[x]` (PASS, attempt 1 — see execution.md; all 3 Judgment Day defect classes confirmed not reintroduced)
+- **Status:** `[x]` (PASS, attempt 1 — see execution.md; all 3 Judgment Day defect classes confirmed not reintroduced. **Re-opened twice post-validation** — DD-CMV-007 (frontend half of widening `detectedCountry`), DD-CMV-008 (initial-detection cache invalidation), and DD-CMV-009 (dialog visual polish) — see execution.md's "T-005 (re-opened)" entries)
 - **Skills:** `shadcn-ui`, `tailwind-design-system`, `vercel-react-best-practices`
 - **Size:** L (component logic + new test file with a large mock surface)
 - **Dependencies:** T-001, T-003

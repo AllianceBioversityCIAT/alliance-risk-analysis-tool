@@ -170,6 +170,22 @@ All 4 WARNs were closed in a post-validation fix pass (user-approved), including
 
 **Recommendation:** archive-readiness still holds — the DD-CMV-007 change was implemented, reviewed, and tested with the same rigor as the rest of this spec, including real end-to-end evidence (a live Bedrock call, not just mocks). A full formal re-run of `/akili-test`/`/akili-validate` was judged unnecessary given that rigor, but is available if the user wants a fully independent second look before archiving.
 
+## 14. Addendum (2026-08-19) — DD-CMV-008, 009, 010: Three More Post-Audit Rounds
+
+The user continued manually testing the shipped feature (exactly the activity WARN-1 recommended) and found three more real gaps in quick succession, each fixed the same way — design.md/requirements.md amended first, then Implementer → Reviewer, all PASS:
+
+| DD | Found by | Fix | Reviewer verdict |
+|---|---|---|---|
+| DD-CMV-008 | Real end-to-end test: fresh assessment, first upload (not a re-analyze) — dialog never appeared despite correct DB persistence | Added a second, independent cache-invalidation effect watching `useGapFields()`'s own `total` 0→positive transition (the existing `jobStatus`-based invalidation only ever covers the re-analyze flow) | PASS — mutation-tested by removing the fix and confirming the new tests go red, and by independently reverting the Implementer's one test-fixture judgment call to confirm it was actually necessary |
+| DD-CMV-009 | User screenshot: dialog visually awkward (`CountryBadge` pills embedded mid-sentence in prose) | Pure presentation restructure — comparison card above a trimmed description, reassurance text moved into a callout, moved verbatim (no rewording) | Attempt 1 **FAILed** on a layout-order defect (card rendered below the prose instead of above); attempt 2 PASSed after a direct reorder fix |
+| DD-CMV-010 | User's normal use: correcting the Core-10 `country_of_operation` field didn't update `Assessment.detectedCountry`, because the anti-anchoring Country Detection instruction (DD-CMV-007) also makes the model ignore the "USER-PROVIDED CORRECTIONS" block | A manual `country_of_operation` correction now takes precedence over the model's re-detection during re-analyze, bypassing the confidence gate (user-authored ground truth) | PASS — mutation-tested twice (precedence logic and sanity-check gate both independently confirmed load-bearing) |
+
+**Full detail:** `execution.md`'s "T-005 (re-opened, 2nd/3rd time)" and "T-003 (re-opened, 2nd time)" entries; test evidence in `test-report.md` §11 addendum (DD-CMV-008; DD-CMV-009/010 added no new dedicated addendum section but are covered by the same execution.md entries and their own Reviewer verdicts).
+
+**None of these findings reopened or contradicted anything in this report's original Phases 1-7**, nor DD-CMV-007's own addendum above — each is a narrowly-scoped, independently-reviewed fix layered on top of an already-correct foundation (DD-CMV-006's fold-in write, the confidence gate, `allMandatoryComplete` gating, and the DD-CMV-007 widening itself all remain exactly as previously verified). Every fix was confirmed to have zero effect outside its own narrow scope by the same Reviewer discipline used throughout: byte-diffing untouched regions, re-running full suites, and — for the two most consequential changes (DD-CMV-008 and DD-CMV-010) — mutation testing (deliberately breaking the fix to confirm the new tests actually catch the reintroduced defect).
+
+**Final recommendation: still ARCHIVE-READY.** This is now the 4th consecutive round of user-driven manual testing that surfaced a real gap, and the 4th consecutive round where the same propose→specify-amend→implement→review discipline closed it without incident (one single-round Reviewer FAIL along the way, on DD-CMV-009, fixed same-session). No unresolved finding remains at any layer — code, tests, or documentation.
+
 ```text
 /akili-archive changes/country-document-match-validation
 ```
