@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { BedrockService } from '../../../infrastructure/bedrock/bedrock.service';
 import type { JobHandler } from '../job-handler.interface';
-import { BEDROCK_MODELS, AgentSection, isSupportedCountry } from '@alliance-risk/shared';
+import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
 import { GAP_DETECTION_CONFIG } from '../../../domain/gap-detection/gap-detection.config';
 import type { Core10FieldDefinition } from '../../../domain/gap-detection/gap-detection.config';
 import {
@@ -252,21 +252,30 @@ export class GapDetectionHandler implements JobHandler {
 
   /**
    * Normalizes the AI response's top-level detectedCountry/detectedCountryConfidence
-   * pair to either a member of SUPPORTED_COUNTRY_LABELS or null. Fails quiet
-   * (NFR-CMV-011): anything that isn't a supported-country string at >= 0.7
-   * confidence — missing key, hallucinated string, wrong type, low confidence, or
+   * pair to either a real country-name string or null. Fails quiet (NFR-CMV-011):
+   * anything that isn't a non-empty, length-bounded, non-"unclear" string at >= 0.7
+   * confidence — missing key, empty/oversized string, wrong type, low confidence, or
    * the literal "unclear" — becomes null, never a thrown error.
+   *
+   * (Revised 2026-08-19, DD-CMV-007): no membership check against
+   * SUPPORTED_COUNTRY_LABELS is performed here — a confidently-detected country
+   * outside the 4-country allowlist (e.g. "Malawi") is a valid, real value and is
+   * persisted as-is. The length bound (<=100 chars) mirrors the DB column's
+   * VarChar(100) bound and is a defensive cap against a pathological response, not
+   * a country-name allowlist.
    */
   private normalizeDetectedCountry(response: GapDetectionAIResponse): string | null {
     const { detectedCountry, detectedCountryConfidence } = response;
+    const trimmed = typeof detectedCountry === 'string' ? detectedCountry.trim() : '';
 
     if (
-      typeof detectedCountry === 'string' &&
-      isSupportedCountry(detectedCountry) &&
+      trimmed.length > 0 &&
+      trimmed.length <= 100 &&
+      trimmed.toLowerCase() !== 'unclear' &&
       typeof detectedCountryConfidence === 'number' &&
       detectedCountryConfidence >= 0.7
     ) {
-      return detectedCountry;
+      return trimmed;
     }
 
     this.logger.debug(

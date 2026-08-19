@@ -109,9 +109,54 @@ describe('GapDetectionHandler', () => {
       });
     });
 
+    it('persists a confidently-detected country outside the 4-country allowlist instead of normalizing it to null (DD-CMV-007 / BR-CMV-001 revised)', async () => {
+      mockUploadAssessment({ country: 'Nigeria' });
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify({
+          detectedCountry: 'Malawi',
+          detectedCountryConfidence: 0.95,
+          ...createGapAIResponse(),
+        }),
+        tokensUsed: 400,
+      });
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      // Malawi is not one of the 4 supported countries, but it's a real,
+      // confidently-detected value — it must be persisted as-is, not discarded.
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Malawi' },
+      });
+    });
+
+    it('accepts a detectedCountry at exactly the 100-character length boundary (inclusive)', async () => {
+      mockUploadAssessment();
+      const exactly100Chars = 'A'.repeat(100);
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify({
+          detectedCountry: exactly100Chars,
+          detectedCountryConfidence: 0.95,
+          ...createGapAIResponse(),
+        }),
+        tokensUsed: 400,
+      });
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      // Mirrors the existing 0.7/0.699999 confidence-boundary pair — 100 chars
+      // must be accepted, 101 (already tested below) must be rejected.
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: exactly100Chars },
+      });
+    });
+
     it.each([
       ['the literal "unclear"', 'unclear', 0.95],
-      ['a hallucinated country string', 'Atlantis', 0.95],
+      ['the literal "unclear" in different casing', 'UnClear', 0.95],
+      ['an empty string after trimming', '   ', 0.95],
+      ['an oversized string (>100 chars)', 'A'.repeat(101), 0.95],
       ['a missing detectedCountry key', undefined, 0.95],
       ['confidence below 0.7', 'Zambia', 0.5],
     ])('normalizes %s to null and logs a debug line', async (_label, detectedCountry, confidence) => {

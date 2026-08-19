@@ -55,7 +55,7 @@ import { useJobPolling } from '@/hooks/use-job-polling';
 import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { useMergedContent } from '@/hooks/use-merged-content';
 import { useMultiDocumentStatus } from '@/hooks/use-multi-document-status';
-import { AssessmentStatus, GapFieldStatus, JobStatus, isSupportedCountry } from '@alliance-risk/shared';
+import { AssessmentStatus, GapFieldStatus, JobStatus } from '@alliance-risk/shared';
 import type { GapFieldResponse, InvalidField } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
@@ -134,8 +134,13 @@ export default function GapDetectorClient() {
   // near `allMandatoryComplete` instead would hit a temporal-dead-zone crash
   // on first render for any callback declared above that point but below this
   // derivation (design.md §7 / JD-17).
+  //
+  // Revised 2026-08-19 (DD-CMV-007): the `isSupportedCountry(...)` membership
+  // check is removed — the backend's own confidence gate (design.md §6.2) is
+  // the only filter now. By the time `Assessment.detectedCountry` is non-null,
+  // it is already guaranteed to be a real, confidently-detected, non-"unclear"
+  // value, even if it isn't one of the 4 supported countries.
   const countryMismatch = !!assessment?.detectedCountry
-    && isSupportedCountry(assessment.detectedCountry)
     && assessment.detectedCountry !== assessment.country;
 
   const { data: gapData, isLoading: gapLoading } = useGapFields(id ?? '');

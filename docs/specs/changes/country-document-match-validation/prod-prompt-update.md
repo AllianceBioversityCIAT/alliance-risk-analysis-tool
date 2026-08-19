@@ -11,7 +11,7 @@ Paste this block **immediately before** the existing `## Output Format` heading 
 
 Independent of the country context stated earlier in this prompt, look **only** at what the documents themselves say and determine the primary country where this business actually operates. The context above reflects a value the user selected when starting this assessment — it may be wrong, and this check exists specifically to catch that. Do not let it influence your answer here.
 
-Return this as a top-level `detectedCountry` value using **exactly** one of: `"Kenya"`, `"Ethiopia"`, `"Nigeria"`, `"Zambia"`, or `"unclear"` if the documents don't clearly support one of those four. Also return a `detectedCountryConfidence` number from 0.0 to 1.0 for that classification, using the same bar as `VERIFIED` above (≥ 0.7 means confident) — if the documents don't clearly name an operating country, or you're below that confidence, return `"unclear"` with a correspondingly low confidence.
+Return this as a top-level `detectedCountry` value: the country's common English name (e.g. `"Kenya"`, `"Tanzania"`, `"Malawi"`) if the documents clearly support one — **it does not need to be one of the four countries mentioned elsewhere in this prompt; name whichever real country the documents actually describe.** If the documents don't clearly indicate an operating country at all, return the literal string `"unclear"` instead. Also return a `detectedCountryConfidence` number from 0.0 to 1.0 for that classification, using the same bar as `VERIFIED` above (≥ 0.7 means confident) — if you're below that confidence, return `"unclear"` with a correspondingly low confidence.
 ```
 
 ## 2. Replacement — reordered "## Output Format" JSON example
@@ -23,7 +23,7 @@ Replace the existing `## Output Format` JSON example with this reordered version
 
 Return a JSON object with this exact structure:
 {
-  "detectedCountry": "<Kenya | Ethiopia | Nigeria | Zambia | unclear>",
+  "detectedCountry": "<the detected country's common English name, or \"unclear\">",
   "detectedCountryConfidence": <0.0-1.0>,
   "fields": [
     {

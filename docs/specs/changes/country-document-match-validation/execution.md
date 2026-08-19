@@ -153,6 +153,40 @@
 
 **T-005's manual browser walkthrough — not performed, honestly downgraded rather than fabricated.** This session had no interactive browser-automation tool engaged (no Playwright/Chrome-extension session active) to actually click through the gap-detector screen end-to-end. Rather than claim a walkthrough that didn't happen, this clause is explicitly downgraded: the substitute evidence is (a) 15 automated frontend tests (`gap-detector-client.test.tsx`) covering every interactive state — dialog visibility across all 4 mismatch conditions, both button paths, the reappear-on-reclick behavior, the hint's both remediation paths, its dismiss button, its auto-clear, the happy-path no-mismatch case, and both dismiss-path variants (Cancel vs. the dialog's built-in Close control) — and (b) an independent Reviewer during `/akili-execute` T-005 that diffed the changed region byte-for-byte against the pre-spec file to confirm `allMandatoryComplete`, the Button's `disabled` expression, and the Tooltip gate are all untouched. If a real browser walkthrough is wanted before this ships to users, it should be performed by the user directly (`pnpm dev`, navigate to an assessment with a deliberately mismatched country) rather than claimed here without having been done.
 
+## 3b. Post-Archive-Readiness Behavior Change: Widen `detectedCountry` Beyond The 4-Country Allowlist
+
+**Discovered:** 2026-08-19, during the user's own manual browser walkthrough (the T-005 "Done when" clause explicitly deferred in §3 above — this is exactly why that clause mattered).
+
+**What happened:** the user created an assessment selecting Nigeria, uploaded a real business plan describing a company operating in Malawi, and observed no dialog/hint at all. The server log showed:
+```
+DEBUG [GapDetectionHandler] detectedCountry rejected: value="Malawi" confidence=0.95
+```
+The model correctly detected Malawi at high confidence; the handler correctly discarded it per the *original* design, because `normalizeDetectedCountry()` required `isSupportedCountry(detectedCountry)` — Malawi isn't one of the 4 supported countries, so it was treated identically to a genuinely unclear detection. This is not a bug — every task and Reviewer verified the shipped code matched the design exactly — but the design itself was wrong: restricting the mismatch check to only fire between two *supported* countries defeats its own purpose. A business plan describing a country the platform doesn't even support is arguably the strongest mismatch signal this feature could ever see, and it was the one case being silently swallowed.
+
+**Decision (user-confirmed via `AskUserQuestion`):** widen `detectedCountry`/the mismatch check to accept any confidently-detected country, not just the 4 supported ones. Display fallback for an unsupported country: plain name, no flag (confirmed `CountryBadge` already degrades this way with zero code change, since `getCountryFlag()` already returns `''` for unrecognized values).
+
+**Spec documents amended before re-implementation** (this is the correct order — design changes first, then code, per AKILI-SPECS discipline, even though the spec was already at "archive-ready"):
+- `requirements.md`: BR-CMV-001 revised (mismatch is no longer restricted to the 4-country allowlist); new BR-CMV-004 (graceful display fallback); FR-CMV-001 gains Scenario 1b; FR-CMV-002 gains Scenario 1b; glossary and dependencies section updated.
+- `design.md`: §4 (type widened to `string | null`), §6.2 (normalization no longer gates on `isSupportedCountry()`, only on non-empty/length-bounded/confidence), §6.3 (prompt instruction rewritten to ask for any real country name, not an enum of 4), §7 (frontend `countryMismatch` derivation simplified — `isSupportedCountry` check removed — plus a note confirming `CountryBadge`'s existing empty-flag fallback satisfies BR-CMV-004 with no code change), §10/§11 (error table and test list updated), §12 (new DD-CMV-007 recording this decision and its rationale).
+- **Correction-closure sweep — first pass incomplete, caught and fixed by the re-implementation's own frontend Reviewer:** the initial sweep missed `requirements.md`'s glossary row for `detectedCountry` (line 35), which still asserted the persisted column "only ever holds a supported-country value or `null`" and referenced an "allowlist gate" — directly contradicting the revised BR-CMV-001. Corrected after the Reviewer flagged it (see T-005-reopen entry below); a second sweep confirmed no other stale references remain in `requirements.md`.
+
+### T-003 (re-opened) — Backend: widen `normalizeDetectedCountry()` and the `gap_detector` prompt
+
+- **Status:** PASS (attempt 1)
+- **Scope:** removed the `isSupportedCountry()` gate from `gap-detection.handler.ts`'s `normalizeDetectedCountry()`, replacing it with trim + non-empty + ≤100 chars + not-`"unclear"` (case-insensitive) + confidence ≥0.7; rewrote the `gap_detector` prompt's "## Country Detection" instruction and "## Output Format" example in `seed.ts` to ask for any real country name rather than an enum of 4; re-ran the local seed; updated `prod-prompt-update.md` to match; replaced the now-wrong "hallucinated string → null" test with one proving `"Malawi"` at confidence 0.95 is persisted, plus new boundary tests (empty-after-trim, oversized, case-insensitive `"unclear"`).
+- **Implementer verification:** `gap-detection.handler` suite 19/19 → 20/20 after a Leader-added boundary test (see below); `api build` clean; full-repo `tsc --noEmit` shows only the 2 pre-existing unrelated errors.
+- **Reviewer verdict:** PASS. Independently byte-compared `seed.ts`'s new prompt text against `design.md` §6.3 (exact match after template-literal evaluation); confirmed `prod-prompt-update.md` updated to match; confirmed DD-CMV-006's single fold-in write is untouched; confirmed the `isSupportedCountry` import is genuinely removed (unused elsewhere in the file).
+  - **ADVISORY, closed:** (A-1) recommended a live Bedrock re-verification against the revised (no-longer-enum) prompt text, since the original T-004 live check tested the old prompt — **performed**, see below. (A-3) recommended a test at exactly the 100-char boundary (only 101/rejected was tested) — **added** by the Leader directly (`accepts a detectedCountry at exactly the 100-character length boundary (inclusive)`), suite now 20/20.
+- **Post-Reviewer live Bedrock re-verification (closes A-1):** a real `BedrockService.invokeModel()` call (no mocks) against the live-active, newly-seeded prompt, run twice: (1) `{{country}}` injected as `"Nigeria"` against a fake business plan describing Malawi (the new, previously-out-of-scope case) → `detectedCountry: "Malawi"`, confidence `0.95`, clean single-word value, anti-anchoring held; (2) `{{country}}` injected as `"Zambia"` against a fake business plan describing Kenya (the original in-scope case, regression check) → `detectedCountry: "Kenya"`, confidence `0.95`, and the model's own `reasoning` field explicitly stated it was rejecting the injected Zambia context in favor of Kenya. Both confirm the widened prompt still resists anchoring and returns clean, parseable values. One-off verification script deleted after use.
+
+### T-005 (re-opened) — Frontend: simplify `countryMismatch`
+
+- **Status:** PASS (attempt 1)
+- **Scope:** removed the `isSupportedCountry(...)` clause from `countryMismatch`'s derivation in `gap-detector-client.tsx`, leaving `!!assessment?.detectedCountry && assessment.detectedCountry !== assessment.country`; removed the now-unused import; flipped the "unsupported string skips the dialog" test to instead prove the dialog **shows** for `detectedCountry: "Malawi"` (FR-CMV-002 Sc1b).
+- **Implementer verification:** suite 15/15; `web build` and `lint` clean; confirmed `CountryBadge` needed no change.
+- **Reviewer verdict:** PASS. Independently proved via `--word-diff=porcelain` that the *only* changes in the whole file are the import removal and the removed `isSupportedCountry(...)` clause — `allMandatoryComplete`, the Button's `disabled` expression, the Tooltip gate, `proceedToRiskAnalysis`'s body, the dialog/hint copy, and the cache-invalidation line are byte-identical to before this diff. Independently verified `getCountryFlag()`'s `?? ''` fallback (not just trusting design.md's claim) and confirmed the dialog actually renders both countries via `CountryBadge` on the live path.
+  - **ADVISORY, closed:** flagged that `requirements.md` line 35's glossary row was missed by the original correction-closure sweep and still contradicted the revised BR-CMV-001 — **corrected** (see the sweep note above).
+
 ## 4. Summary — All Tasks Complete
 
 | Task | Status | Attempts | Package |
@@ -162,8 +196,10 @@
 | T-003 | PASS | 1 (Reviewer used mutation testing to confirm the JD-01 regression is caught) | `[BE]` |
 | T-004 | PASS | 1 (verified with a real, live Bedrock call) | `[BE]` |
 | T-005 | PASS | 1 | `[FE]` |
+| T-003 (re-opened) | PASS | 1 (DD-CMV-007 — widen `detectedCountry` beyond the 4-country allowlist; discovered via the user's own manual test) | `[BE]` |
+| T-005 (re-opened) | PASS | 1 (DD-CMV-007, frontend half) | `[FE]` |
 
-**Total rework attempts across the spec:** 1 (T-001 attempt 1 → FAIL → attempt 2 PASS). No HALTs, no Pivots, no FATAL_FAILs.
+**Total rework attempts across the spec:** 1 (T-001 attempt 1 → FAIL → attempt 2 PASS). No HALTs, no Pivots, no FATAL_FAILs. (The DD-CMV-007 re-opened tasks each PASSed on attempt 1 — not counted as "rework" in the FAIL/retry sense, since they implement a deliberate, user-approved design revision rather than fixing a defect in the original implementation.)
 
 **Scope note:** T-001's scope was amended mid-execution (Leader-flagged, user-approved via `AskUserQuestion`) to include 3 files outside its original single-file declaration, once it became clear that `detectedCountry` being a required field on a widely-consumed shared type broke 3 pre-existing files. This is documented in T-001's entry above and does not represent uncontrolled scope creep — it was surfaced, a choice was offered, and the user decided before any code was written to fix it.
 
@@ -174,5 +210,6 @@
 **Outstanding non-blocking items (advisory-level, recorded for `/akili-archive` or future specs, not for this spec's own completion):**
 - A minor operational correction: root `CLAUDE.md`'s documented `npx --prefix packages/api tsx prisma/seed.ts` form doesn't `cd` into the package (discovered during T-004; worth a doc fix at archive time).
 - `tasks.md`'s "1 review round expected, 2 for the frontend task" budget (design.md §13) held — every task PASSed on attempt 1 except T-001's scope-amendment cycle, and T-005 (the frontend task) PASSed in exactly 1 round despite being sized for 2.
-- The manual production prompt update (`docs/specs/changes/country-document-match-validation/prod-prompt-update.md`) is still pending the user's own action in the deployed environment — this is by design (DD-CMV-005), not an incomplete task.
+- The manual production prompt update (`docs/specs/changes/country-document-match-validation/prod-prompt-update.md`) is still pending the user's own action in the deployed environment — this is by design (DD-CMV-005), not an incomplete task. **Its text changed under DD-CMV-007 (§3b above) — if any earlier draft of it was ever copy-pasted into a real Prompt Manager environment before 2026-08-19, that environment now has stale text and needs the update reapplied.**
+- **DD-CMV-007 (§3b) means `test-report.md` and `validation-report.md` (both written before this behavior change) describe the pre-widening version of the feature.** They are not wrong about what they tested at the time, but they are now stale as a full picture of current behavior — `test-report.md`'s coverage matrix and `validation-report.md`'s requirement-coverage table should be refreshed (or a follow-up `/akili-test` + `/akili-validate` pass run) to reflect BR-CMV-001's revision before this spec is archived, rather than archiving against reports that predate the last code change.
 

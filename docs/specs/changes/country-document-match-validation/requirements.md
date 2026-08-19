@@ -32,9 +32,9 @@ The gap detector already extracts a `country_of_operation` field from uploaded b
 | Term | Meaning |
 |------|---------|
 | `Assessment.country` | The country selected at assessment creation, from the 4-country allowlist (Kenya, Ethiopia, Nigeria, Zambia). Editable only while `Assessment.status = DRAFT`. |
-| `detectedCountry` | New field: the AI's best guess at the country the uploaded business plan describes. The AI response value can be one of the 4 supported countries or the literal `"unclear"`; **the persisted `Assessment.detectedCountry` column only ever holds a supported-country value or `null`** — `"unclear"` (and anything else that fails the confidence/allowlist gate) is normalized to `null` before it's written (see design.md §6.2). |
+| `detectedCountry` | New field: the AI's best guess at the country the uploaded business plan describes. **(Revised 2026-08-19, BR-CMV-001/DD-CMV-007 — corrected here after a Reviewer caught this row was missed by the original correction-closure sweep):** the AI response value can be *any* country name (not limited to the 4 supported ones) or the literal `"unclear"`. The persisted `Assessment.detectedCountry` column holds that country-name string as-is, or `null` — `"unclear"` and anything failing the confidence/length gate (see design.md §6.2) normalize to `null`; being outside the 4-country allowlist is no longer, by itself, a reason to normalize to `null`. |
 | Core-10 fields | The 10 mandatory business fields the gap detector classifies per assessment, including `country_of_operation`. |
-| Mismatch | `detectedCountry` is a supported country **and** differs from `Assessment.country`. `"unclear"` and `null` are never a mismatch. |
+| Mismatch | `detectedCountry` is a confidently-detected, non-empty country string (**any country, not limited to the 4 supported ones — revised 2026-08-19**) **and** differs from `Assessment.country`. `"unclear"` and `null` are never a mismatch. |
 | ACTION_REQUIRED | `Assessment.status` value while the Analyst is reviewing gap fields (set once gap detection completes). |
 
 ## 4. System Context & Scope
@@ -70,14 +70,23 @@ The gap detector already extracts a `country_of_operation` field from uploaded b
 **Priority:** Must
 **Persona:** System
 
-**Description:** During gap detection (initial run and re-analyze), the system SHALL determine the primary country described in the uploaded business plan documents and return it as a top-level `detectedCountry` value — one of the 4 supported countries, or `"unclear"` — gated on the same confidence bar already used for Core-10 `VERIFIED` classification (≥ 0.7).
+**Description:** During gap detection (initial run and re-analyze), the system SHALL determine the primary country described in the uploaded business plan documents and return it as a top-level `detectedCountry` value — **any country the AI can confidently name, not limited to the 4 supported countries** — or `"unclear"` if it cannot, gated on the same confidence bar already used for Core-10 `VERIFIED` classification (≥ 0.7).
 
-#### Scenario 1: Confident detection of a supported country
+**Revised 2026-08-19, post-`/akili-validate`, discovered during the user's own manual browser testing before archiving:** the original version of this requirement restricted `detectedCountry` to the 4 supported countries (Kenya, Ethiopia, Nigeria, Zambia), normalizing anything else — including a real, confidently-detected country like Malawi — to `null`. Manual testing showed this defeats the feature's own purpose: a business plan describing an *unsupported* country is exactly the case a mismatch check should catch, arguably more so than a mix-up between two supported countries. The restriction is removed; see BR-CMV-001's revised definition and design.md §6.2/§6.3/§7 for the corresponding implementation change (DD-CMV-007).
+
+#### Scenario 1: Confident detection of any country
 
 - **GIVEN** an UPLOAD-mode assessment whose business plan clearly describes operations in Zambia
 - **WHEN** gap detection runs
 - **THEN** the AI response includes `detectedCountry: "Zambia"`
 - **AND IT MUST** persist this value on `Assessment.detectedCountry`
+
+#### Scenario 1b: Confident detection of a country outside the 4-country allowlist
+
+- **GIVEN** an UPLOAD-mode assessment whose business plan clearly describes operations in Malawi (not one of the 4 supported countries)
+- **WHEN** gap detection runs
+- **THEN** the AI response includes `detectedCountry: "Malawi"` at confidence ≥ 0.7
+- **AND IT MUST** persist `"Malawi"` on `Assessment.detectedCountry` — **it must NOT** be normalized to `null` or `"unclear"` merely because it isn't one of the 4 supported countries
 
 #### Scenario 2: Low-confidence or unstated country
 
@@ -101,19 +110,26 @@ The gap detector already extracts a `country_of_operation` field from uploaded b
 **Priority:** Must
 **Persona:** Analyst
 
-**Description:** When the Analyst clicks "Analyze Risks" and `Assessment.detectedCountry` is a supported country that differs from `Assessment.country`, the system SHALL show a confirmation dialog before any submit request, naming both countries and stating the check is non-blocking.
+**Description:** When the Analyst clicks "Analyze Risks" and `Assessment.detectedCountry` is a confidently-detected country (any country, not limited to the 4 supported ones — **revised 2026-08-19**) that differs from `Assessment.country`, the system SHALL show a confirmation dialog before any submit request, naming both countries and stating the check is non-blocking.
 
-#### Scenario 1: Mismatch triggers the dialog
+#### Scenario 1: Mismatch triggers the dialog (both supported countries)
 
 - **GIVEN** `Assessment.country = "Kenya"` and `Assessment.detectedCountry = "Zambia"`
 - **WHEN** the Analyst clicks "Analyze Risks"
 - **THEN** a confirmation dialog appears before any network request fires
-- **AND IT MUST** name both "Kenya" and "Zambia" (with flags, consistent with `getCountryFlag()`)
+- **AND IT MUST** name both "Kenya" and "Zambia", each with its flag (via `CountryBadge`/`getCountryFlag()`)
 - **AND IT MUST** state the check does not block analysis
+
+#### Scenario 1b: Mismatch triggers the dialog even when the detected country isn't one of the 4 supported ones
+
+- **GIVEN** `Assessment.country = "Nigeria"` and `Assessment.detectedCountry = "Malawi"` (Malawi is not one of the 4 supported countries)
+- **WHEN** the Analyst clicks "Analyze Risks"
+- **THEN** the confirmation dialog still appears — the mismatch check does not exempt unsupported detected countries
+- **AND IT MUST** name both "Nigeria" (with its flag) and "Malawi" (as plain text — `getCountryFlag()` returns an empty string for countries outside the 4-country allowlist, which is an accepted, already-graceful degradation, not an error state)
 
 #### Scenario 2: Match or absent detection skips the dialog
 
-- **GIVEN** `Assessment.detectedCountry` is `"Kenya"` (matches) or `null` (covers both an AI response of `"unclear"` and any response that failed the confidence/allowlist gate — both are normalized to `null` before persistence, per BR-CMV-001)
+- **GIVEN** `Assessment.detectedCountry` is `"Kenya"` (matches) or `null` (covers both an AI response of `"unclear"` and a below-confidence-threshold response — normalized to `null` before persistence, per BR-CMV-001)
 - **WHEN** the Analyst clicks "Analyze Risks"
 - **THEN** no dialog appears
 - **AND** the existing submit flow proceeds exactly as it does today
@@ -225,7 +241,8 @@ If country detection is uncertain, absent, or the underlying Bedrock call fails,
 
 | ID | Rule |
 |----|------|
-| BR-CMV-001 | A mismatch exists **iff** `detectedCountry` is one of the 4 `SUPPORTED_COUNTRY_LABELS` **and** `detectedCountry !== Assessment.country`. `"unclear"` and `null` are never a mismatch. |
+| BR-CMV-001 | **(Revised 2026-08-19)** A mismatch exists **iff** `detectedCountry` is a non-empty, confidently-detected country string (≥ 0.7 confidence, per BR-CMV-003) — **any country, not limited to the 4-country `SUPPORTED_COUNTRY_LABELS` allowlist** — **and** `detectedCountry !== Assessment.country`. `"unclear"` and `null` are never a mismatch. *Originally scoped to the 4 supported countries only; widened after manual testing showed the original scoping defeated the feature's purpose — a business plan describing an unsupported country is exactly the case this check exists to catch.* |
+| BR-CMV-004 | *(New 2026-08-19)* Displaying a `detectedCountry` outside the 4-country allowlist SHALL degrade gracefully: the country's plain name with no flag (`getCountryFlag()`'s existing empty-string return for unrecognized values), never an error or blank space where the name should be. |
 | BR-CMV-002 | `Assessment.country` immutability outside `DRAFT` (`assessments.service.ts:105-109`) is unchanged — this feature introduces no new mutation path for `country`. |
 | BR-CMV-003 | The confidence bar for `detectedCountry` reuses the existing ≥ 0.7 threshold already defined for Core-10 `VERIFIED` classification. No separate threshold is introduced. |
 
@@ -237,7 +254,7 @@ If country detection is uncertain, absent, or the underlying Bedrock call fails,
 
 **Assumptions**
 - The LLM can infer a country from business-plan text with reliability comparable to its existing `country_of_operation` field classification — no new model capability is required, same model/section (`BEDROCK_MODELS[AgentSection.GAP_DETECTOR]`).
-- The 4-country allowlist (`SUPPORTED_COUNTRY_LABELS`) does not change during this spec's implementation.
+- ~~The 4-country allowlist (`SUPPORTED_COUNTRY_LABELS`) does not change during this spec's implementation.~~ **Superseded 2026-08-19:** `SUPPORTED_COUNTRY_LABELS` itself is unchanged (still governs `Assessment.country`'s own allowlist and flag rendering), but `detectedCountry` is no longer validated against it — see BR-CMV-001's revision.
 
 ## 10. Defect Class → Verification Mapping
 
@@ -272,6 +289,7 @@ If country detection is uncertain, absent, or the underlying Bedrock call fails,
 | NFR-CMV-010 | Zero Added Bedrock Invocations | Must |
 | NFR-CMV-011 | Fail-Quiet On Uncertain Or Failed Detection | Must |
 | NFR-CMV-012 | No Regression To Mandatory-Field Gating | Must |
-| BR-CMV-001 | Mismatch definition | — |
+| BR-CMV-001 | Mismatch definition (revised — any country, not just the 4 supported) | — |
+| BR-CMV-004 | Graceful display fallback for unsupported detected countries | — |
 | BR-CMV-002 | Country immutability unchanged | — |
 | BR-CMV-003 | Shared confidence threshold | — |

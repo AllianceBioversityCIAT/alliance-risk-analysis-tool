@@ -207,18 +207,28 @@ describe('GapDetectorClient — country mismatch validation', () => {
       await waitFor(() => expect(mockPost).toHaveBeenCalled());
     });
 
-    it('does NOT show the dialog when detectedCountry is an unsupported string', async () => {
-      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Atlantis' });
+    it('shows the dialog on a true mismatch (supported country, different from assessment.country)', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });
       render(<GapDetectorClient />);
 
       await clickAnalyzeRisks();
 
-      expect(screen.queryByText(/double-check the country/i)).not.toBeInTheDocument();
-      await waitFor(() => expect(mockPost).toHaveBeenCalled());
+      expect(await screen.findByText(/double-check the country/i)).toBeInTheDocument();
+      // No submit call should have fired yet — dialog blocks it until a choice is made.
+      expect(mockPost).not.toHaveBeenCalled();
     });
 
-    it('shows the dialog on a true mismatch (supported country, different from assessment.country)', async () => {
-      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });
+    // Revised 2026-08-19 (BR-CMV-001 widened, DD-CMV-007): the backend no
+    // longer restricts `detectedCountry` to the 4-country allowlist — any
+    // confidently-detected country is a valid mismatch signal, including one
+    // outside the 4 supported countries. Previously this scenario (using
+    // "Atlantis") asserted the dialog was SKIPPED; that assumption is now
+    // wrong per FR-CMV-002 Scenario 1b. Using "Malawi" to mirror the real
+    // bug report (a document describing Malawi against a selected
+    // Nigeria/Kenya) for consistency with the backend Implementer's test
+    // choice (gap-detection.handler.spec.ts).
+    it('SHOWS the dialog when detectedCountry is a confidently-detected country outside the 4-country allowlist (FR-CMV-002 Sc1b)', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Malawi' });
       render(<GapDetectorClient />);
 
       await clickAnalyzeRisks();
