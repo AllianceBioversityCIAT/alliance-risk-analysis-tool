@@ -20,6 +20,8 @@ import {
   ChevronDown,
   Upload,
   Brain,
+  ArrowRight,
+  Info,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
@@ -920,25 +922,39 @@ export default function GapDetectorClient() {
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Double-check the country before continuing</DialogTitle>
-              <DialogDescription>
-                You selected <CountryBadge country={assessment.country} className="mx-1 align-middle" /> when
-                this assessment was created, but the uploaded business plan appears to
-                describe operations in{' '}
-                {assessment.detectedCountry && (
-                  <CountryBadge country={assessment.detectedCountry} className="mx-1 align-middle" />
-                )}
-                . Country context shapes the regulatory, market, and climate risk factors
-                used in the analysis, so a mismatch here can affect how accurate the
-                results are.
-              </DialogDescription>
             </DialogHeader>
-            <p className="text-sm text-muted-foreground">
-              This is just a heads-up — it won&apos;t block your analysis. Continue if the
-              selected country is correct and the document simply references other
-              locations (branches, suppliers, export markets, etc.). You&apos;re not
-              locked out of anything — click Analyze Risks any time and choose Continue
-              to move forward. This is a reminder, not a hold.
-            </p>
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Selected
+                </p>
+                <CountryBadge country={assessment.country} />
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Detected in document
+                </p>
+                {assessment.detectedCountry && (
+                  <CountryBadge country={assessment.detectedCountry} />
+                )}
+              </div>
+            </div>
+            <DialogDescription>
+              Country context shapes the regulatory, market, and climate risk factors
+              used in the analysis, so this mismatch can affect how accurate the
+              results are.
+            </DialogDescription>
+            <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <p className="text-sm text-muted-foreground">
+                This is just a heads-up — it won&apos;t block your analysis. Continue if the
+                selected country is correct and the document simply references other
+                locations (branches, suppliers, export markets, etc.). You&apos;re not
+                locked out of anything — click Analyze Risks any time and choose Continue
+                to move forward. This is a reminder, not a hold.
+              </p>
+            </div>
             <DialogFooter>
               <Button
                 variant="secondary"

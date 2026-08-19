@@ -189,6 +189,18 @@ The model correctly detected Malawi at high confidence; the handler correctly di
 - **Reviewer verdict:** PASS. Independently **mutation-tested** the fixture claim rather than trusting it: reverted the fixture to `total: 1` with the fix present → exactly the one test the Implementer named failed, nothing else; removed the fix entirely with the fixture at `total: 0` → all 15 pre-existing tests still passed. Also removed the fix to confirm both new tests correctly go red without it. Confirmed the 2 full-web-suite failures (`assessment-table.test.tsx`) are the same pre-existing, unrelated flake this spec has documented since T-005's original implementation — reproduced identically on a stashed clean tree.
   - **ADVISORY (non-blocking):** (1) the fixture change silently removed the suite's only coverage of the "mount with already-warm cache" invalidate path — recommend a dedicated test for it. (2) the fixture is left in an API-impossible state (`total: 0` with 1 field in `data`) — no test currently depends on that being coherent, but a future one might. (3) the existing `beforeEach` spread-mutates rather than resets from a pristine baseline, pre-existing pattern now slightly aggravated by the 2 new tests mutating `data`. None require action before this spec proceeds; recorded for whoever next touches this test file.
 
+### T-005 (re-opened, 3rd time) — Frontend: DD-CMV-009, dialog visual polish
+
+- **Status:** PASS (attempt 2 — attempt 1 got a Reviewer FAIL for a layout-order defect, fixed and re-verified)
+- **Found:** the user shared a screenshot of the shipped dialog — two `CountryBadge` pills embedded mid-sentence in `DialogDescription`'s prose broke paragraph line-rhythm and looked like a layout defect, not a stylistic choice.
+- **Scope:** purely presentational — no requirement or behavior change. Restructured the dialog body into: a comparison card ("Selected" / "Detected in document", each a block-level `CountryBadge`, separated by an `ArrowRight` icon) → a trimmed `DialogDescription` (country names removed, since the card already shows them) → a distinct callout box (`Info` icon, primary-tinted background) for the non-blocking reassurance paragraph, which was moved **verbatim, not reworded** (it's under the JD-15 correction record).
+- **Attempt 1 verification:** suite 17/17, build/lint clean.
+- **Attempt 1 Reviewer verdict:** `STATUS: FAIL` — one issue: the comparison card rendered *below* `DialogDescription` instead of above it, per design.md's explicit ordering. Byte-identity of the reassurance paragraph, token-only styling (no new hex), and both countries+flags remaining visible were all independently confirmed correct in this same pass.
+- **Attempt 2:** Leader applied a direct, mechanical JSX reorder (moved `DialogDescription` out of `DialogHeader` to render after the comparison card instead of before it) — nothing else changed. Re-verified 17/17 + build/lint clean.
+- **Attempt 2 Reviewer verdict:** `STATUS: PASS` — independently confirmed the new order (`DialogHeader` → card → `DialogDescription` → callout → `DialogFooter`), re-confirmed both moved text blocks are still byte-identical to their pre-restructure originals, and confirmed no other file or logic changed between attempts.
+
+**Requirements/design refs:** `design.md` §7, new DD-CMV-009. No `requirements.md` change — FR-CMV-002 Sc1's actual clauses (both countries + flags visible, non-blocking statement present) don't mandate a specific visual layout.
+
 ### T-005 (re-opened) — Frontend: simplify `countryMismatch`
 
 - **Status:** PASS (attempt 1)
@@ -209,6 +221,7 @@ The model correctly detected Malawi at high confidence; the handler correctly di
 | T-003 (re-opened) | PASS | 1 (DD-CMV-007 — widen `detectedCountry` beyond the 4-country allowlist; discovered via the user's own manual test) | `[BE]` |
 | T-005 (re-opened) | PASS | 1 (DD-CMV-007, frontend half) | `[FE]` |
 | T-005 (re-opened, 2nd time) | PASS | 1 (DD-CMV-008 — initial-detection cache invalidation; found by the user's real re-test) | `[FE]` |
+| T-005 (re-opened, 3rd time) | PASS | 2 (DD-CMV-009 — dialog visual polish; attempt 1 FAILed on a layout-order issue) | `[FE]` |
 
 **Total rework attempts across the spec:** 1 (T-001 attempt 1 → FAIL → attempt 2 PASS). No HALTs, no Pivots, no FATAL_FAILs. (The DD-CMV-007 re-opened tasks each PASSed on attempt 1 — not counted as "rework" in the FAIL/retry sense, since they implement a deliberate, user-approved design revision rather than fixing a defect in the original implementation.)
 
