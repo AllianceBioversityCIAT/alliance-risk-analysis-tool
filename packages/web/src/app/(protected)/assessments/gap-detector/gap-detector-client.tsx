@@ -745,12 +745,10 @@ export default function GapDetectorClient() {
                         Country mismatch
                       </p>
                       <p className="text-xs text-amber-700 mt-0.5">
-                        Heads-up: the country detected in your business plan (
-                        <strong>{assessment?.detectedCountry}</strong>) doesn&apos;t match
-                        the selected country (<strong>{assessment?.country}</strong>). If
-                        this looks wrong, replace the document from{' '}
-                        <strong>Manage Documents</strong> or start a new assessment with
-                        the correct country. You&apos;re not locked out of anything —
+                        Heads-up: the country detected in your business plan (<strong>{assessment?.detectedCountry}</strong>) doesn&apos;t
+                        match the selected country (<strong>{assessment?.country}</strong>). If this looks wrong,
+                        replace the document from <strong>Manage Documents</strong> or start a new
+                        assessment with the correct country. You&apos;re not locked out of anything —
                         click Analyze Risks any time and choose Continue to move forward.
                       </p>
                     </div>
