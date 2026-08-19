@@ -221,6 +221,16 @@ The gap detector already extracts a `country_of_operation` field from uploaded b
 - **AND IT MUST** result in the mismatch dialog correctly appearing the first time the Analyst clicks "Analyze Risks" afterward
 - **BUT it must NOT** require a new polling mechanism dedicated to this purpose — reuse the existing signal that already tells the screen fields have arrived (`useGapFields`'s poll-until-populated behavior)
 
+#### Scenario 3: A manual correction to `country_of_operation` also updates `detectedCountry`
+
+**Added 2026-08-19 (DD-CMV-010), found by the user testing the Gap Detector's manual field-correction flow:** the Country Detection prompt instruction (§6.3, written for DD-CMV-007's anti-anchoring mitigation) tells the model to determine the country from "only what the documents themselves say," ignoring injected context. During a re-analyze triggered by a manual field edit, that instruction — correctly — also caused the model to ignore the "USER-PROVIDED CORRECTIONS" block, so a re-analyze recomputed `detectedCountry` from the same unchanged document text even after the Analyst had just corrected the related Core-10 `country_of_operation` field. The Core-10 field itself correctly showed the correction (existing behavior, unaffected); `Assessment.detectedCountry` did not, which reads as the system contradicting the correction the Analyst just made.
+
+- **GIVEN** the Analyst manually corrects the "Country of Operation" Core-10 field to `"Nigeria"` (the AI had originally extracted `"Zambia"`)
+- **WHEN** the debounced re-analysis this correction triggers completes
+- **THEN** `Assessment.detectedCountry` SHALL reflect `"Nigeria"` — the Analyst's correction — instead of whatever the model independently re-derives from the unchanged document text
+- **AND IT MUST** apply the same basic validation any `detectedCountry` value gets (non-empty after trimming, ≤100 characters, not literally `"unclear"`) before accepting the correction
+- **BUT it must NOT** require a new Bedrock call, and must NOT route the correction through the ≥0.7 confidence gate (BR-CMV-003) — a user's own correction is ground truth by construction, exactly as it already is for the Core-10 field itself (see the existing "USER-PROVIDED CORRECTIONS ... treat as ground truth" convention), not a second AI opinion needing a confidence score
+
 ## 7. Non-Functional Requirements
 
 ### NFR-CMV-010: Zero Added Bedrock Invocations

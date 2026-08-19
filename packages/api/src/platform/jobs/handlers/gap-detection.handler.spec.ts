@@ -414,5 +414,86 @@ describe('GapDetectionHandler', () => {
         data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Zambia' },
       });
     });
+
+    describe('[FR-CMV-006 Sc3 / DD-CMV-010] manual country_of_operation correction overrides re-detection', () => {
+      function mockCorrectedCountryOfOperation(correctedValue: string | null) {
+        const existingFields = GAP_DETECTION_CONFIG.core10Fields.map((def, i) => ({
+          id: `field-${i}`,
+          field: def.field,
+          correctedValue: def.field === 'country_of_operation' ? correctedValue : null,
+        }));
+        mockPrisma.gapField.findMany.mockResolvedValue(existingFields);
+        mockPrisma.gapField.update.mockImplementation((args: unknown) => args);
+        mockPrisma.$transaction.mockResolvedValue(undefined);
+      }
+
+      it('uses the user correction over the model’s own re-detected country', async () => {
+        mockUploadAssessment();
+        mockCorrectedCountryOfOperation('Nigeria');
+        mockBedrock.invokeModel.mockResolvedValue({
+          output: JSON.stringify({
+            detectedCountry: 'Zambia',
+            detectedCountryConfidence: 0.95,
+            ...createGapAIResponse(),
+          }),
+          tokensUsed: 300,
+        });
+
+        await handler.execute({ assessmentId: 'assessment-1', reAnalyze: true });
+
+        // The correction is read from the same gapField.findMany() call already made
+        // in step 4b to build the "USER-PROVIDED CORRECTIONS" prompt text — no new
+        // query is added for this. (updateFieldsFromAIResponse() makes its own,
+        // separate, pre-existing findMany() call for the Core-10 field update itself.)
+        expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+          where: { id: 'assessment-1' },
+          data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Nigeria' },
+        });
+      });
+
+      it('falls back to the model’s response when there is no correction to country_of_operation', async () => {
+        mockUploadAssessment();
+        mockCorrectedCountryOfOperation(null);
+        mockBedrock.invokeModel.mockResolvedValue({
+          output: JSON.stringify({
+            detectedCountry: 'Zambia',
+            detectedCountryConfidence: 0.95,
+            ...createGapAIResponse(),
+          }),
+          tokensUsed: 300,
+        });
+
+        await handler.execute({ assessmentId: 'assessment-1', reAnalyze: true });
+
+        expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+          where: { id: 'assessment-1' },
+          data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Zambia' },
+        });
+      });
+
+      it.each([
+        ['an empty string after trimming', '   '],
+        ['the literal "unclear"', 'unclear'],
+        ['the literal "unclear" in different casing', 'UnClear'],
+      ])('falls back to the model’s response when the correction fails the sanity check (%s)', async (_label, correctedValue) => {
+        mockUploadAssessment();
+        mockCorrectedCountryOfOperation(correctedValue);
+        mockBedrock.invokeModel.mockResolvedValue({
+          output: JSON.stringify({
+            detectedCountry: 'Zambia',
+            detectedCountryConfidence: 0.95,
+            ...createGapAIResponse(),
+          }),
+          tokensUsed: 300,
+        });
+
+        await handler.execute({ assessmentId: 'assessment-1', reAnalyze: true });
+
+        expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+          where: { id: 'assessment-1' },
+          data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Zambia' },
+        });
+      });
+    });
   });
 });

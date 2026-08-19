@@ -114,6 +114,12 @@ export class GapDetectionHandler implements JobHandler {
     country: string,
     isReAnalyze = false,
   ): Promise<{ tokensUsed: number; mergedMarkdown: string; detectedCountry: string | null }> {
+    // Populated in step 4b (re-analyze only) with the Analyst's own correction to
+    // the Core-10 `country_of_operation` field, if one exists. When present and
+    // sane, it overrides the model's own re-detection (DD-CMV-010) — see the
+    // return statement at the end of the try block below.
+    let userCorrectedCountry: string | null = null;
+
     // 1. Fetch ALL completed PARSE_DOCUMENT jobs for this assessment
     const parseJobs = await this.prisma.job.findMany({
       where: {
@@ -184,7 +190,12 @@ export class GapDetectionHandler implements JobHandler {
       country,
     );
 
-    // 4b. In re-analyze mode, fetch existing corrections and append to prompt
+    // 4b. In re-analyze mode, fetch existing corrections and append to prompt.
+    // Also capture a manual `country_of_operation` correction, if present — it
+    // takes precedence over the model's own re-detection (DD-CMV-010): the
+    // Country Detection prompt instruction (§6.3) tells the model to rely only
+    // on the raw document text, which makes it (correctly, by its own logic)
+    // also ignore this same "USER-PROVIDED CORRECTIONS" block.
     if (isReAnalyze) {
       const existingFields = await this.prisma.gapField.findMany({
         where: { assessmentId },
@@ -196,6 +207,8 @@ export class GapDetectionHandler implements JobHandler {
       if (corrections) {
         userPrompt += `\n\nUSER-PROVIDED CORRECTIONS (treat as ground truth, do not override):\n${corrections}`;
       }
+      userCorrectedCountry =
+        existingFields.find((f) => f.field === 'country_of_operation')?.correctedValue ?? null;
     }
 
     // 5. Invoke Bedrock with IGAD-pattern config
@@ -226,10 +239,17 @@ export class GapDetectionHandler implements JobHandler {
         await this.createFieldsFromAIResponse(assessmentId, parsed);
       }
 
+      // DD-CMV-010: a manual `country_of_operation` correction is ground truth by
+      // construction — it overrides the model's re-detection entirely for this run,
+      // skipping the confidence gate (that gate exists to score an AI opinion; a
+      // user's own correction has no AI confidence to score). Only the shared
+      // sanity check (trim, non-empty, <=100 chars, not "unclear") applies.
+      const correctedCountry = this.sanitizeCountryString(userCorrectedCountry);
+
       return {
         tokensUsed,
         mergedMarkdown: extractedText,
-        detectedCountry: this.normalizeDetectedCountry(parsed),
+        detectedCountry: correctedCountry ?? this.normalizeDetectedCountry(parsed),
       };
     } catch (error) {
       // On Bedrock failure: create all-MISSING fields with error reasoning
@@ -266,21 +286,39 @@ export class GapDetectionHandler implements JobHandler {
    */
   private normalizeDetectedCountry(response: GapDetectionAIResponse): string | null {
     const { detectedCountry, detectedCountryConfidence } = response;
-    const trimmed = typeof detectedCountry === 'string' ? detectedCountry.trim() : '';
+    const sanitized = this.sanitizeCountryString(detectedCountry);
 
     if (
-      trimmed.length > 0 &&
-      trimmed.length <= 100 &&
-      trimmed.toLowerCase() !== 'unclear' &&
+      sanitized !== null &&
       typeof detectedCountryConfidence === 'number' &&
       detectedCountryConfidence >= 0.7
     ) {
-      return trimmed;
+      return sanitized;
     }
 
     this.logger.debug(
       `detectedCountry rejected: value=${JSON.stringify(detectedCountry)} confidence=${JSON.stringify(detectedCountryConfidence)}`,
     );
+    return null;
+  }
+
+  /**
+   * Shared sanity check applied to any candidate `detectedCountry` string,
+   * whether it comes from the model's response (`normalizeDetectedCountry`,
+   * still gated on confidence separately) or a user's own manual correction to
+   * the `country_of_operation` Core-10 field (DD-CMV-010, no confidence gate —
+   * a user's correction is ground truth by construction). Trims whitespace and
+   * requires a non-empty, length-bounded (<=100 chars, matching the DB column's
+   * VarChar(100) bound), non-"unclear" (case-insensitive) string. Returns the
+   * trimmed string, or `null` if any check fails.
+   */
+  private sanitizeCountryString(value: string | null | undefined): string | null {
+    const trimmed = typeof value === 'string' ? value.trim() : '';
+
+    if (trimmed.length > 0 && trimmed.length <= 100 && trimmed.toLowerCase() !== 'unclear') {
+      return trimmed;
+    }
+
     return null;
   }
 
