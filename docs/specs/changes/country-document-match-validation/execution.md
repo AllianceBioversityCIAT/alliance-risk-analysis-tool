@@ -130,7 +130,7 @@
   - `pnpm --filter @alliance-risk/web test --testPathPattern=gap-detector-client` → 10/10 passed
   - `pnpm --filter @alliance-risk/web build` → succeeded, static export
   - `pnpm --filter @alliance-risk/web lint` → clean
-  - Full web suite → 131/133 passed; the 2 failures (`user-management.test.tsx`) independently confirmed as a pre-existing, unrelated test-isolation flake (reproduces identically with this task's files excluded from the run, and passes 14/14 in isolation)
+  - Full web suite → 131/133 passed; the 2 failures independently confirmed as a pre-existing, unrelated test-isolation flake — **correction (post-`/akili-validate`, WARN-3):** this is cross-suite DOM pollution from a missing Testing-Library cleanup, whose *victim test* varies by scheduling (it manifested as `user-management.test.tsx` failures in this run, and as `assessment-table.test.tsx` failures in `/akili-validate`'s independent worktree run at the pre-spec commit). Confirmed pre-existing either way: reproduces identically with this task's files excluded from the run, and each named suite passes fully in isolation.
 - **Reviewer verdict:** `STATUS: PASS` — independently confirmed, byte-for-byte where it mattered most: (1) no TDZ hazard exists (every `countryMismatch` reference sits strictly below its declaration by line number); (2) `proceedToRiskAnalysis`'s body is byte-identical to the original `handleAnalyzeRisks` (diffed directly, zero differences beyond the rename); (3) `allMandatoryComplete`'s computation, the Button's `disabled` expression, and the Tooltip's gating condition are all byte-identical to pre-diff — the only change in that region is the `onClick` handler swap; (4) hint/dialog copy matches design.md §7 exactly, with neither of the two previously-caught copy defects (misleading "proceeds as soon as you click again" line, or a hint missing a remediation path) reintroduced; (5) the cache-invalidation fix from Judgment Day round 3 is present and tested in both directions. Also judged the Implementer's two disclosed judgment calls (a `data-testid` addition for test scoping; resolving an ambiguity about exactly which proposal.md sentence design.md's copy correction replaces) as reasonable, in-scope, and correctly disclosed — not defects.
   - **ADVISORY (4R, non-blocking):** (1) Resilience — dismissing the dialog via Escape/overlay-click/X doesn't set `showCountryMismatchHint`, unlike the Cancel button; conformant to design.md's literal Cancel-triggered wording, but worth unifying if the spec is revisited. (2) Readability — the dialog's non-blocking line slightly duplicates the hint's closing sentence; design-mandated text, no change required. (3) Accessibility — the dialog's second paragraph sits outside `DialogDescription`, so it won't be announced via `aria-describedby`; cheap future improvement, not spec-required. (4) Reliability — `proceedToRiskAnalysis()` is called without `await`/`.catch()`, identical to pre-diff behavior, not a regression.
 
@@ -142,7 +142,18 @@
 
 ---
 
-## 3. Summary — All Tasks Complete
+## 3. Manual QA (added post-`/akili-validate`, closes WARN-1)
+
+**T-003's manual persistence check — performed, real, evidence below.** T-004 already proved via a real Bedrock call that the model returns the correct `detectedCountry`/`detectedCountryConfidence` JSON shape; what remained unproven was the *persistence* half — a real handler run, real Prisma, real DB row. Performed as a one-off verification (not committed — script deleted after use):
+
+- Created a real `Assessment` (`country: 'Kenya'`, `intakeMode: 'UPLOAD'`) and a real completed `PARSE_DOCUMENT` job whose extracted text described a business operating in **Zambia** — the country deliberately set to the *wrong* value (Kenya) to also re-confirm the anti-anchoring mitigation.
+- Ran the real `GapDetectionHandler.execute()` via `NestFactory.createApplicationContext(AppModule)` (the same DI pattern `worker.ts` uses in production) — no mocks, real `PrismaService`, real `BedrockService`.
+- Observed, querying the real row back out: `Assessment.detectedCountry: "Zambia"`, `status: ACTION_REQUIRED`, `progress: 50`.
+- Cleaned up all test rows (`GapField`, `Job`, `Assessment`) afterward — confirmed zero residue via a follow-up query. No stray files left in the repo.
+
+**T-005's manual browser walkthrough — not performed, honestly downgraded rather than fabricated.** This session had no interactive browser-automation tool engaged (no Playwright/Chrome-extension session active) to actually click through the gap-detector screen end-to-end. Rather than claim a walkthrough that didn't happen, this clause is explicitly downgraded: the substitute evidence is (a) 15 automated frontend tests (`gap-detector-client.test.tsx`) covering every interactive state — dialog visibility across all 4 mismatch conditions, both button paths, the reappear-on-reclick behavior, the hint's both remediation paths, its dismiss button, its auto-clear, the happy-path no-mismatch case, and both dismiss-path variants (Cancel vs. the dialog's built-in Close control) — and (b) an independent Reviewer during `/akili-execute` T-005 that diffed the changed region byte-for-byte against the pre-spec file to confirm `allMandatoryComplete`, the Button's `disabled` expression, and the Tooltip gate are all untouched. If a real browser walkthrough is wanted before this ships to users, it should be performed by the user directly (`pnpm dev`, navigate to an assessment with a deliberately mismatched country) rather than claimed here without having been done.
+
+## 4. Summary — All Tasks Complete
 
 | Task | Status | Attempts | Package |
 |---|---|---|---|

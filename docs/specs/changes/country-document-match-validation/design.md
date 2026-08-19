@@ -56,6 +56,8 @@ model Assessment {
 
 **Job result JSON:** unchanged. `GapDetectionResult` (handler.ts:18-24) does not need `detectedCountry` — it's persisted directly to `Assessment` inside the handler, not surfaced through the job's `result` payload (consistent with how the handler already writes `Assessment.status`/`progress` directly rather than through the job result).
 
+**Scope amendment note (added post-`/akili-validate`, WARN-2):** because `detectedCountry` is a **required** (non-optional) field on `AssessmentDetail`, three pre-existing files that manually construct `AssessmentDetail`-shaped object literals also needed a one-line addition each (`detectedCountry: assessment.detectedCountry,` / `detectedCountry: null,`) to keep compiling — `packages/api/src/domain/report/report.service.ts`, `packages/api/src/platform/jobs/handlers/report-generation.handler.ts`, and their shared fixture in `packages/api/src/domain/report/pdf.service.spec.ts`. This was a Leader-flagged, user-approved scope amendment to T-001 during `/akili-execute` (see `execution.md`'s T-001 entry and `tasks.md`'s T-001 status line), not a change to this section's original design intent.
+
 **Shared type:** `packages/shared/src/types/assessment.types.ts` — add one field to `AssessmentDetail`:
 
 ```ts

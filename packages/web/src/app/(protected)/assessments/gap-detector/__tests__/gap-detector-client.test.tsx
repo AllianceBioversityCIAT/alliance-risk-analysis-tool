@@ -283,6 +283,24 @@ describe('GapDetectorClient — country mismatch validation', () => {
     });
   });
 
+  describe('hint banner dismiss button (FR-CMV-005 Sc1 — "dismissible")', () => {
+    it('hides the hint banner when its own Dismiss button is clicked', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });
+      render(<GapDetectorClient />);
+
+      const user = await clickAnalyzeRisks();
+      await screen.findByText(/double-check the country/i);
+      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+      const hint = await screen.findByTestId('country-mismatch-hint');
+      const dismissButton = within(hint).getByRole('button', { name: /dismiss/i });
+
+      await user.click(dismissButton);
+
+      expect(screen.queryByTestId('country-mismatch-hint')).not.toBeInTheDocument();
+    });
+  });
+
   describe('hint banner auto-clear', () => {
     it('clears the hint banner once a re-fetched assessment.detectedCountry no longer mismatches', async () => {
       mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });

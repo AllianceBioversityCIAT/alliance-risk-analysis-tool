@@ -15,7 +15,7 @@
 
 ## 2. Summary
 
-**Verdict: ARCHIVE-READY.** No FAIL, no BLOCKED. 4 non-blocking WARN findings (all documentation/coverage-completeness gaps, not code defects) and 7 advisory (4R lens) notes.
+**Verdict: ARCHIVE-READY.** No FAIL, no BLOCKED. 4 non-blocking WARN findings were identified (all documentation/coverage-completeness gaps, not code defects) and **all 4 have since been closed** (post-validation fix pass, user-approved) — see each phase below for what changed and the closure evidence. 7 advisory (4R lens) notes remain, carried forward as optional Kaizen candidates.
 
 | Phase | Verdict |
 |---|---|
@@ -39,6 +39,8 @@ All 5 tasks `[x]` in `tasks.md`; all 6 items in the Task Plan Checklist `[x]`. `
 
 *Remediation:* add a short Manual QA section to `execution.md`, or explicitly downgrade these clauses with stated rationale, before archiving.
 
+**CLOSED (post-validation):** `execution.md` §3 now records both. T-003's persistence half was performed for real — a genuine end-to-end run (real `Assessment` row, real completed parse job describing a Zambia-based business while `Assessment.country` was deliberately set to Kenya, real `GapDetectionHandler.execute()` via `NestFactory.createApplicationContext`, real Bedrock call) — observed `Assessment.detectedCountry: "Zambia"` on the real row afterward, then cleaned up with zero residue. T-005's browser walkthrough was honestly downgraded rather than fabricated: no browser-automation tool was engaged this session, so the clause is explicitly noted as not performed, with the 15 automated tests plus the Reviewer's byte-for-byte gating-logic diff recorded as the substitute evidence.
+
 ## 4. File Existence
 
 5 spec commits (`8f6d4ce`, `54da92f`, `7227d40`, `1fbc0a3`, `e060544`). `git diff --name-status` against the pre-spec commit returns exactly 11 changed files — every one accounted for by `design.md` §4-§7 plus the 3 user-approved ripple-fix files from T-001's scope amendment. No stray or undocumented file. The migration is a single additive `ALTER TABLE "assessments" ADD COLUMN "detected_country" VARCHAR(100);` — nullable, no default, no backfill.
@@ -46,6 +48,8 @@ All 5 tasks `[x]` in `tasks.md`; all 6 items in the Task Plan Checklist `[x]`. `
 **WARN-2 — `design.md` was never amended for the T-001 scope amendment.** `report.service.ts`, `report-generation.handler.ts`, `pdf.service.spec.ts` each gained a `detectedCountry` line because the shared field is required — this is recorded in `tasks.md` and `execution.md`, but `design.md` §4 still reads as touching only the shared type file.
 
 *Remediation:* one line in `design.md` §4 naming the 3 downstream `AssessmentDetail`-literal consumers.
+
+**CLOSED (post-validation):** `design.md` §4 now has a "Scope amendment note" naming all 3 files and pointing to the `execution.md`/`tasks.md` entries that recorded the original decision.
 
 ## 5. Build Integrity
 
@@ -64,6 +68,8 @@ All 5 tasks `[x]` in `tasks.md`; all 6 items in the Task Plan Checklist `[x]`. `
 **WARN-3 — the pre-existing flake is mis-identified in `execution.md`/`test-report.md`.** Both docs name it as a `user-management.test.tsx` ordering issue. It is actually cross-suite DOM pollution (missing Testing-Library cleanup) whose *victim test* varies by scheduling — it manifested as `assessment-table.test.tsx` failures in the auditor's direct run and `user-management.test.tsx` in the pnpm-orchestrated run. The substance of the claim (pre-existing, unrelated, order-dependent) is correct; only the named file is incomplete.
 
 *Remediation:* reword both docs to "order-dependent RTL-cleanup pollution in the web suite (manifests in `user-management.test.tsx` or `assessment-table.test.tsx` depending on scheduling)".
+
+**CLOSED (post-validation):** `execution.md`'s T-005 entry now names both files and describes the pollution accurately as order-dependent, citing this validation's independent worktree reproduction as the confirming evidence.
 
 ## 6. Requirement Coverage
 
@@ -99,6 +105,8 @@ Verified at scenario/clause granularity — every `GIVEN/WHEN/THEN`, every `BUT 
 **WARN-4 — FR-CMV-005's "dismissible" clause is implemented but untested.** The mechanism exists and is correct; no test clicks the hint's Dismiss button to verify it actually hides. `test-report.md` does not overclaim this — the gap is real but was not previously surfaced.
 
 *Remediation:* one small test asserting the hint disappears after its Dismiss button is clicked.
+
+**CLOSED (post-validation):** added `hides the hint banner when its own Dismiss button is clicked` to `gap-detector-client.test.tsx` (scoped to the hint's own testid to avoid ambiguity with the validation banner's identical-looking Dismiss button). Suite now 15/15 passed.
 
 ## 7. Linting & Code Quality (4R Advisory)
 
@@ -142,17 +150,17 @@ Non-blocking — none of these are spec violations or gate the archive decision.
 
 | ID | Severity | Finding | Remediation | Blocking? |
 |---|---|---|---|---|
-| WARN-1 | WARN | Two "Done when" manual-verification clauses (T-003, T-005) lack recorded evidence in `execution.md` | Add a short Manual QA section, or downgrade the clauses with stated rationale | No |
-| WARN-2 | WARN | `design.md` §4 not amended for the T-001 scope amendment (3 ripple files) | One line naming the 3 files | No |
-| WARN-3 | WARN | Pre-existing web test flake mis-attributed to a single file in `execution.md`/`test-report.md` | Reword to note it manifests in either of 2 files depending on scheduling | No |
-| WARN-4 | WARN | FR-CMV-005's "dismissible" clause is implemented but has no test | Add one small test | No |
-| A-1…A-7 | Advisory | See §7 above | Optional; candidates for the Kaizen log | No |
+| WARN-1 | WARN | Two "Done when" manual-verification clauses (T-003, T-005) lack recorded evidence in `execution.md` | Add a short Manual QA section, or downgrade the clauses with stated rationale | **CLOSED** |
+| WARN-2 | WARN | `design.md` §4 not amended for the T-001 scope amendment (3 ripple files) | One line naming the 3 files | **CLOSED** |
+| WARN-3 | WARN | Pre-existing web test flake mis-attributed to a single file in `execution.md`/`test-report.md` | Reword to note it manifests in either of 2 files depending on scheduling | **CLOSED** |
+| WARN-4 | WARN | FR-CMV-005's "dismissible" clause is implemented but has no test | Add one small test | **CLOSED** |
+| A-1…A-7 | Advisory | See §7 above | Optional; candidates for the Kaizen log | Open (non-blocking) |
 
-None of the above block archiving. All are cheap (mostly doc edits or a single small test) and can be closed either now or carried forward as Kaizen items.
+All 4 WARNs were closed in a post-validation fix pass (user-approved), including a real end-to-end persistence check (not just documentation) for WARN-1's T-003 half. The 7 advisory notes remain open by design — they are optional, non-blocking, and appropriate as Kaizen candidates rather than spec-blocking fixes.
 
 ## 12. Archive Readiness Recommendation
 
-**ARCHIVE-READY.** No requirement is unmet, no Judgment Day design decision has been reverted, no new test failure or build/lint/type regression was introduced, and every count in `test-report.md` was independently spot-checked and found accurate. The 4 WARN findings are documentation-completeness and coverage-completeness gaps, not code defects — recommend closing WARN-2 and WARN-3 (pure doc edits, a few minutes each) before archiving, and carrying WARN-1 and WARN-4 forward as accepted, low-risk follow-ups if not closed now.
+**ARCHIVE-READY.** No requirement is unmet, no Judgment Day design decision has been reverted, no new test failure or build/lint/type regression was introduced, every count in `test-report.md` was independently spot-checked and found accurate, and all 4 WARN findings from this audit have since been closed with real evidence (not just documentation edits — the persistence half of WARN-1 was verified against a real database row from a real handler run). Nothing remains outstanding except the 7 optional advisory notes, which are appropriately deferred to the Kaizen log rather than blocking archive.
 
 ```text
 /akili-archive changes/country-document-match-validation
