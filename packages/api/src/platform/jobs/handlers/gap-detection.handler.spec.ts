@@ -24,6 +24,7 @@ describe('GapDetectionHandler', () => {
       update: jest.fn(),
     },
     assessment: { findUniqueOrThrow: jest.fn(), update: jest.fn() },
+    $transaction: jest.fn(),
   };
   const mockBedrock = { invokeModel: jest.fn() };
 
@@ -227,6 +228,146 @@ describe('GapDetectionHandler', () => {
       // by the Bedrock try/catch and treated as a Bedrock failure, createErrorFields()
       // would ALSO call gapField.createMany, making this count 2 instead of 1.
       expect(mockPrisma.gapField.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts a detectedCountry at exactly the 0.7 confidence boundary (BR-CMV-003 inclusive threshold)', async () => {
+      mockUploadAssessment();
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify({
+          detectedCountry: 'Zambia',
+          detectedCountryConfidence: 0.7,
+          ...createGapAIResponse(),
+        }),
+        tokensUsed: 400,
+      });
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      // >= 0.7 must include the boundary value itself, not just values strictly above it.
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Zambia' },
+      });
+    });
+
+    it('rejects a detectedCountry just below the 0.7 confidence boundary (0.699999)', async () => {
+      mockUploadAssessment();
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify({
+          detectedCountry: 'Zambia',
+          detectedCountryConfidence: 0.699999,
+          ...createGapAIResponse(),
+        }),
+        tokensUsed: 400,
+      });
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: null },
+      });
+    });
+
+    it('[A1 / FR-CMV-001 Sc3] leaves detectedCountry null and never calls Bedrock for a non-UPLOAD intake mode', async () => {
+      mockPrisma.assessment.findUniqueOrThrow.mockResolvedValue({
+        id: 'assessment-1',
+        intakeMode: 'GUIDED_INTERVIEW',
+        country: 'Kenya',
+      });
+      mockPrisma.gapField.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.gapField.createMany.mockResolvedValue({ count: 10 });
+      mockPrisma.assessment.update.mockResolvedValue({});
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      // The `let detectedCountry: string | null = null` initializer must survive
+      // this branch untouched — no widening to `undefined`, no accidental leak
+      // of a stale/other value. This branch never talks to Bedrock at all.
+      expect(mockBedrock.invokeModel).not.toHaveBeenCalled();
+      expect(mockPrisma.assessment.update).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: null },
+      });
+      // createSkeletonFields() ran instead (GapField-only, no Bedrock call, no
+      // assessment write of its own).
+      expect(mockPrisma.gapField.createMany).toHaveBeenCalledTimes(1);
+    });
+
+    it('[A1 / FR-CMV-001 Sc3] same guarantee holds for MANUAL_ENTRY intake mode', async () => {
+      mockPrisma.assessment.findUniqueOrThrow.mockResolvedValue({
+        id: 'assessment-1',
+        intakeMode: 'MANUAL_ENTRY',
+        country: 'Nigeria',
+      });
+      mockPrisma.gapField.deleteMany.mockResolvedValue({ count: 0 });
+      mockPrisma.gapField.createMany.mockResolvedValue({ count: 10 });
+      mockPrisma.assessment.update.mockResolvedValue({});
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      expect(mockBedrock.invokeModel).not.toHaveBeenCalled();
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: null },
+      });
+    });
+
+    it('[A2 / FR-CMV-006 Sc1] re-analyze success path: refreshes detectedCountry and runs updateFieldsFromAIResponse via $transaction', async () => {
+      mockUploadAssessment(); // intakeMode UPLOAD, country Kenya
+      const existingFields = GAP_DETECTION_CONFIG.core10Fields.map((def, i) => ({
+        id: `field-${i}`,
+        field: def.field,
+        correctedValue: i === 0 ? 'user-provided correction' : null,
+      }));
+      // Same underlying table backs both the re-analyze corrections lookup
+      // (processUploadMode step 4b) and updateFieldsFromAIResponse()'s own fetch.
+      mockPrisma.gapField.findMany.mockResolvedValue(existingFields);
+      mockPrisma.gapField.update.mockImplementation((args: unknown) => args);
+      mockPrisma.$transaction.mockResolvedValue(undefined);
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify({
+          detectedCountry: 'Zambia',
+          detectedCountryConfidence: 0.9,
+          ...createGapAIResponse(),
+        }),
+        tokensUsed: 300,
+      });
+
+      await handler.execute({ assessmentId: 'assessment-1', reAnalyze: true });
+
+      // updateFieldsFromAIResponse() ran (not createFieldsFromAIResponse) —
+      // the re-analyze branch never calls gapField.createMany.
+      expect(mockPrisma.gapField.createMany).not.toHaveBeenCalled();
+
+      expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1);
+      const txArg = mockPrisma.$transaction.mock.calls[0][0] as unknown[];
+      expect(txArg).toHaveLength(existingFields.length);
+
+      // Field 0 has a user correction: only AI metadata refreshes, status/value untouched.
+      const correctedCallArgs = mockPrisma.gapField.update.mock.calls.find(
+        (call) => call[0].where.id === 'field-0',
+      )?.[0];
+      expect(correctedCallArgs.data).not.toHaveProperty('extractedValue');
+      expect(correctedCallArgs.data).not.toHaveProperty('status');
+      expect(correctedCallArgs.data).toEqual(
+        expect.objectContaining({ confidence: expect.any(Number), aiReasoning: expect.any(String) }),
+      );
+
+      // A non-corrected field gets the full AI-driven update.
+      const uncorrectedCallArgs = mockPrisma.gapField.update.mock.calls.find(
+        (call) => call[0].where.id === 'field-1',
+      )?.[0];
+      expect(uncorrectedCallArgs.data).toHaveProperty('extractedValue');
+      expect(uncorrectedCallArgs.data).toHaveProperty('status');
+
+      // The single execute()-level fold-in write reflects the freshly-detected country.
+      expect(mockPrisma.assessment.update).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.assessment.update).toHaveBeenCalledWith({
+        where: { id: 'assessment-1' },
+        data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Zambia' },
+      });
     });
   });
 });

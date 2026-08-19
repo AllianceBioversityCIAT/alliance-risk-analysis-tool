@@ -322,4 +322,94 @@ describe('GapDetectorClient — country mismatch validation', () => {
       expect(mockInvalidateQueries).not.toHaveBeenCalled();
     });
   });
+
+  // ─── QA Tester independent completeness pass ─────────────────────────────────
+  // The 10 tests above (implementer + reviewer authored) were re-checked against
+  // every FR-CMV-002..006/BR-CMV-001 scenario in requirements.md. The tests below
+  // close the gaps found during that re-check; they do not duplicate the above.
+
+  describe('dialog content completeness (FR-CMV-002 Sc1)', () => {
+    // Gap: the existing "shows the dialog on a true mismatch" test only asserts
+    // the dialog's title text appears — it never asserts the two country names
+    // or the "non-blocking" statement the requirement explicitly mandates
+    // ("AND IT MUST name both... AND IT MUST state the check does not block
+    // analysis"). Scoped with getByRole('dialog') per the UX Testing Guidance
+    // (accessible query over brittle text/class selectors).
+    it('names both countries and states the check is non-blocking, inside role="dialog"', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });
+      render(<GapDetectorClient />);
+
+      await clickAnalyzeRisks();
+
+      const dialog = within(await screen.findByRole('dialog'));
+      expect(dialog.getByText(/kenya/i)).toBeInTheDocument();
+      expect(dialog.getByText(/zambia/i)).toBeInTheDocument();
+      expect(dialog.getByText(/won.t block your analysis/i)).toBeInTheDocument();
+    });
+  });
+
+  describe('"Cancel" does not navigate away (FR-CMV-004 Sc1 completeness)', () => {
+    // Gap: the existing Cancel test asserts zero apiClient calls but never
+    // asserts the Analyst stays on the gap detector screen ("BUT it must NOT
+    // navigate the Analyst away").
+    it('does not call router.push when Cancel is clicked', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });
+      render(<GapDetectorClient />);
+
+      const user = await clickAnalyzeRisks();
+      await screen.findByRole('dialog');
+      await user.click(screen.getByRole('button', { name: /^cancel$/i }));
+
+      expect(mockPush).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('dismiss via the dialog\'s built-in Close (X) control — documents accepted behavior (T-005 Reviewer ADVISORY #1)', () => {
+    // The Reviewer flagged (non-blocking) that dismissing via Escape/overlay-click/X
+    // doesn't set showCountryMismatchHint, unlike the Cancel button — judged
+    // conformant to design.md's literal Cancel-triggered wording, not a defect.
+    // This test does not assert that behavior is *ideal*; it pins the CURRENT,
+    // accepted behavior so a future change can't silently flip it unnoticed.
+    it('closing via the dialog\'s Close control does NOT show the hint banner, unlike Cancel; the dialog still reappears next click', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Zambia' });
+      render(<GapDetectorClient />);
+
+      const user = await clickAnalyzeRisks();
+      await screen.findByRole('dialog');
+
+      await user.click(screen.getByRole('button', { name: /close/i }));
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(mockPost).not.toHaveBeenCalled();
+      // Accepted current behavior: unlike Cancel, the built-in Close control
+      // does not surface the remediation hint.
+      expect(screen.queryByTestId('country-mismatch-hint')).not.toBeInTheDocument();
+
+      // Same non-suppression guarantee as Cancel (FR-CMV-004 Sc2): the dialog
+      // is not permanently dismissed for the assessment/session.
+      await user.click(screen.getByRole('button', { name: /analyze risks/i }));
+      expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    });
+  });
+
+  describe('happy-path flow clarity — no mismatch ever occurred', () => {
+    // State-transition check: when detectedCountry has always matched
+    // assessment.country, neither the dialog nor the hint banner should ever
+    // appear, before or after a successful submit.
+    it('never shows the dialog or the hint banner when there was never a mismatch', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      render(<GapDetectorClient />);
+
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('country-mismatch-hint')).not.toBeInTheDocument();
+
+      await clickAnalyzeRisks();
+
+      await waitFor(() =>
+        expect(mockPost).toHaveBeenCalledWith('/api/assessments/assessment-1/gap-fields/submit'),
+      );
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('country-mismatch-hint')).not.toBeInTheDocument();
+    });
+  });
 });
