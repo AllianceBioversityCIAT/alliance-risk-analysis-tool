@@ -132,3 +132,15 @@ The user's own manual browser test before archiving found that a business plan d
 | Widened prompt still resists anchoring and returns clean values | Live Bedrock call (no mocks): `{{country}}`="Nigeria" + Malawi-describing text → `detectedCountry: "Malawi"`, confidence 0.95; regression check with `{{country}}`="Zambia" + Kenya-describing text → `detectedCountry: "Kenya"`, confidence 0.95, model's own reasoning explicitly rejected the injected anchor | PASS |
 
 Full backend suite: 20/20 (was 16/16 before this addendum). Full frontend suite: 15/15 (unchanged count — one test flipped in place, not added).
+
+## 11. Addendum (2026-08-19, immediately after §10) — DD-CMV-008: Initial-Detection Cache Invalidation
+
+The user's re-test of DD-CMV-007 (on a fresh assessment, not a re-analysis) found the dialog still didn't appear despite a correctly-persisted `detectedCountry` — the DD-CMV-006-round cache-invalidation fix only covered the re-analyze flow (`jobStatus` from `useJobPolling()`, never engaged for the automatic first-run job). Fixed by adding a second effect watching `useGapFields()`'s own `total` 0→positive transition — see `execution.md`'s "T-005 (re-opened, 2nd time)" entry and `design.md` §7/§12 DD-CMV-008.
+
+| Test | Result |
+|---|---|
+| `gap-detector-client.test.tsx`: invalidates `['assessment', id]` exactly once when `gapData.total` transitions from 0 to positive | PASS |
+| `gap-detector-client.test.tsx`: does NOT invalidate again on further re-renders while `total` stays positive (proves the ref-gated one-shot behavior, not just "fires at least once") | PASS |
+| Both new tests independently confirmed load-bearing — the Reviewer removed the fix and watched both go red before accepting the PASS | Confirmed |
+
+Full frontend suite: 17/17 (was 15/15).

@@ -211,6 +211,16 @@ The gap detector already extracts a `country_of_operation` field from uploaded b
 - **THEN** the next completed gap-detection run updates `Assessment.detectedCountry` to `"Kenya"`
 - **AND IT MUST** cause the mismatch dialog to stop appearing on subsequent "Analyze Risks" clicks
 
+#### Scenario 2: The *initial* gap-detection run's result is visible without a manual page refresh
+
+**Added 2026-08-19 (DD-CMV-008), found immediately after DD-CMV-007 by the same real end-to-end test:** the original wording of this requirement, and its Scenario 1, both spoke only about *re-analysis*. Nothing explicitly required the very first, automatic gap-detection run (the one that happens right after a brand-new document upload, with no re-analysis involved at all) to become visible to the already-open gap-detector screen without a manual reload. A real test on a fresh assessment showed the dialog never appeared even though `Assessment.detectedCountry` was correctly persisted, because the client had no mechanism to learn the value had changed.
+
+- **GIVEN** the Analyst is on the gap-detector screen, freshly navigated there right after uploading a document, and the automatic (non-re-analyze) `GAP_DETECTION` job is still running server-side
+- **WHEN** that job completes and persists a mismatching `Assessment.detectedCountry`
+- **THEN** the screen's own data SHALL refresh to reflect it **without requiring the Analyst to reload the page**
+- **AND IT MUST** result in the mismatch dialog correctly appearing the first time the Analyst clicks "Analyze Risks" afterward
+- **BUT it must NOT** require a new polling mechanism dedicated to this purpose — reuse the existing signal that already tells the screen fields have arrived (`useGapFields`'s poll-until-populated behavior)
+
 ## 7. Non-Functional Requirements
 
 ### NFR-CMV-010: Zero Added Bedrock Invocations

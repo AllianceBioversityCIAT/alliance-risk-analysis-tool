@@ -178,6 +178,24 @@ export default function GapDetectorClient() {
     }
   }, [jobStatus, queryClient, id]);
 
+  // Second, independent cache-invalidation signal (DD-CMV-008): the effect
+  // above only fires for the re-analyze flow, driven by useJobPolling's
+  // jobStatus. The very first, automatic GAP_DETECTION job (server-chained
+  // right after document parsing) never starts that polling — the frontend
+  // only learns it finished via useGapFields()'s own poll-until-populated
+  // behavior (gapData.total transitioning from 0 to positive). Watching that
+  // transition here is the correct, path-agnostic signal that gap-detection
+  // work just finished, so a freshly-persisted Assessment.detectedCountry
+  // (FR-CMV-006 Scenario 2) is picked up without a manual page reload.
+  const prevGapTotalRef = useRef(0);
+  useEffect(() => {
+    const total = gapData?.total ?? 0;
+    if (prevGapTotalRef.current === 0 && total > 0) {
+      queryClient.invalidateQueries({ queryKey: ['assessment', id] });
+    }
+    prevGapTotalRef.current = total;
+  }, [gapData?.total, queryClient, id]);
+
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string, currentStatus?: GapFieldStatus) => {
       await updateFields([{ id: fieldId, correctedValue: value }]);

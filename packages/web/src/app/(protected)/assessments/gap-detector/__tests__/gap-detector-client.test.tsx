@@ -109,7 +109,11 @@ let mockGapData: {
       validationFeedback: null,
     },
   ],
-  total: 1,
+  // Starts at 0 to mirror useGapFields()'s real poll-until-populated behavior
+  // (data is undefined/total 0 until the async GAP_DETECTION job completes) —
+  // this is also the correct baseline for the DD-CMV-008 cache-invalidation
+  // tests below, which assert on the 0 -> positive transition specifically.
+  total: 0,
   verifiedCount: 1,
   allMandatoryComplete: true,
 };
@@ -438,6 +442,57 @@ describe('GapDetectorClient — country mismatch validation', () => {
       );
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       expect(screen.queryByTestId('country-mismatch-hint')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('cache invalidation on the initial (non-re-analyze) gap-detection run (FR-CMV-006 Sc2 / DD-CMV-008)', () => {
+    // This is the fix for the real bug: the very first, automatic
+    // GAP_DETECTION job never touches `jobStatus` (useJobPolling is only
+    // started for the re-analyze flow), so the screen must independently
+    // invalidate ['assessment', id] when useGapFields()'s own
+    // poll-until-populated signal (gapData.total) transitions from 0 to a
+    // positive count.
+    it('invalidates ["assessment", id] exactly once when gapData.total transitions from 0 to positive', () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockGapData = { ...mockGapData, total: 0, data: [] };
+      const { rerender } = render(<GapDetectorClient />);
+
+      // No fields yet — the transition hasn't happened, so no invalidation.
+      expect(mockInvalidateQueries).not.toHaveBeenCalled();
+
+      // Simulate the automatic GAP_DETECTION job completing: useGapFields()'s
+      // poll-until-populated behavior now returns a positive total.
+      mockGapData = { ...mockGapData, total: 1 };
+      rerender(<GapDetectorClient />);
+
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['assessment', 'assessment-1'],
+      });
+    });
+
+    it('does NOT invalidate again once total is already positive and stays positive across further re-renders (ref-based one-shot)', () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockGapData = { ...mockGapData, total: 0, data: [] };
+      const { rerender } = render(<GapDetectorClient />);
+
+      // Trigger the one, legitimate 0 -> positive transition.
+      mockGapData = { ...mockGapData, total: 1 };
+      rerender(<GapDetectorClient />);
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+
+      // Re-render with the same positive total — proves the ref actually
+      // gates on the transition itself, not merely "total is truthy".
+      mockGapData = { ...mockGapData, total: 1 };
+      rerender(<GapDetectorClient />);
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+
+      // Re-render with a different, still-positive total — a positive ->
+      // positive change must not be mistaken for a new 0 -> positive
+      // transition either.
+      mockGapData = { ...mockGapData, total: 2 };
+      rerender(<GapDetectorClient />);
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
     });
   });
 });
