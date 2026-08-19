@@ -65,3 +65,27 @@
 **Decisions made:** scope amendment (widen T-001 to cover 3 ripple-fix files: `report.service.ts`, `report-generation.handler.ts`, `pdf.service.spec.ts`) — the first two user-approved via AskUserQuestion before attempt 1's Reviewer spawn; the third was a Reviewer-caught gap in the same amendment (not a new decision point, same approved direction).
 **Issues encountered:** verification blind spot (build command doesn't type-check spec files) caused a 1-attempt rework cycle; corrected in attempt 2 and flagged as a project-level Kaizen candidate (see ADVISORY (2) above).
 **Final verification result:** PASS — `pnpm --filter @alliance-risk/shared build && pnpm --filter @alliance-risk/shared typecheck`, `pnpm --filter @alliance-risk/api build`, `pnpm --filter @alliance-risk/api test --testPathPattern=pdf.service`, and a full-repo `tsc --noEmit` sweep all clean.
+
+---
+
+### Task T-003 — Gap-detection handler: detect, gate, and persist `detectedCountry` `[BE]`
+
+- **Final Status:** PASS (attempt 1)
+- **Date:** 2026-08-18
+- **Implementer attempts:** 1
+- **Effort:** high (correctness-critical, per Leader assignment — this is the task Judgment Day's data-loss finding (JD-01/JD-02) applies to most directly)
+
+**Attempt 1:**
+- **Files changed:** `packages/api/src/platform/jobs/handlers/gap-detection.handler.ts` (+~53 lines: `GapDetectionAIResponse` extended with `detectedCountry`/`detectedCountryConfidence`; `execute()` gains the `let detectedCountry: string | null = null` initializer and folds the value into the single existing `assessment.update()` call; `processUploadMode()`'s return type extended; new private `normalizeDetectedCountry()` helper gating on `isSupportedCountry()` + confidence ≥0.7 with a debug log on rejection), `gap-detection.handler.spec.ts` (+~176 lines: extended `mockPrisma`, 10 new tests)
+- **Implementer verification:**
+  - `pnpm --filter @alliance-risk/api test --testPathPattern=gap-detection.handler` → 11/11 passed
+  - `pnpm --filter @alliance-risk/api build` → exit 0
+  - `pnpm --filter @alliance-risk/api exec -- tsc -p tsconfig.json --noEmit` → only the 2 pre-existing, unrelated `TS2307` errors (confirmed via `git stash`)
+- **Reviewer verdict:** `STATUS: PASS` — independently re-ran all verification (11/11 handler tests, 4/4 `gap-field.controller` tests as the NFR-CMV-012 smoke check, full API suite 379 tests/0 failures, build, lint, full-repo typecheck) and additionally ran **mutation testing** against the diff: reverting `>= 0.7`, removing the `isSupportedCountry()` guard, and — critically — re-introducing the exact JD-01 defect shape (moving the write back inside `processUploadMode()`'s try block) all correctly broke tests, confirming the new tests are load-bearing rather than decorative. Confirmed by direct inspection: exactly one `prisma.assessment.update` call in the whole file, `createSkeletonFields()` untouched, Core-10 field-parsing logic untouched.
+  - **ADVISORY:** (A1, Risk/medium) the `let detectedCountry: string | null = null` initializer is correct but not test-guarded — widening it to allow `undefined` would still pass every current test, because all 10 new tests exercise `intakeMode: 'UPLOAD'` only; FR-CMV-001 Scenario 3 (non-UPLOAD path) has no dedicated test. Recorded as a coverage gap, not a violation — no task in `tasks.md`/`design.md` named this specific test, so it doesn't gate T-003. (A2, Reliability/low) the re-analyze *success* path (as opposed to re-analyze-failure, which is tested) is untested and `$transaction` remains unmocked — explicitly sanctioned by `tasks.md`'s own conditional wording ("only add `$transaction` mock if a re-analyze-success test is added"). (A3, informational) `logger.debug` will fire on every real UPLOAD run until T-004 lands the prompt update — expected, not a defect.
+
+**Requirements covered:** FR-CMV-001 (all 3 scenarios), FR-CMV-006 Sc1 (backend half), NFR-CMV-010, NFR-CMV-011, BR-CMV-001, BR-CMV-003
+**Design refs:** design.md §6.1, §6.2, §10, §11, §12 (DD-CMV-003, DD-CMV-006)
+**Decisions made:** none beyond the spec — implemented exactly as designed; the Implementer's `normalizeDetectedCountry()` helper is an internal refactor detail (extracting the normalization logic named inline in design.md §6.2 into its own private method) and doesn't deviate from the design's intent.
+**Issues encountered:** none — PASS on attempt 1.
+**Final verification result:** PASS. Per Leader's own judgment (not a task requirement), advisory A1's gap is real but low-risk given PASS-on-attempt-1 status and the Reviewer's mutation-testing confirmation of the actually-critical path (JD-01 reversion); not escalated to a new task per the "Advisory Never Becomes A Task" rule.

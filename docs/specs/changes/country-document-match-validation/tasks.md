@@ -74,7 +74,7 @@ T-001, T-003 → T-005 [FE]
 
 ### T-003: Gap-detection handler — detect, gate, and persist `detectedCountry` `[BE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` (PASS, attempt 1 — see execution.md; Reviewer additionally ran mutation testing confirming the JD-01 regression is caught)
 - **Skills:** `nestjs-expert`, `error-handling-patterns`
 - **Size:** L (touches interface, `execute()`, `processUploadMode()`, and its test file)
 - **Dependencies:** T-002

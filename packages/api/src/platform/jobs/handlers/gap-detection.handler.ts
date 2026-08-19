@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../../infrastructure/database/prisma.service';
 import { BedrockService } from '../../../infrastructure/bedrock/bedrock.service';
 import type { JobHandler } from '../job-handler.interface';
-import { BEDROCK_MODELS, AgentSection } from '@alliance-risk/shared';
+import { BEDROCK_MODELS, AgentSection, isSupportedCountry } from '@alliance-risk/shared';
 import { GAP_DETECTION_CONFIG } from '../../../domain/gap-detection/gap-detection.config';
 import type { Core10FieldDefinition } from '../../../domain/gap-detection/gap-detection.config';
 import {
@@ -41,6 +41,8 @@ interface GapDetectionAIField {
 
 interface GapDetectionAIResponse {
   fields: GapDetectionAIField[];
+  detectedCountry?: string | null;
+  detectedCountryConfidence?: number;
 }
 
 @Injectable()
@@ -69,11 +71,13 @@ export class GapDetectionHandler implements JobHandler {
 
     let bedrockTokensUsed = 0;
     let mergedMarkdown = '';
+    let detectedCountry: string | null = null;
 
     if (assessment.intakeMode === 'UPLOAD') {
       const result = await this.processUploadMode(input.assessmentId, assessment.country, isReAnalyze);
       bedrockTokensUsed = result.tokensUsed;
       mergedMarkdown = result.mergedMarkdown;
+      detectedCountry = result.detectedCountry;
     } else {
       // GUIDED_INTERVIEW or MANUAL_ENTRY: create skeleton fields without Bedrock
       if (!isReAnalyze) {
@@ -82,9 +86,13 @@ export class GapDetectionHandler implements JobHandler {
     }
 
     // Update assessment status to ACTION_REQUIRED, progress = 50
+    // detectedCountry rides along in this single existing write (DD-CMV-006) —
+    // never a second, separately-guarded update — so a persistence failure here
+    // is handled exactly like any other failure of this pre-existing write (job
+    // retry via maxAttempts), never misattributed to a Bedrock failure.
     await this.prisma.assessment.update({
       where: { id: input.assessmentId },
-      data: { status: 'ACTION_REQUIRED', progress: 50 },
+      data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry },
     });
 
     this.logger.log(
@@ -105,7 +113,7 @@ export class GapDetectionHandler implements JobHandler {
     assessmentId: string,
     country: string,
     isReAnalyze = false,
-  ): Promise<{ tokensUsed: number; mergedMarkdown: string }> {
+  ): Promise<{ tokensUsed: number; mergedMarkdown: string; detectedCountry: string | null }> {
     // 1. Fetch ALL completed PARSE_DOCUMENT jobs for this assessment
     const parseJobs = await this.prisma.job.findMany({
       where: {
@@ -119,7 +127,7 @@ export class GapDetectionHandler implements JobHandler {
     if (parseJobs.length === 0) {
       this.logger.warn(`No completed PARSE_DOCUMENT jobs found for assessment ${assessmentId}. Creating skeleton fields.`);
       await this.createSkeletonFields(assessmentId);
-      return { tokensUsed: 0, mergedMarkdown: '' };
+      return { tokensUsed: 0, mergedMarkdown: '', detectedCountry: null };
     }
 
     // 2. Merge all markdownContent with document separators
@@ -218,7 +226,11 @@ export class GapDetectionHandler implements JobHandler {
         await this.createFieldsFromAIResponse(assessmentId, parsed);
       }
 
-      return { tokensUsed, mergedMarkdown: extractedText };
+      return {
+        tokensUsed,
+        mergedMarkdown: extractedText,
+        detectedCountry: this.normalizeDetectedCountry(parsed),
+      };
     } catch (error) {
       // On Bedrock failure: create all-MISSING fields with error reasoning
       this.logger.error(
@@ -230,8 +242,37 @@ export class GapDetectionHandler implements JobHandler {
         // In re-analyze mode, log the error on existing fields so the user knows
         this.logger.warn(`Re-analyze Bedrock failure for ${assessmentId} — existing fields preserved with no update`);
       }
-      return { tokensUsed: 0, mergedMarkdown: extractedText };
+      // detectedCountry: null on any Bedrock failure (initial, later non-re-analyze,
+      // or re-analyze) — a prior run's value must never survive a failed run (NFR-CMV-011).
+      return { tokensUsed: 0, mergedMarkdown: extractedText, detectedCountry: null };
     }
+  }
+
+  // ─── Country Detection Normalization ─────────────────────────────────────────
+
+  /**
+   * Normalizes the AI response's top-level detectedCountry/detectedCountryConfidence
+   * pair to either a member of SUPPORTED_COUNTRY_LABELS or null. Fails quiet
+   * (NFR-CMV-011): anything that isn't a supported-country string at >= 0.7
+   * confidence — missing key, hallucinated string, wrong type, low confidence, or
+   * the literal "unclear" — becomes null, never a thrown error.
+   */
+  private normalizeDetectedCountry(response: GapDetectionAIResponse): string | null {
+    const { detectedCountry, detectedCountryConfidence } = response;
+
+    if (
+      typeof detectedCountry === 'string' &&
+      isSupportedCountry(detectedCountry) &&
+      typeof detectedCountryConfidence === 'number' &&
+      detectedCountryConfidence >= 0.7
+    ) {
+      return detectedCountry;
+    }
+
+    this.logger.debug(
+      `detectedCountry rejected: value=${JSON.stringify(detectedCountry)} confidence=${JSON.stringify(detectedCountryConfidence)}`,
+    );
+    return null;
   }
 
   // ─── JSON Parsing (5-Strategy Defensive) ─────────────────────────────────────
