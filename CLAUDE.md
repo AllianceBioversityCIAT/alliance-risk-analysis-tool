@@ -142,9 +142,11 @@ DATABASE_URL=postgresql://<your-user>@localhost:5432/alliance_risk
 ```bash
 pnpm --filter @alliance-risk/shared build
 pnpm --filter @alliance-risk/api exec prisma migrate deploy
-npx --prefix packages/api tsx prisma/seed.ts
+cd packages/api && npx tsx prisma/seed.ts && cd ../..
 pnpm dev    # API :3001 + Web :3000
 ```
+
+**Note:** `npx --prefix packages/api tsx prisma/seed.ts` (without the `cd`) fails with `ERR_MODULE_NOT_FOUND` — `--prefix` only selects which package's `tsx` binary to run, it does not change the working directory that the `prisma/seed.ts` path argument resolves against. Verified 2026-08-19 during `docs/specs/archive/2026-08-19-changes--country-document-match-validation/` (T-004).
 
 ## Rules
 
