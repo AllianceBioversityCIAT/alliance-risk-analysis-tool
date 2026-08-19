@@ -35,6 +35,10 @@ AKILI execution harness personas — read by `/akili-execute` and `/akili-test` 
 | Reviewer | [`.agents/reviewer.md`](.agents/reviewer.md) | Diff-only spec audit (author ≠ auditor) |
 | Tester | [`.agents/tester.md`](.agents/tester.md) | Per-suite test authoring/execution |
 
+Bound to models via native Claude Code agent wrappers in [`.claude/agents/`](.claude/agents/) (`akili-leader`, `akili-implementer`, `akili-reviewer`, `akili-tester`) — each is a thin pointer back to its `.agents/` persona file plus a `model:` from the registry below, so editing a persona never touches a wrapper and changing a model never touches a persona. The Reviewer wrapper additionally carries `tools: Read, Grep, Glob` (no `Bash`/`Write`/`Edit`) — `author ≠ auditor` enforced on both the model axis and the write axis.
+
+A guardrail hook (`.claude/hooks/akili-tasks-gate.sh`, wired in `.claude/settings.json`) blocks any edit to a spec's `tasks.md` that flips a task to `[x]` unless that spec's `execution.md` already contains a recorded Reviewer `PASS` — evidence before checkbox. This is enforced by the harness on Claude Code; on OpenCode and Antigravity the same rule remains instructional only (`.agents/leader.md`), since hooks are a Claude Code mechanism.
+
 ---
 
 ## Module Guides
@@ -91,18 +95,20 @@ Always read the child guide for the package you are editing.
 
 ### Model Registry
 
-**Updated:** 2026-07
+**Updated:** 2026-08
 
-| Tier | Claude Code | OpenCode | Fallback |
-|------|-------------|----------|----------|
-| T1 Architect | `opus` | `<CONFIRM SLUG>` | `opus` |
-| T2 Coder | `sonnet` | `<CONFIRM SLUG>` | `sonnet` |
-| T3 Auditor | `opus` | `<CONFIRM SLUG>` | `opus` |
-| T4 Context-Ingest | `haiku` | `<CONFIRM SLUG>` | `haiku` |
-| T5 Fast-Cheap | `haiku` | `<CONFIRM SLUG>` | `haiku` |
-| T6 Multimodal | `sonnet` | `<CONFIRM SLUG>` | `sonnet` |
+| Tier | Claude Code | OpenCode | Antigravity | Fallback |
+|------|-------------|----------|-------------|----------|
+| T1 Architect | `opus` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `opus` |
+| T2 Coder | `sonnet` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `sonnet` |
+| T3 Auditor | `opus` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `opus` |
+| T4 Context-Ingest | `haiku` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `haiku` |
+| T5 Fast-Cheap | `haiku` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `haiku` |
+| T6 Multimodal | `sonnet` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `sonnet` |
 
-To change models, edit only this registry table. Never pin a dated model name where a floating alias exists. Model selection is guidance in command prompts — enforced bindings live only in agent wrappers (not enabled in this project).
+**Cross-host dispatch:** T6 Multimodal → Antigravity (Gemini vision) is the one tier where another host may outperform this session's own column — reach across hosts before degrading within one, but only for a genuine capability gap (a cross-host spawn costs a fresh context, which a one-tier difference does not repay). This project has enabled Claude Code's native agent wrappers (`.claude/agents/akili-*.md`, bound to this registry's Claude Code column) — see the `.agents/` note above.
+
+To change models, edit only this registry table. Never pin a dated model name where a floating alias exists. Model selection is guidance in command prompts — enforced bindings live in the Claude Code agent wrappers (`.claude/agents/akili-{leader,implementer,reviewer,tester}.md`).
 
 ### Effort Dial
 

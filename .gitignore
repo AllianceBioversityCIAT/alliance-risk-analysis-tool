@@ -29,7 +29,10 @@ coverage/
 Thumbs.db
 
 # AI tools (local-only; .agents/ is tracked for AKILI personas)
-.claude/
+.claude/*
+!.claude/agents/
+!.claude/hooks/
+!.claude/settings.json
 .mcp.json
 
 # Debug logs
