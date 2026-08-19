@@ -113,3 +113,55 @@
 **Decisions made:** none beyond the spec.
 **Issues encountered:** none — PASS on attempt 1. One minor operational note (the `--prefix` vs `cd` command-form correction) worth folding into `CLAUDE.md`'s documented command at archive time, not urgent enough to block this task.
 **Final verification result:** PASS — real end-to-end Bedrock verification (not just unit-test mocks) is the strongest possible evidence for this task, since it's the only way to prove the anti-anchoring mitigation actually holds against a live model call.
+
+---
+
+### Task T-005 — Gap detector UI: mismatch dialog, hint banner, and cache invalidation `[FE]`
+
+- **Final Status:** PASS (attempt 1)
+- **Date:** 2026-08-18
+- **Implementer attempts:** 1
+- **Effort:** high (largest and most detail-sensitive task in the spec — 3 Judgment Day rounds' worth of specific fixes to reproduce exactly)
+
+**Attempt 1:**
+- **Files changed:** `packages/web/src/app/(protected)/assessments/gap-detector/gap-detector-client.tsx` (+123/-4 lines), new `packages/web/src/app/(protected)/assessments/gap-detector/__tests__/gap-detector-client.test.tsx` (325 lines, 10 tests)
+- **Scope:** `countryMismatch` derivation placed immediately after `useAssessment(id)` (avoiding the JD-17 TDZ hazard); `handleAnalyzeRisks` renamed to `proceedToRiskAnalysis` (body byte-identical); new `handleAnalyzeRisksClick` wrapper wired only to the Button's `onClick`; confirmation `Dialog` using `CountryBadge`; hint banner with both countries and both remediation paths, auto-clearing, stacked above the validation banner; `queryClient.invalidateQueries({ queryKey: ['assessment', id] })` added to the job-completion effect (the round-3 Judgment Day fix for FR-CMV-006).
+- **Implementer verification:**
+  - `pnpm --filter @alliance-risk/web test --testPathPattern=gap-detector-client` → 10/10 passed
+  - `pnpm --filter @alliance-risk/web build` → succeeded, static export
+  - `pnpm --filter @alliance-risk/web lint` → clean
+  - Full web suite → 131/133 passed; the 2 failures (`user-management.test.tsx`) independently confirmed as a pre-existing, unrelated test-isolation flake (reproduces identically with this task's files excluded from the run, and passes 14/14 in isolation)
+- **Reviewer verdict:** `STATUS: PASS` — independently confirmed, byte-for-byte where it mattered most: (1) no TDZ hazard exists (every `countryMismatch` reference sits strictly below its declaration by line number); (2) `proceedToRiskAnalysis`'s body is byte-identical to the original `handleAnalyzeRisks` (diffed directly, zero differences beyond the rename); (3) `allMandatoryComplete`'s computation, the Button's `disabled` expression, and the Tooltip's gating condition are all byte-identical to pre-diff — the only change in that region is the `onClick` handler swap; (4) hint/dialog copy matches design.md §7 exactly, with neither of the two previously-caught copy defects (misleading "proceeds as soon as you click again" line, or a hint missing a remediation path) reintroduced; (5) the cache-invalidation fix from Judgment Day round 3 is present and tested in both directions. Also judged the Implementer's two disclosed judgment calls (a `data-testid` addition for test scoping; resolving an ambiguity about exactly which proposal.md sentence design.md's copy correction replaces) as reasonable, in-scope, and correctly disclosed — not defects.
+  - **ADVISORY (4R, non-blocking):** (1) Resilience — dismissing the dialog via Escape/overlay-click/X doesn't set `showCountryMismatchHint`, unlike the Cancel button; conformant to design.md's literal Cancel-triggered wording, but worth unifying if the spec is revisited. (2) Readability — the dialog's non-blocking line slightly duplicates the hint's closing sentence; design-mandated text, no change required. (3) Accessibility — the dialog's second paragraph sits outside `DialogDescription`, so it won't be announced via `aria-describedby`; cheap future improvement, not spec-required. (4) Reliability — `proceedToRiskAnalysis()` is called without `await`/`.catch()`, identical to pre-diff behavior, not a regression.
+
+**Requirements covered:** FR-CMV-002 (both scenarios), FR-CMV-003, FR-CMV-004 (both scenarios), FR-CMV-005, FR-CMV-006 Sc1 (frontend half), BR-CMV-001
+**Design refs:** design.md §7, §10 (last row), §11, §12 DD-CMV-004
+**Decisions made:** the two Implementer judgment calls above, both accepted by the Reviewer as reasonable and correctly disclosed.
+**Issues encountered:** none blocking — PASS on attempt 1; a pre-existing, unrelated flaky test suite was identified and ruled out as related to this change.
+**Final verification result:** PASS.
+
+---
+
+## 3. Summary — All Tasks Complete
+
+| Task | Status | Attempts | Package |
+|---|---|---|---|
+| T-001 | PASS | 2 (scope amended, user-approved, to cover a 3-file ripple effect) | `[SHARED]` |
+| T-002 | PASS | 1 | `[BE]` |
+| T-003 | PASS | 1 (Reviewer used mutation testing to confirm the JD-01 regression is caught) | `[BE]` |
+| T-004 | PASS | 1 (verified with a real, live Bedrock call) | `[BE]` |
+| T-005 | PASS | 1 | `[FE]` |
+
+**Total rework attempts across the spec:** 1 (T-001 attempt 1 → FAIL → attempt 2 PASS). No HALTs, no Pivots, no FATAL_FAILs.
+
+**Scope note:** T-001's scope was amended mid-execution (Leader-flagged, user-approved via `AskUserQuestion`) to include 3 files outside its original single-file declaration, once it became clear that `detectedCountry` being a required field on a widely-consumed shared type broke 3 pre-existing files. This is documented in T-001's entry above and does not represent uncontrolled scope creep — it was surfaced, a choice was offered, and the user decided before any code was written to fix it.
+
+**Cumulative requirement coverage:** every FR/NFR/BR in `requirements.md` was covered by at least one PASSed task, matching the scenario-level mapping in `tasks.md` §4.
+
+**Constitution Impact:** none — no new module/package was created, no module boundary moved, no public surface changed beyond the additive `AssessmentDetail.detectedCountry` field and the additive `Assessment.detectedCountry` column, both already covered by this spec's own documentation. No child `CLAUDE.md`/`AGENTS.md` update needed.
+
+**Outstanding non-blocking items (advisory-level, recorded for `/akili-archive` or future specs, not for this spec's own completion):**
+- A minor operational correction: root `CLAUDE.md`'s documented `npx --prefix packages/api tsx prisma/seed.ts` form doesn't `cd` into the package (discovered during T-004; worth a doc fix at archive time).
+- `tasks.md`'s "1 review round expected, 2 for the frontend task" budget (design.md §13) held — every task PASSed on attempt 1 except T-001's scope-amendment cycle, and T-005 (the frontend task) PASSed in exactly 1 round despite being sized for 2.
+- The manual production prompt update (`docs/specs/changes/country-document-match-validation/prod-prompt-update.md`) is still pending the user's own action in the deployed environment — this is by design (DD-CMV-005), not an incomplete task.
+

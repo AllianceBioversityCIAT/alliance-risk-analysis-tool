@@ -55,13 +55,21 @@ import { useJobPolling } from '@/hooks/use-job-polling';
 import { useAssessment, useUpdateAssessment } from '@/hooks/use-assessments';
 import { useMergedContent } from '@/hooks/use-merged-content';
 import { useMultiDocumentStatus } from '@/hooks/use-multi-document-status';
-import { AssessmentStatus, GapFieldStatus, JobStatus } from '@alliance-risk/shared';
+import { AssessmentStatus, GapFieldStatus, JobStatus, isSupportedCountry } from '@alliance-risk/shared';
 import type { GapFieldResponse, InvalidField } from '@alliance-risk/shared';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
 import { AxiosError } from 'axios';
 import { CountryBadge } from '@/components/shared/country-badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // Group gap fields by category preserving insertion order
 function groupByCategory(fields: GapFieldResponse[]) {
@@ -121,6 +129,15 @@ export default function GapDetectorClient() {
   }, [id, router]);
 
   const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '');
+
+  // Derived immediately after `assessment` becomes available — declaring this
+  // near `allMandatoryComplete` instead would hit a temporal-dead-zone crash
+  // on first render for any callback declared above that point but below this
+  // derivation (design.md §7 / JD-17).
+  const countryMismatch = !!assessment?.detectedCountry
+    && isSupportedCountry(assessment.detectedCountry)
+    && assessment.detectedCountry !== assessment.country;
+
   const { data: gapData, isLoading: gapLoading } = useGapFields(id ?? '');
   const { mutateAsync: updateFields } = useUpdateGapFields(id ?? '');
   const { data: mergedContentData } = useMergedContent(id);
@@ -149,11 +166,12 @@ export default function GapDetectorClient() {
   // When re-analysis job completes, show toast
   useEffect(() => {
     if (jobStatus === JobStatus.COMPLETED) {
+      queryClient.invalidateQueries({ queryKey: ['assessment', id] });
       sileo.success({ title: 'Re-analysis complete', description: 'Gap fields updated with new insights.' });
     } else if (jobStatus === JobStatus.FAILED) {
       sileo.error({ title: 'Re-analysis failed', description: 'Please try again.' });
     }
-  }, [jobStatus]);
+  }, [jobStatus, queryClient, id]);
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string, currentStatus?: GapFieldStatus) => {
@@ -192,8 +210,10 @@ export default function GapDetectorClient() {
   const [isValidating, setIsValidating] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'attention' | 'verified'>('all');
   const [showValidationBanner, setShowValidationBanner] = useState(false);
+  const [showCountryMismatchDialog, setShowCountryMismatchDialog] = useState(false);
+  const [showCountryMismatchHint, setShowCountryMismatchHint] = useState(false);
 
-  const handleAnalyzeRisks = useCallback(async () => {
+  const proceedToRiskAnalysis = useCallback(async () => {
     if (!id) return;
     setIsValidating(true);
     try {
@@ -231,6 +251,16 @@ export default function GapDetectorClient() {
       setIsValidating(false);
     }
   }, [id, router, queryClient]);
+
+  // Thin wrapper: on a real country mismatch, ask for confirmation first;
+  // otherwise proceed exactly as before (FR-CMV-002).
+  const handleAnalyzeRisksClick = useCallback(() => {
+    if (countryMismatch) {
+      setShowCountryMismatchDialog(true);
+    } else {
+      proceedToRiskAnalysis();
+    }
+  }, [countryMismatch, proceedToRiskAnalysis]);
 
   // ─── PDF highlight on field click ───────────────────────────────────────────
   const [highlightKeyword, setHighlightKeyword] = useState<string | null>(null);
@@ -296,6 +326,14 @@ export default function GapDetectorClient() {
       setActiveFilter('all');
     }
   }, [hasPendingIssues, showValidationBanner]);
+
+  // Auto-clear the country-mismatch hint once the mismatch itself resolves
+  // (e.g. after a document replacement + re-analysis clears detectedCountry) — JD-07.
+  useEffect(() => {
+    if (!countryMismatch && showCountryMismatchHint) {
+      setShowCountryMismatchHint(false);
+    }
+  }, [countryMismatch, showCountryMismatchHint]);
 
   // Apply filter to fields before grouping (memoized to avoid re-renders)
   const filteredFields = useMemo(
@@ -641,6 +679,39 @@ export default function GapDetectorClient() {
             }
             fieldsPanel={
               <div className="flex flex-col h-full bg-[#F8FAFC]">
+                {/* Country-mismatch hint banner — rendered above the validation
+                    banner when both are visible (design.md §7 stacking precedence) */}
+                {showCountryMismatchHint && (
+                  <div
+                    data-testid="country-mismatch-hint"
+                    className="mx-5 mt-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 shadow-sm"
+                  >
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-900">
+                        Country mismatch
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Heads-up: the country detected in your business plan (
+                        <strong>{assessment?.detectedCountry}</strong>) doesn&apos;t match
+                        the selected country (<strong>{assessment?.country}</strong>). If
+                        this looks wrong, replace the document from{' '}
+                        <strong>Manage Documents</strong> or start a new assessment with
+                        the correct country. You&apos;re not locked out of anything —
+                        click Analyze Risks any time and choose Continue to move forward.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCountryMismatchHint(false)}
+                      className="shrink-0 p-1 rounded hover:bg-amber-100 transition-colors"
+                      aria-label="Dismiss"
+                    >
+                      <X className="h-4 w-4 text-amber-500" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Validation alert banner */}
                 {showValidationBanner && needsAttentionCount > 0 && (
                   <div className="mx-5 mt-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 shadow-sm">
@@ -718,7 +789,7 @@ export default function GapDetectorClient() {
                               <Button
                                 className="shadow-sm"
                                 disabled={!allMandatoryComplete || isReAnalyzing || isValidating}
-                                onClick={handleAnalyzeRisks}
+                                onClick={handleAnalyzeRisksClick}
                               >
                                 {isReAnalyzing ? (
                                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -819,6 +890,54 @@ export default function GapDetectorClient() {
           />
         )}
       </div>
+
+      {/* ─── Country mismatch confirmation dialog (FR-CMV-002) ─────────────────── */}
+      {assessment && (
+        <Dialog open={showCountryMismatchDialog} onOpenChange={setShowCountryMismatchDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Double-check the country before continuing</DialogTitle>
+              <DialogDescription>
+                You selected <CountryBadge country={assessment.country} className="mx-1 align-middle" /> when
+                this assessment was created, but the uploaded business plan appears to
+                describe operations in{' '}
+                {assessment.detectedCountry && (
+                  <CountryBadge country={assessment.detectedCountry} className="mx-1 align-middle" />
+                )}
+                . Country context shapes the regulatory, market, and climate risk factors
+                used in the analysis, so a mismatch here can affect how accurate the
+                results are.
+              </DialogDescription>
+            </DialogHeader>
+            <p className="text-sm text-muted-foreground">
+              This is just a heads-up — it won&apos;t block your analysis. Continue if the
+              selected country is correct and the document simply references other
+              locations (branches, suppliers, export markets, etc.). You&apos;re not
+              locked out of anything — click Analyze Risks any time and choose Continue
+              to move forward. This is a reminder, not a hold.
+            </p>
+            <DialogFooter>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowCountryMismatchDialog(false);
+                  setShowCountryMismatchHint(true);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowCountryMismatchDialog(false);
+                  proceedToRiskAnalysis();
+                }}
+              >
+                Continue anyway
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

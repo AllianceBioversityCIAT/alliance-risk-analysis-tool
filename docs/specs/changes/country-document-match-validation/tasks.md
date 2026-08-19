@@ -127,7 +127,7 @@ T-001, T-003 → T-005 [FE]
 
 ### T-005: Gap detector UI — mismatch dialog, hint banner, and cache invalidation `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` (PASS, attempt 1 — see execution.md; all 3 Judgment Day defect classes confirmed not reintroduced)
 - **Skills:** `shadcn-ui`, `tailwind-design-system`, `vercel-react-best-practices`
 - **Size:** L (component logic + new test file with a large mock surface)
 - **Dependencies:** T-001, T-003
