@@ -148,3 +148,4 @@ Cross-link TRD ADRs when extending platform-wide decisions.
 - [ ] UX references design tokens, not raw hex values
 - [ ] Migration path documented if schema changes
 - [ ] Every claim about a file's current imports/exports/consumers is verified by reading that file directly, not assumed (KZ-003)
+- [ ] Cross-screen cache invalidation and cross-field interaction are named as defect classes mocked unit tests structurally cannot catch, with an explicit manual-QA step assigned to cover them (KZ-008)
