@@ -974,10 +974,10 @@ export default function GapDetectorClient() {
             <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 p-3">
               <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
               <p className="text-sm text-muted-foreground">
-                This is just a heads-up — it won&apos;t block your analysis. Continue if the
+                This is just a heads-up, it won&apos;t block your analysis. Continue if the
                 selected country is correct and the document simply references other
                 locations (branches, suppliers, export markets, etc.). You&apos;re not
-                locked out of anything — click Analyze Risks any time and choose Continue
+                locked out of anything, click Analyze Risks any time and choose Continue
                 to move forward. This is a reminder, not a hold.
               </p>
             </div>
