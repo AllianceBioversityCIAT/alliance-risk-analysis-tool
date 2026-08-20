@@ -19,6 +19,7 @@ export interface AssessmentSummary {
 export interface AssessmentDetail extends AssessmentSummary {
   companyType: string | null;
   country: string;
+  detectedCountry: string | null;
   createdAt: string;
 }
 

@@ -19,7 +19,9 @@ These documents form the project constitution — consult before specs and imple
 | [`docs/specs/general-setup/`](docs/specs/general-setup/) | Module spec templates (requirements, design, tasks) |
 | [`AGENTS.md`](AGENTS.md) | Agent personas, model routing, skill map |
 
-Multi-agent personas for `/akili-execute` and `/akili-test`: [`.agents/`](.agents/)
+Multi-agent personas for `/akili-execute` and `/akili-test`: [`.agents/`](.agents/) — bound to models via the native Claude Code wrappers in [`.claude/agents/`](.claude/agents/) (`akili-leader`, `akili-implementer`, `akili-reviewer`, `akili-tester`), each pointing back at its persona file so `.agents/` stays the single source of truth.
+
+A guardrail hook (`.claude/hooks/akili-tasks-gate.sh`) blocks marking a task `[x]` in any `tasks.md` unless that spec's `execution.md` already records a Reviewer `PASS` — evidence before checkbox. Enforced by the harness on Claude Code only; on other hosts the rule stays instructional (`.agents/leader.md`).
 
 ## Module Guides
 
@@ -142,9 +144,11 @@ DATABASE_URL=postgresql://<your-user>@localhost:5432/alliance_risk
 ```bash
 pnpm --filter @alliance-risk/shared build
 pnpm --filter @alliance-risk/api exec prisma migrate deploy
-npx --prefix packages/api tsx prisma/seed.ts
+cd packages/api && npx tsx prisma/seed.ts && cd ../..
 pnpm dev    # API :3001 + Web :3000
 ```
+
+**Note:** `npx --prefix packages/api tsx prisma/seed.ts` (without the `cd`) fails with `ERR_MODULE_NOT_FOUND` — `--prefix` only selects which package's `tsx` binary to run, it does not change the working directory that the `prisma/seed.ts` path argument resolves against. Verified 2026-08-19 during `docs/specs/archive/2026-08-19-changes--country-document-match-validation/` (T-004).
 
 ## Rules
 
@@ -194,18 +198,20 @@ pnpm dev    # API :3001 + Web :3000
 
 ### Model Registry
 
-**Updated:** 2026-07
+**Updated:** 2026-08
 
-| Tier | Claude Code | OpenCode | Fallback |
-|------|-------------|----------|----------|
-| T1 Architect | `opus` | `<CONFIRM SLUG>` | `opus` |
-| T2 Coder | `sonnet` | `<CONFIRM SLUG>` | `sonnet` |
-| T3 Auditor | `opus` | `<CONFIRM SLUG>` | `opus` |
-| T4 Context-Ingest | `haiku` | `<CONFIRM SLUG>` | `haiku` |
-| T5 Fast-Cheap | `haiku` | `<CONFIRM SLUG>` | `haiku` |
-| T6 Multimodal | `sonnet` | `<CONFIRM SLUG>` | `sonnet` |
+| Tier | Claude Code | OpenCode | Antigravity | Fallback |
+|------|-------------|----------|-------------|----------|
+| T1 Architect | `opus` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `opus` |
+| T2 Coder | `sonnet` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `sonnet` |
+| T3 Auditor | `opus` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `opus` |
+| T4 Context-Ingest | `haiku` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `haiku` |
+| T5 Fast-Cheap | `haiku` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `haiku` |
+| T6 Multimodal | `sonnet` | `<CONFIRM SLUG>` | `<CONFIRM SLUG>` | `sonnet` |
 
-To change models, edit only this registry table. Never pin a dated model name where a floating alias exists. Model selection is guidance in command prompts — enforced bindings live only in agent wrappers (not enabled in this project).
+**Cross-host dispatch:** T6 Multimodal → Antigravity (Gemini vision) is the one tier where another host may outperform this session's own column — reach across hosts before degrading within one, but only for a genuine capability gap (a cross-host spawn costs a fresh context, which a one-tier difference does not repay). This project has enabled Claude Code's native agent wrappers (`.claude/agents/akili-*.md`, bound to this registry's Claude Code column).
+
+To change models, edit only this registry table. Never pin a dated model name where a floating alias exists. Model selection is guidance in command prompts — enforced bindings live in the Claude Code agent wrappers (`.claude/agents/akili-{leader,implementer,reviewer,tester}.md`).
 
 ### Effort Dial
 

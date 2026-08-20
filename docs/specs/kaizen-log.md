@@ -16,8 +16,44 @@ keep it at 10 rows or fewer.
 | KZ-005 | The documented `pnpm --filter <pkg> test -- --testPathPattern=<pattern>` command (double `--`) is broken in this repo's pnpm — false green on `web`, hard failure on `api`. Use single `--testPathPattern=` | enhancements/tracking-analytics | Medium | Product | Root `CLAUDE.md`, `packages/api/CLAUDE.md`, `packages/web/CLAUDE.md` (test command examples) | Applied |
 | KZ-006 | Judgment Day round-2 re-judgment findings routed to `tasks.md` only (not `design.md`) let the design-of-record silently drift from shipped code — backport design-decision fixes to `design.md` too | enhancements/tracking-analytics | Medium | Methodology | — (no local edit — upstream candidate for `judgment-day` skill) | Deferred |
 | KZ-007 | A verification command added specifically to fix a "vacuous check" finding (e.g. Judgment Day C1) must itself be checked for the same vacuity class before being recorded as closing the finding | enhancements/tracking-analytics | Medium | Methodology | — (no local edit — upstream candidate for `judgment-day`/`akili-validate`) | Deferred |
+| KZ-008 | 4 real post-validation bugs (cache invalidation, scope-too-narrow design, cross-field propagation) were all invisible to mocked unit tests and only found by manual browser testing after the spec was already "archive-ready" — design.md must name cross-screen cache invalidation and cross-field interaction as defect classes requiring an explicit manual-QA step | changes/country-document-match-validation | High | Product | `docs/specs/general-setup/design.md` §7 | Applied |
+| KZ-009 | AKILI-SPECS has no named workflow for "a real bug is found after archive-readiness but before archiving" — the ad-hoc pattern that worked here (amend requirements/design → re-run Implementer/Reviewer → addend test-report/validation-report → then archive) is worth formalizing | changes/country-document-match-validation | Medium | Methodology | — (no local edit — upstream candidate for a named `/akili-validate` post-audit amendment flow) | Deferred |
+| KZ-010 | Root `CLAUDE.md`'s documented `npx --prefix packages/api tsx prisma/seed.ts` fails with `ERR_MODULE_NOT_FOUND` — `--prefix` only selects the binary's package, not the cwd the path argument resolves against | changes/country-document-match-validation | Low | Product | Root `CLAUDE.md` (Local Development Setup) | Applied |
 
 ## Entries
+
+### 2026-08-19 — changes/country-document-match-validation
+
+**Metrics**
+
+| Signal | Value | Source |
+|---|---|---|
+| Tasks executed | 5 original + 4 post-validation design amendments (DD-CMV-007–010) | tasks.md, execution.md |
+| Reviewer FAIL rework attempts | 2 (T-001 attempt 1; DD-CMV-009 attempt 1) — both PASSed on attempt 2 | execution.md |
+| HALTs / FATAL_FAILs | 0 | execution.md |
+| Pivots | 0 formal `## Pivot Record` blocks — but 4 post-archive-ready design amendments (DD-CMV-007–010) functioned as pivots in substance | execution.md |
+| PRODUCT_BUGs | 0 | test-report.md |
+| Judgment-day severe findings | 3 rounds during `/akili-specify` — JD-01/JD-02 confirmed severe by both judges (round 1), 3 fix-caused defects found and closed (round 2), 1 SEVERE query-invalidation gap found and closed out-of-band (round 3, user-authorized) | judgment.md |
+| Validation FAIL / WARN | 0 FAIL / 4 WARN (all closed with real evidence, incl. a live end-to-end DB verification) | validation-report.md |
+| Post-validation manual-testing findings | 4 (DD-CMV-007, 008, 009, 010) — all found by the user directly using the shipped feature, none caught by any automated layer | execution.md, validation-report.md §14 |
+
+**Lessons**
+
+- **KZ-008 — 4 real bugs were invisible to the entire automated test suite and only found by manual testing after "archive-ready."** (Product, High)
+  - Root cause: DD-CMV-007 (a scope-too-narrow design decision — restricting country detection to a 4-country allowlist defeated the feature's own purpose), DD-CMV-008 (a cache-invalidation signal missing for one specific async-completion path — the initial, non-re-analyze gap-detection run), and DD-CMV-010 (a cross-field interaction — a Core-10 field correction not propagating to a separate derived value) share a common shape: none are things a mocked unit test can structurally observe, because each requires either a product-judgment call about scope (DD-CMV-007) or a real, unmocked React-Query-cache-across-navigation / cross-signal-propagation behavior (DD-CMV-008, DD-CMV-010) that a Jest mock of `useAssessment`/`useGapFields`/Prisma cannot represent. This project's only integration/e2e suite (`packages/api/test/auth-throttler.e2e-spec.ts`) is itself broken and unrelated (already an accepted gap in `test-report.md` §5), so there is currently no automated layer above unit tests that could have caught any of this.
+  - Evidence: `execution.md`'s "T-003 (re-opened)"/"T-005 (re-opened)" entries for DD-CMV-007/008/010; `validation-report.md` §14; `test-report.md` §5.
+  - Standardization: added a line to `docs/specs/general-setup/design.md` §7 Design Review Checklist naming cross-screen cache invalidation and cross-field interaction as defect classes requiring an explicit manual-QA step, not just mocked unit tests. **Status: Applied 2026-08-19 (user-approved, "Apply all").**
+
+- **KZ-009 — No named AKILI-SPECS workflow exists for "a real bug found after archive-readiness but before archiving."** (Methodology, Medium)
+  - Root cause: `/akili-validate` defines archive-readiness and `/akili-archive` defines the archive move, but neither names what to do when a user's own manual testing (which `/akili-validate`'s own WARN-1 recommendation directly motivated here) finds a genuine gap in the window between the two. The pattern that worked in practice — amend `requirements.md`/`design.md` first (with full rationale, dated, DD-numbered), re-run the same Implementer → Reviewer gate used throughout execution, then addend `test-report.md`/`validation-report.md` rather than rewriting them — is not documented anywhere as a recognized flow; it was improvised consistently across 4 separate incidents in this one spec.
+  - Evidence: `execution.md`'s 4 "(re-opened)" task entries; `validation-report.md` §13–14 addenda; `test-report.md` §10–11 addenda.
+  - Standardization proposal: no local edit — recommend upstreaming to the AKILI methodology repository: a named "post-validation amendment" mode for `/akili-validate` or `/akili-archive`, formalizing the amend → re-review → addend pattern this spec used 4 times successfully.
+  - Status: **Deferred (upstream candidate)** — recorded for methodology maintainers; the pattern is fully documented in this spec's own `execution.md` as a worked example.
+
+- **KZ-010 — Root `CLAUDE.md`'s documented seed-script command is broken.** (Product, Low)
+  - Root cause: `npx --prefix packages/api tsx prisma/seed.ts` fails with `ERR_MODULE_NOT_FOUND` — `--prefix` only selects which package's `tsx` binary npx resolves, it does not change the working directory the `prisma/seed.ts` path argument is resolved against (still the repo root, where no such path exists). Verified by direct reproduction (not assumed) during this spec's archive cycle.
+  - Evidence: reproduced via direct command execution in this archive cycle; originally surfaced during T-004 (`execution.md`'s T-004 entry).
+  - Standardization: corrected to `cd packages/api && npx tsx prisma/seed.ts` in root `CLAUDE.md`'s Local Development Setup section, with a note explaining why the `--prefix` form fails. **Status: Applied 2026-08-19.**
 
 ### 2026-08-06 — enhancements/tracking-analytics
 

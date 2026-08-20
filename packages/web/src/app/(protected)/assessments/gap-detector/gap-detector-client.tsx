@@ -20,6 +20,8 @@ import {
   ChevronDown,
   Upload,
   Brain,
+  ArrowRight,
+  Info,
 } from 'lucide-react';
 import { sileo } from 'sileo';
 import { Button } from '@/components/ui/button';
@@ -62,6 +64,14 @@ import { cn } from '@/lib/utils';
 import apiClient from '@/lib/api-client';
 import { AxiosError } from 'axios';
 import { CountryBadge } from '@/components/shared/country-badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 // Group gap fields by category preserving insertion order
 function groupByCategory(fields: GapFieldResponse[]) {
@@ -88,6 +98,28 @@ function FileIcon({ mimeType, className }: { mimeType: string; className?: strin
     return <FileText className={className} />;
   }
   return <File className={className} />;
+}
+
+// ─── Analyze Risks — submit error shape helpers (kept out of the component so
+// each is independently simple, reducing proceedToRiskAnalysis's own cognitive
+// complexity per SonarQube) ────────────────────────────────────────────────
+
+// Narrows a caught error to the specific 400 + invalidFields shape the
+// gap-fields/submit endpoint returns on AI validation rejection.
+function isInvalidFieldsError(
+  err: unknown,
+): err is AxiosError<{ invalidFields: InvalidField[] }> {
+  return (
+    err instanceof AxiosError &&
+    err.response?.status === 400 &&
+    Array.isArray(err.response?.data?.invalidFields)
+  );
+}
+
+function invalidFieldsToastTitle(count: number): string {
+  const fieldWord = count === 1 ? 'field' : 'fields';
+  const verbSuffix = count === 1 ? 's' : '';
+  return `${count} ${fieldWord} need${verbSuffix} more detail`;
 }
 
 // ─── Gap Analysis Steps ─────────────────────────────────────────────────────
@@ -121,6 +153,20 @@ export default function GapDetectorClient() {
   }, [id, router]);
 
   const { data: assessment, isLoading: assessmentLoading } = useAssessment(id ?? '');
+
+  // Derived immediately after `assessment` becomes available — declaring this
+  // near `allMandatoryComplete` instead would hit a temporal-dead-zone crash
+  // on first render for any callback declared above that point but below this
+  // derivation (design.md §7 / JD-17).
+  //
+  // Revised 2026-08-19 (DD-CMV-007): the `isSupportedCountry(...)` membership
+  // check is removed — the backend's own confidence gate (design.md §6.2) is
+  // the only filter now. By the time `Assessment.detectedCountry` is non-null,
+  // it is already guaranteed to be a real, confidently-detected, non-"unclear"
+  // value, even if it isn't one of the 4 supported countries.
+  const countryMismatch = !!assessment?.detectedCountry
+    && assessment.detectedCountry !== assessment.country;
+
   const { data: gapData, isLoading: gapLoading } = useGapFields(id ?? '');
   const { mutateAsync: updateFields } = useUpdateGapFields(id ?? '');
   const { data: mergedContentData } = useMergedContent(id);
@@ -149,11 +195,30 @@ export default function GapDetectorClient() {
   // When re-analysis job completes, show toast
   useEffect(() => {
     if (jobStatus === JobStatus.COMPLETED) {
+      queryClient.invalidateQueries({ queryKey: ['assessment', id] });
       sileo.success({ title: 'Re-analysis complete', description: 'Gap fields updated with new insights.' });
     } else if (jobStatus === JobStatus.FAILED) {
       sileo.error({ title: 'Re-analysis failed', description: 'Please try again.' });
     }
-  }, [jobStatus]);
+  }, [jobStatus, queryClient, id]);
+
+  // Second, independent cache-invalidation signal (DD-CMV-008): the effect
+  // above only fires for the re-analyze flow, driven by useJobPolling's
+  // jobStatus. The very first, automatic GAP_DETECTION job (server-chained
+  // right after document parsing) never starts that polling — the frontend
+  // only learns it finished via useGapFields()'s own poll-until-populated
+  // behavior (gapData.total transitioning from 0 to positive). Watching that
+  // transition here is the correct, path-agnostic signal that gap-detection
+  // work just finished, so a freshly-persisted Assessment.detectedCountry
+  // (FR-CMV-006 Scenario 2) is picked up without a manual page reload.
+  const prevGapTotalRef = useRef(0);
+  useEffect(() => {
+    const total = gapData?.total ?? 0;
+    if (prevGapTotalRef.current === 0 && total > 0) {
+      queryClient.invalidateQueries({ queryKey: ['assessment', id] });
+    }
+    prevGapTotalRef.current = total;
+  }, [gapData?.total, queryClient, id]);
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string, currentStatus?: GapFieldStatus) => {
@@ -192,35 +257,43 @@ export default function GapDetectorClient() {
   const [isValidating, setIsValidating] = useState(false);
   const [activeFilter, setActiveFilter] = useState<'all' | 'attention' | 'verified'>('all');
   const [showValidationBanner, setShowValidationBanner] = useState(false);
+  const [showCountryMismatchDialog, setShowCountryMismatchDialog] = useState(false);
+  const [showCountryMismatchHint, setShowCountryMismatchHint] = useState(false);
 
-  const handleAnalyzeRisks = useCallback(async () => {
+  // Handles the one error shape that needs UI follow-up (banner, filter,
+  // refetch) — split out so proceedToRiskAnalysis's own branching stays flat.
+  const handleInvalidFieldsError = useCallback(
+    (err: AxiosError<{ invalidFields: InvalidField[] }>) => {
+      const invalidFields = err.response?.data.invalidFields ?? [];
+      if (invalidFields.length > 0) {
+        sileo.warning({
+          title: invalidFieldsToastTitle(invalidFields.length),
+          description: 'Please review the highlighted fields and provide meaningful information.',
+        });
+        setShowValidationBanner(true);
+        setActiveFilter('attention');
+      } else {
+        // Validation service unavailable — invalidFields is empty
+        sileo.error({
+          title: 'Validation temporarily unavailable',
+          description: 'Please try again in a moment.',
+        });
+      }
+      // Refetch gap fields to get updated statuses and feedback from server
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
+    },
+    [id, queryClient],
+  );
+
+  const proceedToRiskAnalysis = useCallback(async () => {
     if (!id) return;
     setIsValidating(true);
     try {
       await apiClient.post(`/api/assessments/${id}/gap-fields/submit`);
       router.push(`/assessments/risk-scorecard?id=${id}`);
     } catch (err) {
-      // Handle validation failure — fields rejected by AI
-      const errData = err instanceof AxiosError ? err.response?.data : undefined;
-      if (err instanceof AxiosError && err.response?.status === 400 && errData && typeof errData === 'object' && Array.isArray(errData.invalidFields)) {
-        const invalidFields = errData.invalidFields as InvalidField[];
-        if (invalidFields.length > 0) {
-          const count = invalidFields.length;
-          sileo.warning({
-            title: `${count} field${count !== 1 ? 's' : ''} need${count === 1 ? 's' : ''} more detail`,
-            description: 'Please review the highlighted fields and provide meaningful information.',
-          });
-          setShowValidationBanner(true);
-          setActiveFilter('attention');
-        } else {
-          // Validation service unavailable — invalidFields is empty
-          sileo.error({
-            title: 'Validation temporarily unavailable',
-            description: 'Please try again in a moment.',
-          });
-        }
-        // Refetch gap fields to get updated statuses and feedback from server
-        queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
+      if (isInvalidFieldsError(err)) {
+        handleInvalidFieldsError(err);
       } else {
         sileo.error({
           title: 'Failed to start risk analysis',
@@ -230,7 +303,17 @@ export default function GapDetectorClient() {
     } finally {
       setIsValidating(false);
     }
-  }, [id, router, queryClient]);
+  }, [id, router, handleInvalidFieldsError]);
+
+  // Thin wrapper: on a real country mismatch, ask for confirmation first;
+  // otherwise proceed exactly as before (FR-CMV-002).
+  const handleAnalyzeRisksClick = useCallback(() => {
+    if (countryMismatch) {
+      setShowCountryMismatchDialog(true);
+    } else {
+      proceedToRiskAnalysis();
+    }
+  }, [countryMismatch, proceedToRiskAnalysis]);
 
   // ─── PDF highlight on field click ───────────────────────────────────────────
   const [highlightKeyword, setHighlightKeyword] = useState<string | null>(null);
@@ -296,6 +379,14 @@ export default function GapDetectorClient() {
       setActiveFilter('all');
     }
   }, [hasPendingIssues, showValidationBanner]);
+
+  // Auto-clear the country-mismatch hint once the mismatch itself resolves
+  // (e.g. after a document replacement + re-analysis clears detectedCountry) — JD-07.
+  useEffect(() => {
+    if (!countryMismatch && showCountryMismatchHint) {
+      setShowCountryMismatchHint(false);
+    }
+  }, [countryMismatch, showCountryMismatchHint]);
 
   // Apply filter to fields before grouping (memoized to avoid re-renders)
   const filteredFields = useMemo(
@@ -641,6 +732,37 @@ export default function GapDetectorClient() {
             }
             fieldsPanel={
               <div className="flex flex-col h-full bg-[#F8FAFC]">
+                {/* Country-mismatch hint banner — rendered above the validation
+                    banner when both are visible (design.md §7 stacking precedence) */}
+                {showCountryMismatchHint && (
+                  <div
+                    data-testid="country-mismatch-hint"
+                    className="mx-5 mt-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 shadow-sm"
+                  >
+                    <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-amber-900">
+                        Country mismatch
+                      </p>
+                      <p className="text-xs text-amber-700 mt-0.5">
+                        Heads-up: the country detected in your business plan (<strong>{assessment?.detectedCountry}</strong>) doesn&apos;t
+                        match the selected country (<strong>{assessment?.country}</strong>). If this looks wrong,
+                        replace the document from <strong>Manage Documents</strong> or start a new
+                        assessment with the correct country. You&apos;re not locked out of anything —
+                        click Analyze Risks any time and choose Continue to move forward.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowCountryMismatchHint(false)}
+                      className="shrink-0 p-1 rounded hover:bg-amber-100 transition-colors"
+                      aria-label="Dismiss"
+                    >
+                      <X className="h-4 w-4 text-amber-500" />
+                    </button>
+                  </div>
+                )}
+
                 {/* Validation alert banner */}
                 {showValidationBanner && needsAttentionCount > 0 && (
                   <div className="mx-5 mt-5 flex items-start gap-3 px-4 py-3 rounded-xl bg-amber-50 border border-amber-200 shadow-sm">
@@ -718,7 +840,7 @@ export default function GapDetectorClient() {
                               <Button
                                 className="shadow-sm"
                                 disabled={!allMandatoryComplete || isReAnalyzing || isValidating}
-                                onClick={handleAnalyzeRisks}
+                                onClick={handleAnalyzeRisksClick}
                               >
                                 {isReAnalyzing ? (
                                   <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
@@ -819,6 +941,68 @@ export default function GapDetectorClient() {
           />
         )}
       </div>
+
+      {/* ─── Country mismatch confirmation dialog (FR-CMV-002) ─────────────────── */}
+      {assessment && (
+        <Dialog open={showCountryMismatchDialog} onOpenChange={setShowCountryMismatchDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Double-check the country before continuing</DialogTitle>
+            </DialogHeader>
+            <div className="flex items-center gap-3 rounded-lg border border-border bg-muted/40 p-3">
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Selected
+                </p>
+                <CountryBadge country={assessment.country} />
+              </div>
+              <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium text-muted-foreground mb-1.5">
+                  Detected in document
+                </p>
+                {assessment.detectedCountry && (
+                  <CountryBadge country={assessment.detectedCountry} />
+                )}
+              </div>
+            </div>
+            <DialogDescription>
+              Country context shapes the regulatory, market, and climate risk factors
+              used in the analysis, so this mismatch can affect how accurate the
+              results are.
+            </DialogDescription>
+            <div className="flex items-start gap-2.5 rounded-lg border border-primary/20 bg-primary/5 p-3">
+              <Info className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+              <p className="text-sm text-muted-foreground">
+                This is just a heads-up, it won&apos;t block your analysis. Continue if the
+                selected country is correct and the document simply references other
+                locations (branches, suppliers, export markets, etc.). You&apos;re not
+                locked out of anything, click Analyze Risks any time and choose Continue
+                to move forward. This is a reminder, not a hold.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setShowCountryMismatchDialog(false);
+                  setShowCountryMismatchHint(true);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  setShowCountryMismatchDialog(false);
+                  proceedToRiskAnalysis();
+                }}
+              >
+                Continue anyway
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

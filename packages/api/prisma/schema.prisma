@@ -261,6 +261,7 @@ model Assessment {
   companyName      String           @map("company_name") @db.VarChar(200)
   companyType      String?          @map("company_type") @db.VarChar(100)
   country          String           @default("Kenya") @db.VarChar(100)
+  detectedCountry  String?          @map("detected_country") @db.VarChar(100)
   status           AssessmentStatus @default(DRAFT)
   intakeMode       IntakeMode       @map("intake_mode")
   progress         Int              @default(0)
