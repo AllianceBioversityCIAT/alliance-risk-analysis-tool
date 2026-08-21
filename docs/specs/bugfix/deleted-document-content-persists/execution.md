@@ -311,3 +311,39 @@ None. No `ADR-NNN` is overturned — this is a handler-level guard, not an archi
 ### Work already completed under T-003 and preserved
 
 The query-shape change, `sourceParseJobIds` persistence (verified through `jobs.service.ts` to the stored `Job.result`, both the populated and empty-array cases), the skeleton guard itself, and the untouched separator/header/ordering/truncation behaviour. `pnpm --filter @alliance-risk/api build` passes clean. All three FR-DDP-001 tests are green.
+
+### T-003 — Scope the merge to current documents `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** after an approved Pivot (rework attempts not consumed) |
+| **Date** | 2026-08-21 |
+| **Requirements covered** | FR-DDP-001 Sc 1–3, BR-DDP-001, NFR-DDP-012 |
+| **Design ref** | §7.1 |
+| **Effort** | `high` |
+| **Skills** | `nestjs-expert`, `tdd` (the latter for the amended test work) |
+
+**Pivot resolution applied.** `tasks.md` T-003's disqualifier and scope amended, `design.md` §7.1 extended to record the interaction, correction-closure sweep run in both directions. The guard stayed; the pre-existing test was retargeted.
+
+- **Files changed:** `gap-detection.handler.ts` (implementation), `gap-detection.handler.spec.ts` (one retarget + one new guard test).
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=gap-detection.handler` → **29 passed, 29 total** (25 pre-existing incl. the retarget + 3 T-002 FR-DDP-001 + 1 new guard).
+- **Not Done / Assumptions:** none. One judgment call flagged and not silently taken: the requirement tag chosen for the new tests, since no FR/NFR is written specifically for the skeleton guard.
+
+**Reviewer verdict:** `STATUS: PASS`, with the retarget audited as the highest-value item:
+
+- **The retarget preserves the original claim and is not vacuous.** Traced through the new fixture: with `isReAnalyze === false` the guard is open, so `createSkeletonFields` genuinely executes — the `createMany` precondition would read `0` if it did not. The surviving assertion (`assessment.update` called exactly once, with the exact payload) still discriminates: a helper that wrote to `Assessment` would make it 2. Crucially the retarget **kept the same call site** rather than drifting to the non-UPLOAD `createSkeletonFields` call, which an existing GUIDED_INTERVIEW test already covers — drifting there would have duplicated coverage and abandoned the original path.
+- **The guard test is a real gate.** Deleting `!isReAnalyze &&` from the handler makes `execute({ reAnalyze: true })` reach `createSkeletonFields` and fail the assertion. No other `createMany` call site is reachable on that path.
+- **The `[]`-vs-absent distinction reaches the persisted result.** `sourceParseJobIds` is declared non-optional, initialised to `[]`, and included unconditionally in `execute()`'s returned literal; `jobs.service.ts:152` assigns that return and `:166` writes it into `Job.result`. `[]` is a JSON value, so it serialises as `"sourceParseJobIds": []` rather than being dropped — **exactly the distinction T-005 reads.**
+- Test count reconciles: 29 = 25 pre-existing + 3 T-002 + 1 guard. Nothing weakened; the rejected `toHaveBeenCalledTimes(0)` shortcut was not taken.
+- **The Bedrock-failure path recording real ids is correct**, and both alternatives are wrong: the handler swallows the error and the job is marked `COMPLETED`, so this snapshot *will* be read by T-005. Omitting the key would make it indistinguishable from a pre-fix snapshot and withhold content that truthfully describes current documents; recording `[]` would make it permanently non-superseded even after every document it describes is deleted — the original bug.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Readability | Both tests are tagged `[T-003 guard / NFR-DDP-012]`, but NFR-DDP-012 is a scope constraint, not a behavioural requirement. Doubly misleading on the **retargeted** test, whose subject is the inherited country-match claim — a future maintainer removing the guard could read the tag as licence to delete it, **precisely the incidental coupling this Pivot was fought to break** | Recorded. The 11-line block comment above the test largely mitigates it. Worth correcting at `/akili-archive` |
+| Reliability | The `?? []` on `assessmentDocument.findMany` is production code shaped around a test mock — unreachable in production (`findMany` always resolves an array) and unable to mask a real failure, but its only function is to let ~20 pre-existing tests leave the call unstubbed. One `mockResolvedValue([])` in the outer `beforeEach` would achieve the same and let the production fallback go away | Recorded |
+| Reliability | Both new tests express "zero resolved jobs" via `job.findMany → []` while leaving the document lookup unstubbed, so neither states its actual premise (zero *current documents*) | Recorded |
+| Risk | Most pre-existing tests stub `job.findMany` with `mockResolvedValue`, ignoring the `where` clause, so they are structurally blind to the new `id: { in: … }` scoping. **T-002's three FR-DDP-001 tests are therefore the sole automated gate on the merge-scoping fix** — any future edit to those three fixtures removes all coverage of the reported bug | Recorded — worth a note in the PR description |
+
+---

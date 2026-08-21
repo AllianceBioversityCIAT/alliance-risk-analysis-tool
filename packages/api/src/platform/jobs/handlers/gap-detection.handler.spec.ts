@@ -280,11 +280,22 @@ describe('GapDetectionHandler', () => {
       expect(mockPrisma.gapField.createMany).not.toHaveBeenCalled();
     });
 
-    it('clears detectedCountry to null on zero completed parse jobs during a re-run, without createSkeletonFields() touching prisma.assessment', async () => {
+    // Retargeted 2026-08-21 (T-003 Pivot Record, execution.md) — this test used to
+    // call execute({ reAnalyze: true }) with zero jobs. Design.md §7.1's skeleton
+    // guard (`if (!isReAnalyze) { await this.createSkeletonFields(...) }`) now skips
+    // createSkeletonFields() entirely on that exact input, which would have made the
+    // `gapField.createMany` assertion below false for the wrong reason. That
+    // assertion was only ever this test's *precondition* — proof the helper ran, so
+    // the assertion after it (that createSkeletonFields() performs no Assessment
+    // write of its own, inherited from the archived country-match spec) is
+    // meaningful. Moving to a non-re-analyze run restores the precondition:
+    // `!isReAnalyze` is true, so createSkeletonFields() still executes, and the
+    // real claim under test is exercised exactly as before.
+    it('[T-003 guard / NFR-DDP-012] clears detectedCountry to null on zero completed parse jobs during a non-re-analyze run, without createSkeletonFields() touching prisma.assessment', async () => {
       mockUploadAssessment();
       mockPrisma.job.findMany.mockResolvedValue([]); // zero completed PARSE_DOCUMENT jobs
 
-      await handler.execute({ assessmentId: 'assessment-1', reAnalyze: true });
+      await handler.execute({ assessmentId: 'assessment-1' }); // non-re-analyze: !isReAnalyze holds, so createSkeletonFields() still runs
 
       // createSkeletonFields() ran (GapField-only helper) ...
       expect(mockPrisma.gapField.createMany).toHaveBeenCalledTimes(1);
@@ -295,6 +306,23 @@ describe('GapDetectionHandler', () => {
         where: { id: 'assessment-1' },
         data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: null },
       });
+    });
+
+    // NEW (T-003, design.md §7.1) — the skeleton guard itself. Without
+    // `!isReAnalyze`, a re-analyze that resolves zero parse jobs would call
+    // createSkeletonFields() on top of the ten GapField rows execute() leaves in
+    // place when isReAnalyze is true (it only deletes existing fields when
+    // !isReAnalyze), duplicating the Core-10 list to twenty. GapField carries only
+    // `@@index([assessmentId, category])` and no unique constraint on
+    // (assessmentId, field) (schema.prisma:309-329), so nothing at the database
+    // level would collapse that duplicate.
+    it('[T-003 guard / NFR-DDP-012] does not call gapField.createMany on a re-analyze run that resolves zero completed parse jobs', async () => {
+      mockUploadAssessment();
+      mockPrisma.job.findMany.mockResolvedValue([]); // zero completed PARSE_DOCUMENT jobs
+
+      await handler.execute({ assessmentId: 'assessment-1', reAnalyze: true });
+
+      expect(mockPrisma.gapField.createMany).not.toHaveBeenCalled();
     });
 
     it('invokes Bedrock exactly once per gap-detection run (NFR-CMV-010)', async () => {

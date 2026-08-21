@@ -165,6 +165,10 @@ Record the resolved job ids on the result as `sourceParseJobIds`. **When zero jo
 
 **Skeleton-field guard.** The zero-jobs branch calls `createSkeletonFields` unconditionally (`gap-detection.handler.ts:135` → `gapField.createMany` at `:509`), but `execute()` deletes existing fields only when `!isReAnalyze` (`:65`). A re-analyse resolving zero jobs therefore **adds** ten Core-10 rows on top of the existing ten. That path is unreachable today because nothing offers re-analysis in that state; §8.1's control makes it reachable. Guard the skeleton creation behind `!isReAnalyze`.
 
+*The duplication is real, not theoretical:* `GapField` carries only `@@index([assessmentId, category])` and **no unique constraint** on `(assessmentId, field)` (`schema.prisma:309-329`), so nothing at the database level would collapse a second `createMany` into the first.
+
+*The guard disturbs one pre-existing test, and that is expected.* `clears detectedCountry to null on zero completed parse jobs during a re-run…` calls `execute({ reAnalyze: true })` with zero jobs and asserts `gapField.createMany` ran. That assertion is the test's **precondition** — it establishes that the helper executed so the next assertion, that `createSkeletonFields` performs no `Assessment` write of its own, is meaningful. The guard removes the precondition in re-analyse mode only, leaving the test's real claim intact and still verifiable in a non-re-analyse run. `tasks.md` T-003 therefore **retargets** that test rather than dropping the guard or weakening the assertion — recorded as `## Pivot Record: T-003` in `execution.md`.
+
 ### §7.2 `AssessmentsService.deleteDocument` (FR-DDP-004)
 
 Wrap both row deletions in one `$transaction`: delete the `AssessmentDocument`, then delete the `Job` named by the captured `parseJobId`, if any.

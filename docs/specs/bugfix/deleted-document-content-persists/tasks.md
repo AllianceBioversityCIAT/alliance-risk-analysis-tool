@@ -103,7 +103,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-003: Scope the merge to current documents `[BE]`
 
-- **Status:** `[~]` — blocked on a spec conflict; see `## Pivot Record: T-003` in `execution.md`
+- **Status:** `[x]` — PASS after an approved Pivot; see `execution.md`
 - **Skills:** `nestjs-expert`
 - **Size:** S · **Dependencies:** T-002 · **Requirements:** FR-DDP-001 Sc 1–3, NFR-DDP-012 · **Design Ref:** §7.1
 - **Scope:** `packages/api/src/platform/jobs/handlers/gap-detection.handler.ts`
@@ -111,10 +111,14 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
   - Record the resolved ids on the result as `sourceParseJobIds`. **Record `[]` when none resolve — never omit the key.** T-005's rule depends on telling an empty record from an absent one
   - Guard `createSkeletonFields` behind `!isReAnalyze` — the zero-jobs branch currently creates ten Core-10 rows unconditionally while `execute()` deletes them only when not re-analysing, so a re-analyse with nothing to analyse would duplicate the list to twenty. Unreachable today; T-007's control makes it reachable
   - Leave separator format, `## Document: {fileName}` headers, ordering, and truncation untouched
-- **Tests:** T-002's handler cases turn green
+  - **Retarget one pre-existing test** (amended 2026-08-21, see `## Pivot Record: T-003` in `execution.md`). The skeleton guard changes behaviour that `clears detectedCountry to null on zero completed parse jobs during a re-run…` incidentally asserts: it calls `execute({ reAnalyze: true })` with zero jobs and expects `gapField.createMany` to have run. That expectation is its **precondition**, not its subject — the test's actual claim, inherited from the archived country-match spec, is that `createSkeletonFields` performs no `Assessment` write of its own. Move it to a **non-re-analyse** run, where the helper still executes and the claim is still testable. **Retarget, do not weaken** — the "no `Assessment` write" assertion must survive intact
+  - **Add one test for the guard:** with `reAnalyze: true` and zero resolved jobs, `gapField.createMany` is **not** called
+- **Tests:** T-002's handler cases turn green, plus the retarget and the new guard test above
 - **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=gap-detection.handler`
-- **Evidence is disqualified if:** the 25 pre-existing tests in this suite are not still passing — this task must not change behaviour for assessments with no deletions
-- **Done when:** FR-DDP-001 Sc 1–3 green, the pre-existing 25 still green, and no Prisma schema file is touched
+- **Evidence is disqualified if:** fewer than 24 of the 25 pre-existing tests pass unchanged, **or** the retargeted test no longer asserts that `createSkeletonFields` performs no `Assessment` write. Retargeting is permitted for exactly one test and only because its precondition — not its subject — was invalidated; weakening any assertion is not
+- **Done when:** FR-DDP-001 Sc 1–3 green, the guard test green, the retargeted test green **and still asserting its original claim**, the other 24 pre-existing green, and no Prisma schema file is touched
+
+> **Why the disqualifier was amended.** It originally read "the 25 pre-existing tests must still pass", which is unsatisfiable alongside the guard this same task mandates. `GapField` carries no unique constraint on `(assessmentId, field)` (`schema.prisma:309-329`), so the duplication the guard prevents is real — twenty Core-10 rows where ten belong. Dropping the guard to keep the test green would have shipped that, and T-007's re-analyse control makes it reachable. The design was right; the disqualifier was written assuming the guard could not disturb existing coverage.
 
 ---
 
