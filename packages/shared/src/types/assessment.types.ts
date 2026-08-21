@@ -29,3 +29,8 @@ export interface AssessmentStats {
   completed: number;
   total: number;
 }
+
+export interface MergedContentResponse {
+  mergedMarkdown: string | null;
+  superseded: boolean;
+}

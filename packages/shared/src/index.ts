@@ -24,6 +24,7 @@ export type {
   AssessmentSummary,
   AssessmentDetail,
   AssessmentStats,
+  MergedContentResponse,
 } from './types/assessment.types';
 export type { GapFieldResponse, InvalidField, GapFieldValidationError } from './types/gap-field.types';
 export type {
