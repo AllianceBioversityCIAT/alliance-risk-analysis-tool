@@ -79,7 +79,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-002: Regression suite — RED before any fix `[BE]`
 
-- **Status:** `[~]` — attempt 1 FAILed review; see `execution.md`
+- **Status:** `[x]` — PASS on attempt 3; see `execution.md`
 - **Skills:** `nestjs-expert`
 - **Size:** M · **Dependencies:** None · **Requirements:** FR-DDP-001 Sc 1–3, FR-DDP-002 Sc 1–2 & 4, FR-DDP-004 Sc 1–2, BR-DDP-003 · **Design Ref:** §7.1, §7.2, §7.3, §11
 - **Scope:** author the failing tests first, against current behaviour. Mock Prisma per the existing convention (`assessments.service.spec.ts:38`); **do not introduce a test database**. Tag test names with their scenario, matching the existing `[A2 / FR-CMV-006 Sc1] …` format.

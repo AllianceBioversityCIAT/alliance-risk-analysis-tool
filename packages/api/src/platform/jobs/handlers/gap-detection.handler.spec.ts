@@ -13,9 +13,72 @@ function createGapAIResponse() {
   };
 }
 
+// ─── FR-DDP-001 fixtures (T-002 red baseline) ────────────────────────────────
+//
+// A minimal in-memory fake for `prisma.job.findMany`, built to answer BOTH the
+// query shape `processUploadMode` issues today (filter by `input.assessmentId`
+// equals, ignoring which documents still exist) AND the shape design.md §7.1
+// specifies for the fix (filter by `id: { in: currentParseJobIds }`). This lets
+// the exact same fixture and assertions serve as T-003's green bar without
+// rewriting this spec file — only the production query shape changes.
+interface FakeParseJob {
+  id: string;
+  type: 'PARSE_DOCUMENT';
+  status: 'COMPLETED';
+  input: { assessmentId: string; fileName: string };
+  result: { markdownContent: string };
+  completedAt: Date;
+}
+
+function makeParseJob(
+  id: string,
+  fileName: string,
+  markdownContent: string,
+  completedAt: Date,
+  assessmentId = 'assessment-1',
+): FakeParseJob {
+  return {
+    id,
+    type: 'PARSE_DOCUMENT',
+    status: 'COMPLETED',
+    input: { assessmentId, fileName },
+    result: { markdownContent },
+    completedAt,
+  };
+}
+
+function wireJobFindManyToStore(mockJobFindMany: jest.Mock, jobs: FakeParseJob[]) {
+  mockJobFindMany.mockImplementation(
+    ({ where, orderBy }: { where?: Record<string, any>; orderBy?: Record<string, string> } = {}) => {
+      let filtered = jobs.slice();
+      if (where?.type) filtered = filtered.filter((j) => j.type === where.type);
+      if (where?.status) filtered = filtered.filter((j) => j.status === where.status);
+      if (where?.input?.equals !== undefined) {
+        filtered = filtered.filter((j) => j.input.assessmentId === where.input.equals);
+      }
+      if (where?.id?.in) {
+        const idSet = new Set(where.id.in as string[]);
+        filtered = filtered.filter((j) => idSet.has(j.id));
+      }
+      if (orderBy?.completedAt === 'asc') {
+        filtered = [...filtered].sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime());
+      }
+      return Promise.resolve(filtered);
+    },
+  );
+}
+
 describe('GapDetectionHandler', () => {
   const mockPrisma = {
     job: { findMany: jest.fn() },
+    // Not yet consulted by production code (that is exactly what T-002 proves
+    // red) — added here so the merge-scoping fix (T-003, design.md §7.1) can
+    // turn these same tests green without touching this spec file again.
+    // (This file's own $transaction mock below, exercised only by the
+    // pre-existing re-analyze tests further down, is unaffected by the
+    // array-vs-callback mock-form gap found in assessments.service.spec.ts —
+    // gap-detection.handler.ts only ever calls the array form, at :491.)
+    assessmentDocument: { findMany: jest.fn() },
     prompt: { findFirst: jest.fn() },
     gapField: {
       createMany: jest.fn(),
@@ -494,6 +557,109 @@ describe('GapDetectionHandler', () => {
           data: { status: 'ACTION_REQUIRED', progress: 50, detectedCountry: 'Zambia' },
         });
       });
+    });
+  });
+
+  // ─── T-002 RED BASELINE — FR-DDP-001 Sc 1-3 ────────────────────────────────
+  //
+  // Bug: processUploadMode() merges every COMPLETED PARSE_DOCUMENT job whose
+  // `input.assessmentId` matches, regardless of whether the document that
+  // produced it still exists (gap-detection.handler.ts:124-131). Deleting a
+  // document never removes its job, so deleted content re-enters every future
+  // merge. BR-DDP-001: "current documents" means the assessment's existing
+  // AssessmentDocument records — never the historical set of jobs ever created.
+  describe('processUploadMode — merge input scoped to current documents (FR-DDP-001)', () => {
+    beforeEach(() => {
+      mockPrisma.prompt.findFirst.mockResolvedValue({
+        systemPrompt: 'System prompt for {{country}}.',
+        userPromptTemplate: 'User prompt for {{country}}: {{extracted_data}}',
+      });
+      mockPrisma.gapField.createMany.mockResolvedValue({ count: 10 });
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify(createGapAIResponse()),
+        tokensUsed: 100,
+      });
+    });
+
+    it("[FR-DDP-001 Sc1] excludes deleted document A's completed parse job from the merge, keeping only current document B's content", async () => {
+      const t1 = new Date('2026-01-01T00:00:00Z');
+      const t2 = new Date('2026-01-02T00:00:00Z');
+      wireJobFindManyToStore(mockPrisma.job.findMany, [
+        makeParseJob('job-A', 'A.pdf', "A's confidential content", t1),
+        makeParseJob('job-B', 'B.pdf', "B's content", t2),
+      ]);
+      // A was deleted — only B is a current AssessmentDocument.
+      mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+        { id: 'doc-B', assessmentId: 'assessment-1', parseJobId: 'job-B' },
+      ]);
+
+      const result = await (handler as any).processUploadMode('assessment-1', 'Kenya', false);
+
+      // The specific behaviour under test: deleted A's text must not survive
+      // into the merge, no matter that its job record still exists.
+      expect(result.mergedMarkdown).not.toContain("A's confidential content");
+      expect(result.mergedMarkdown).not.toContain('A.pdf');
+      expect(result.mergedMarkdown).toContain("B's content");
+      expect(result.mergedMarkdown).toContain('## Document: B.pdf');
+
+      // BR-DDP-001: resolution must go through the assessment's current
+      // document records, never solely through job.findMany's own
+      // assessmentId filter.
+      expect(mockPrisma.assessmentDocument.findMany).toHaveBeenCalled();
+    });
+
+    it('[FR-DDP-001 Sc2] excludes the middle document B of three when B is deleted, preserving oldest-first order of A and C', async () => {
+      const t1 = new Date('2026-01-01T00:00:00Z');
+      const t2 = new Date('2026-01-02T00:00:00Z');
+      const t3 = new Date('2026-01-03T00:00:00Z');
+      wireJobFindManyToStore(mockPrisma.job.findMany, [
+        makeParseJob('job-A', 'A.pdf', "A's content", t1),
+        makeParseJob('job-B', 'B.pdf', "B's content", t2),
+        makeParseJob('job-C', 'C.pdf', "C's content", t3),
+      ]);
+      // B was deleted — only A and C are current AssessmentDocuments.
+      mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+        { id: 'doc-A', assessmentId: 'assessment-1', parseJobId: 'job-A' },
+        { id: 'doc-C', assessmentId: 'assessment-1', parseJobId: 'job-C' },
+      ]);
+
+      const result = await (handler as any).processUploadMode('assessment-1', 'Kenya', false);
+
+      expect(result.mergedMarkdown).not.toContain("B's content");
+      expect(result.mergedMarkdown).not.toContain('B.pdf');
+
+      // Oldest-first order preserved for the surviving documents: A before C.
+      const indexA = result.mergedMarkdown.indexOf("A's content");
+      const indexC = result.mergedMarkdown.indexOf("C's content");
+      expect(indexA).toBeGreaterThanOrEqual(0);
+      expect(indexC).toBeGreaterThan(indexA);
+    });
+
+    it('[FR-DDP-001 Sc3] leaves the two-document merge with no deletions unchanged in content, order and separator format, resolved through current documents (BR-DDP-001)', async () => {
+      const t1 = new Date('2026-01-01T00:00:00Z');
+      const t2 = new Date('2026-01-02T00:00:00Z');
+      wireJobFindManyToStore(mockPrisma.job.findMany, [
+        makeParseJob('job-A', 'A.pdf', "A's content", t1),
+        makeParseJob('job-B', 'B.pdf', "B's content", t2),
+      ]);
+      // Nothing deleted — both A and B are current AssessmentDocuments.
+      mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+        { id: 'doc-A', assessmentId: 'assessment-1', parseJobId: 'job-A' },
+        { id: 'doc-B', assessmentId: 'assessment-1', parseJobId: 'job-B' },
+      ]);
+
+      const result = await (handler as any).processUploadMode('assessment-1', 'Kenya', false);
+
+      // Today's exact separator/header format (gap-detection.handler.ts:146,150),
+      // reproduced by hand as an independent expected value — must be unchanged.
+      const expectedMerge =
+        "## Document: A.pdf\n\nA's content\n\n---\n\n## Document: B.pdf\n\nB's content";
+      expect(result.mergedMarkdown).toBe(expectedMerge);
+
+      // BR-DDP-001: even when the outcome is unchanged, resolution must go
+      // through the assessment's current document records — today it never
+      // does, so this fails even though the merge content above is correct.
+      expect(mockPrisma.assessmentDocument.findMany).toHaveBeenCalled();
     });
   });
 });
