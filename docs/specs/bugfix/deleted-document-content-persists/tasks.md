@@ -103,7 +103,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-003: Scope the merge to current documents `[BE]`
 
-- **Status:** `[ ]`
+- **Status:** `[~]` — blocked on a spec conflict; see `## Pivot Record: T-003` in `execution.md`
 - **Skills:** `nestjs-expert`
 - **Size:** S · **Dependencies:** T-002 · **Requirements:** FR-DDP-001 Sc 1–3, NFR-DDP-012 · **Design Ref:** §7.1
 - **Scope:** `packages/api/src/platform/jobs/handlers/gap-detection.handler.ts`
@@ -120,7 +120,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-004: Delete the orphaned parse job with the document `[BE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` — PASS on attempt 1; see `execution.md`
 - **Skills:** `nestjs-expert`, `error-handling-patterns`
 - **Size:** S · **Dependencies:** T-002 · **Requirements:** FR-DDP-004 Sc 1–2, NFR-DDP-011, BR-DDP-004 · **Design Ref:** §7.2
 - **Scope:** `packages/api/src/domain/assessments/assessments.service.ts` — `deleteDocument()`

@@ -385,6 +385,10 @@ describe('AssessmentsService', () => {
         ...mockTx.assessmentDocument.delete.mock.calls,
       ];
       expect(docDeleteCalls).toContainEqual([{ where: { id: 'doc-1' } }]);
+
+      // NFR-DDP-011 / BR-DDP-004: deletion is never a trigger for AI work —
+      // no job is enqueued on the delete path.
+      expect(mockJobs.create).not.toHaveBeenCalled();
     });
 
     it("[FR-DDP-004 Sc1] leaves a second document's parse job and an unrelated GAP_DETECTION job in place", async () => {

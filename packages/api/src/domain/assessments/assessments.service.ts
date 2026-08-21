@@ -343,7 +343,8 @@ export class AssessmentsService {
 
   /**
    * Delete a single document from an assessment.
-   * Removes the S3 object and the database record.
+   * Removes the S3 object (best-effort) and, in one transaction, the
+   * database record and its own orphaned PARSE_DOCUMENT job (FR-DDP-004).
    * Rejects deletion if the document is currently being parsed.
    */
   async deleteDocument(
@@ -367,7 +368,8 @@ export class AssessmentsService {
       );
     }
 
-    // Delete from S3
+    // Delete from S3 — best-effort, outside the transaction. A failure here
+    // must not block the row cleanup below.
     if (doc.s3Key) {
       try {
         await this.storageService.deleteObject(doc.s3Key);
@@ -377,7 +379,18 @@ export class AssessmentsService {
       }
     }
 
-    await this.prisma.assessmentDocument.delete({ where: { id: documentId } });
+    // Delete the document row and its own parse job atomically: either both
+    // are removed or neither is (FR-DDP-004 Sc2). The job delete is scoped
+    // by both id and type — id alone would say nothing about job type,
+    // since parseJobId is unique per document but not per job kind.
+    const parseJobId = doc.parseJobId;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.assessmentDocument.delete({ where: { id: documentId } });
+      if (parseJobId) {
+        await tx.job.delete({ where: { id: parseJobId, type: 'PARSE_DOCUMENT' } });
+      }
+    });
+
     this.logger.log(`Deleted document ${documentId} from assessment ${assessmentId}`);
   }
 

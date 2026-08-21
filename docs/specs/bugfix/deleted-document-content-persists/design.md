@@ -300,17 +300,28 @@ Mocked suites remain structurally blind to cross-screen cache invalidation (D4),
 
 ## 12. Budget (tripwire for `/akili-execute`)
 
-| Metric | Expected |
-|--------|----------|
-| Tasks | **8** |
-| Lines of code | ~300 (≈90 backend, ≈80 frontend, ≈130 tests) |
-| Review rounds | 1 |
+| Metric | Original estimate | **Re-baselined 2026-08-21** |
+|--------|-------------------|------------------------------|
+| Tasks | 8 | **8** — unchanged |
+| Lines of code | ~300 (≈90 be, ≈80 fe, ≈130 tests) | **~1,050** (≈115 be, ≈140 fe, ≈795 tests) |
+| Review rounds | 1 | **2** (T-002 needed 3 attempts) |
+
+**Re-baselined after T-002, on a tripwire hit escalated to and approved by the user.** Measured actuals after 2 of 8 tasks were 447 LOC against a ~300 whole-spec budget, with **441 of those in tests** against a ~130 test budget.
+
+The original figure mis-sized the cost of the evidence *these very documents mandate*, not the implementation:
+- `requirements.md` §6 D2 requires **four** withholding fixtures, each with its own mocked document/job state.
+- `tasks.md` §5 closes coverage at **clause** granularity — every `AND IT MUST` / `BUT it must NOT` needs its own assertion.
+- Each task's "evidence is disqualified if" clause forces fixtures that fail for the *right* reason, which in T-002 alone produced ~60 lines of transaction-seam scaffolding a laxer gate would not have needed.
+
+That rigour has already paid for itself: it caught two fixtures that would have failed a **correct** T-004 implementation, each of which would otherwise have surfaced as a phantom FAIL and burned rework attempts on a task that was right.
+
+Implementation LOC remains close to the original estimate (~115 backend, ~140 frontend vs ~90/~80). **The spec did not grow; the estimate of its test weight was wrong by roughly 6×.** Recorded here so the next spec's Step 2.4 sizing prices gate rigour explicitly — a `/akili-archive` Kaizen candidate.
 
 *Revised from 7 to 8 during decomposition:* the manual walkthrough is an owned task, not a footnote. `requirements.md` §6 records three defect classes with no automated gate, and **KZ-008** exists because that walkthrough was skipped on a prior spec and four real bugs shipped past green mocked tests. LOC and PR count are unchanged.
 
 Sized against the finished design. **Standard** depth, comfortably — the v1.x lineage sat at the upper edge of it at 12 tasks and ~810 LOC, and every unit of that excess was scaffolding around the wrong question.
 
-**PR strategy: one PR.** No constitutional LOC threshold exists in this project, and repo precedent runs toward single PRs at this size (the tracking-analytics spec recorded "Single PR recommended … even at the actual ~370 LOC"). At ~300 LOC the `shared → api → web` ordering is a task-ordering concern, not a review-surface one.
+**PR strategy: one PR.** No constitutional LOC threshold exists in this project, and repo precedent runs toward single PRs at this size (the tracking-analytics spec recorded "Single PR recommended … even at the actual ~370 LOC"). At ~1,050 LOC — of which ~795 are tests reviewable as one coherent suite — the `shared → api → web` ordering remains a task-ordering concern rather than a review-surface one, so the single-PR recommendation stands.
 
 `/akili-execute` should stop and escalate if actuals exceed these numbers.
 

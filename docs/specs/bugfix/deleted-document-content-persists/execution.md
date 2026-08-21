@@ -209,3 +209,105 @@ The estimate of ~130 test LOC was made against a design of comparable behavioura
 **Projection if the pattern holds:** the three remaining test files (T-006 × 2, T-007 × 1) plus production code across T-003…T-007 put the spec near **~900–1000 LOC**, roughly 3× the budget — close to the ~810 the v1.x design was rejected for, though for a materially different reason (evidence weight, not design complexity).
 
 **Leader disposition:** halted before starting T-003 and escalated. Per `/akili-execute` → *Budget Tripwire*, exceeding a budget is information, not failure, and the cost of a mis-sized spec is only recoverable while the spec is still running. Awaiting the user's decision.
+
+**User decision (2026-08-21): re-baseline and continue.** `design.md` §12 updated to ~1,050 LOC (≈115 backend, ≈140 frontend, ≈795 tests) and 2 review rounds. Rationale accepted: the overrun is concentrated in test evidence that has already demonstrated its value, so trimming it would optimise the wrong dimension. Implementation LOC remains close to the original estimate — the spec did not grow, the estimate of its test weight was wrong by roughly 6×. Flagged as a `/akili-archive` Kaizen candidate: Step 2.4 sizing should price gate rigour explicitly.
+
+---
+
+### T-004 — Delete the orphaned parse job with the document `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-21 |
+| **Requirements covered** | FR-DDP-004 Sc 1–2, NFR-DDP-011, BR-DDP-004 |
+| **Design ref** | §7.2, §10 |
+| **Effort** | `medium` |
+| **Skills** | `nestjs-expert`, `error-handling-patterns` |
+
+**Attempt 1**
+
+- **Files changed:** `assessments.service.ts` (`deleteDocument`), plus the single NFR-DDP-011 assertion in `assessments.service.spec.ts` permitted by the Leader adjudication below.
+- **Change:** both row deletions moved into one interactive `$transaction` — document first (FK-correct: the FK is `assessment_documents.parse_job_id → jobs.id`, so the referencing row must go first), then its own job scoped by `id` **and** `type: 'PARSE_DOCUMENT'`. S3 deletion unchanged, still before and outside the transaction, still best-effort.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` → 22 passed, 4 failed, 26 total. The 3 FR-DDP-004 tests green; all 19 pre-existing green; the 4 failures are the `getMergedContent` fixtures, which are T-005's scope. Baseline confirmed by `git stash`: 19/7 before → 22/4 after, exactly the 3 target tests flipping and nothing else moving.
+- **Not Done / Assumptions:** none.
+
+**Leader adjudication — a conflict inside the task itself.** T-004's *scope* said production file only, but its *done-when* required "an assertion proves no job is enqueued on the delete path (NFR-DDP-011)", and no such assertion existed or was owned elsewhere. I authorised exactly one assertion in the existing Sc 1 test. Recorded because it is a deviation from the task's written scope, made to satisfy that same task's written done-when.
+
+**Reviewer verdict:** `STATUS: PASS`. The highest-value check was whether `type` is legal in a Prisma `delete` where-clause, since `delete` requires a unique selector and `type` is not unique — if Prisma silently dropped it, FR-DDP-004 Sc 1's "not any other job type" clause would be enforced only by the mock. The Reviewer verified against the **generated client**: `JobWhereUniqueInput` is `Prisma.AtLeast<{ id?, type?, … }, "id">`, so `id` satisfies the uniqueness requirement and `type` is a first-class additional filter (extended where-unique, GA since Prisma 5; this repo is on `@prisma/client` 7.4.1). It compiles to `DELETE … WHERE id = $1 AND type = $2`, and a non-match raises P2025 rather than being ignored. **The clause is a real database-level constraint.**
+
+Also confirmed: `parseJobId` captured before the callback so the transaction reads no stale state; neither delete's return value dereferenced (the sharp edge carried forward from T-002's review); with `parseJobId === null` the transaction holds one delete and "both or neither" is vacuously satisfied; the NFR-DDP-011 assertion is non-vacuous (`mockJobs.create` is proven observable by the `triggerParseDocument` suite).
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Resilience | A job row missing or of the wrong type makes `tx.job.delete` raise P2025 and roll back the document delete — **while the S3 object was already removed before the transaction.** The document becomes permanently undeletable with its file already gone, and every retry fails identically. `design.md` §10 assumes transaction failure is retryable; this sub-case is not | **Recorded as a real gap in §10's assumption.** Risk is low today (no code path in `packages/api/src` deletes `Job` rows, and all three parse paths write `parseJobId` in the same call). If ever observed, the fix is to catch P2025 specifically on the job delete — **not** to relax the scoping |
+| Resilience | The `PARSING` guard and the `parseJobId` read happen outside the transaction; a re-parse racing between them would delete the old job while orphaning the new one. Pre-existing class, not introduced here | Recorded |
+| Risk | Assessment-level deletion cascades `AssessmentDocument` rows but leaves their `PARSE_DOCUMENT` jobs behind, so FR-DDP-004's storage-growth motivation is closed only for the per-document path | Recorded as a follow-up; correctly excluded under NFR-DDP-012 |
+
+---
+
+## Pivot Record: T-003
+
+**Status:** ⛔ blocked, awaiting user approval. T-003 marked `[~]`. Rework attempts **not** consumed — this is a spec defect, not an implementation failure, and the Pivot Protocol forbids looping on one.
+
+### The blocker
+
+T-003's disqualifier and its scope instruct opposite things for one input.
+
+- **Scope says:** guard `createSkeletonFields` behind `!isReAnalyze` — stated twice, with a design rationale (`design.md` §7.1).
+- **Disqualifier says:** all 25 pre-existing handler tests must still pass.
+
+One pre-existing test asserts the *unguarded* behaviour for exactly the input the guard closes:
+
+```
+✕ clears detectedCountry to null on zero completed parse jobs during a re-run,
+  without createSkeletonFields() touching prisma.assessment
+```
+
+It calls `execute({ assessmentId, reAnalyze: true })` with zero completed parse jobs and asserts `gapField.createMany` **was** called once. With the guard in place it is called zero times. No implementation satisfies both.
+
+The Implementer implemented the guard as specified, reported the conflict in `Not Done / Assumptions` rather than silently reverting it or editing the test, and left the suite at 27 passed / 1 failed. **That was the correct call** and is why this reached a Pivot rather than a HALT.
+
+### Leader investigation (inline, two file reads)
+
+**1. The duplication the guard prevents is real.** `GapField` (`schema.prisma:309-329`) carries only `@@index([assessmentId, category])` — **no unique constraint** on `(assessmentId, field)`. So `createMany` of ten Core-10 rows against an assessment that already has ten genuinely produces twenty. Combined with `execute()` deleting existing fields only when `!isReAnalyze` (`gap-detection.handler.ts:65`), a re-analyse resolving zero jobs duplicates the list. **The design is correct; the guard must stay.**
+
+**2. The pre-existing test's subject is not skeleton creation.** Reading it in full, its own comments give it away:
+
+> `// createSkeletonFields() ran (GapField-only helper) ...`
+> `// ... but the ONLY prisma.assessment.update call is the single execute()-level fold-in write — createSkeletonFields() performs no Assessment write of its own.`
+
+Its claim, inherited from the archived country-match spec, is **"`createSkeletonFields` performs no `Assessment` write of its own."** The `createMany` assertion is the *precondition* establishing that the helper ran, so the next assertion means something. It is not the thing under test.
+
+The guard removes that precondition **in re-analyse mode only**. The test's actual subject is untouched and still verifiable — in a non-re-analyse run, where the helper still executes.
+
+### Conclusion
+
+Neither `design.md` nor `requirements.md` is wrong. The defect is in **`tasks.md` T-003's disqualifier**, which was written assuming the guard could not disturb existing coverage. It can, for one input, and the affected test is incidentally — not essentially — coupled to the old behaviour.
+
+### Alternatives considered
+
+| Option | Verdict |
+|---|---|
+| Drop the guard to keep all 25 green | **Rejected.** Ships a real data-corruption path (twenty Core-10 rows), and T-007's re-analyse control makes it reachable. The disqualifier would be protecting a bug |
+| Weaken the pre-existing test to `toHaveBeenCalledTimes(0)` | **Rejected.** Destroys the CMV coverage it exists for — its "no `Assessment` write" claim needs the helper to actually run |
+| **Retarget the pre-existing test to a non-re-analyse run, and add a test for the guard** | **Recommended.** Preserves the CMV claim in a scenario where its precondition holds, and gives the new behaviour its own gate |
+| Treat it as an acceptable known failure | **Rejected.** A permanently red test is indistinguishable from a regression to every future run |
+
+### Proposed spec amendment (not yet applied — awaiting approval)
+
+1. **`tasks.md` T-003 disqualifier** — from *"the 25 pre-existing tests must still pass"* to: *"24 of the 25 pre-existing tests pass unchanged. The one asserting unguarded skeleton creation during a re-analyse is **retargeted, not weakened**: its subject — that `createSkeletonFields` performs no `Assessment` write — must still be asserted, in a non-re-analyse run where the helper executes."*
+2. **`tasks.md` T-003 scope** — add the retarget plus one new test asserting the guard: with `reAnalyze: true` and zero resolved jobs, `gapField.createMany` is **not** called.
+3. **`design.md` §7.1** — record that the guard changes behaviour a pre-existing CMV test incidentally asserted, and why the retarget preserves that test's real claim.
+
+Cost: roughly 15 lines of test change inside T-003, no change to the fix itself. `design.md` and `requirements.md` need no behavioural change.
+
+### TRD impact
+
+None. No `ADR-NNN` is overturned — this is a handler-level guard, not an architecture decision.
+
+### Work already completed under T-003 and preserved
+
+The query-shape change, `sourceParseJobIds` persistence (verified through `jobs.service.ts` to the stored `Job.result`, both the populated and empty-array cases), the skeleton guard itself, and the untouched separator/header/ordering/truncation behaviour. `pnpm --filter @alliance-risk/api build` passes clean. All three FR-DDP-001 tests are green.
