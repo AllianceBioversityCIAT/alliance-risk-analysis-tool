@@ -194,7 +194,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 - **Status:** `[ ]`
 - **Skills:** none
 - **Size:** M · **Dependencies:** T-003, T-004, T-005, T-006, T-007 · **Requirements:** FR-DDP-002 Sc 3–4, FR-DDP-003 Sc 1–3, FR-DDP-004 Sc 3, NFR-DDP-010 · **Design Ref:** §11
-- **Scope:** run all nine steps in `requirements.md` §6 against a local stack (`docs/infrastructure.md` §6), recording pass/fail per step in `execution.md`.
+- **Scope:** run all nine steps in `requirements.md` §6 against a local stack (`docs/infrastructure.md` §6), recording pass/fail per step in `execution.md`. **A step-by-step operator guide is at [`./qa-walkthrough.md`](./qa-walkthrough.md)** — written for manual execution, with the start commands verified against this machine, what to observe at each step, and what would constitute a bug.
 - **Why this is a task and not a footnote:** D4 (cross-screen cache invalidation), D6 (is the copy comprehensible) and D8 (cross-field propagation) have **no automated gate for the property that matters**. `KZ-008` is in the kaizen log because this walkthrough was skipped on a prior spec and four real bugs — cache invalidation, scope-too-narrow design, cross-field propagation — reached "archive-ready" invisible to green mocked tests.
 - **Highest-value steps:**
   - **Step 5** — upload a second document to an already-analysed assessment; the existing analysis must stay readable through upload, parsing, **and the new analysis run**. Three prior designs failed here, the last one during the analysis-run window specifically
