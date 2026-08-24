@@ -141,7 +141,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-005: Withhold an analysis that describes a deleted document `[BE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` — PASS on attempt 1; see `execution.md`
 - **Skills:** `nestjs-expert`, `api-design-principles`
 - **Size:** M · **Dependencies:** T-001, T-002 · **Requirements:** FR-DDP-002 Sc 1–2 & 4, BR-DDP-002 · **Design Ref:** §7.3, §6
 - **Scope:** `packages/api/src/domain/assessments/assessments.service.ts` — `getMergedContent()`

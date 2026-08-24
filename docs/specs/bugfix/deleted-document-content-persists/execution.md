@@ -347,3 +347,58 @@ The query-shape change, `sourceParseJobIds` persistence (verified through `jobs.
 | Risk | Most pre-existing tests stub `job.findMany` with `mockResolvedValue`, ignoring the `where` clause, so they are structurally blind to the new `id: { in: … }` scoping. **T-002's three FR-DDP-001 tests are therefore the sole automated gate on the merge-scoping fix** — any future edit to those three fixtures removes all coverage of the reported bug | Recorded — worth a note in the PR description |
 
 ---
+
+### T-005 — Withhold an analysis that describes a deleted document `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-24 |
+| **Requirements covered** | FR-DDP-002 Sc 1–2 (Sc 4 partially — see the coverage gap below), BR-DDP-002, BR-DDP-003 |
+| **Design ref** | §7.3, §6, §9 |
+| **Effort** | `high` |
+| **Skills** | `nestjs-expert`, `api-design-principles` |
+
+**Attempt 1**
+
+- **Files changed:** `assessments.service.ts` only.
+- **The rule as implemented:** `sourceParseJobIds.some((jobId) => !currentParseJobIds.has(jobId))` — one-directional subtraction, no status filter, no ordering, no time window. Absent key short-circuits to superseded before the document query runs; a recorded `[]` flows through `.some()` on an empty array and is never superseded.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` → **26 passed, 26 total.** Build clean.
+- **Not Done / Assumptions:** none.
+
+**Reviewer verdict:** `STATUS: PASS`, after attacking the rule across nine cases (delete only doc; delete one of several; re-parse; add one; add several; `parseJobId: null`; recorded `[]`; absent key; delete-and-add in one session). **No case serves what it should withhold, and none withholds what it should serve.**
+
+Also confirmed: the shared type genuinely **replaced** the inline return type rather than coexisting with it (`design.md` §9); T-002's four fixtures are unedited — they still carry the pre-fix defensive cast and the RED-baseline header comment, neither of which survives a fixture rewritten to fit an implementation; BR-DDP-003's assertions now execute for real; and the producing side never omits the key, so `[]`-vs-absent stays a clean discriminator.
+
+**A factual error in the Implementer's reasoning — confirmed, and provably harmless here.** The report claimed *"a failed parse leaves `parseJobId` null."* It does not: `parseJobId` is written at job **creation** (`assessments.service.ts:270-273`, `:330-333`) and failure sets only `status: 'FAILED'` + `errorMessage` (`parse-document.handler.ts:59-67`), leaving it populated.
+
+The rule still produces the design-mandated verdict, necessarily: a failed-parse document is either newly added — its id was never in the snapshot, and an addition only *grows* the current set, which one-directional subtraction can never be made true by — or a re-parse, which §7.3 already requires to be superseded. The wrong belief can only shrink the *predicted* current set for ids the rule never reads.
+
+**Where the wrong model does bite:** it predicts away a real state. Re-parsing an already-analysed document and having that parse **fail** correctly sets `superseded: true`, leaving the Analyst on a withheld notice whose "Re-analyse now" button resolves nothing until the parse succeeds. Design-conformant, but worth handing to T-007 and T-008 rather than to this task.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Readability | The comment at `assessments.service.ts:438-441` **encodes the same wrong model** — it says an added-but-unparsed document "is still current and cannot supersede", but such a document is *filtered out* of the current set by the `!== null` guard. It cannot supersede because it is absent from the **snapshot**, not because it is present in the current set. This is the durable artifact of the misconception, and it is what the next maintainer inherits | **Worth correcting at `/akili-archive`.** Not minted as a task |
+| Reliability | Prefer `Array.isArray(result.sourceParseJobIds)` over `'sourceParseJobIds' in result` — strictly stronger, preserves both mandated verdicts, and fails closed on JSON `null` and non-array values that `?? []` currently serves open | Recorded |
+| Resilience | A truthy non-object `result` makes `in` throw a `TypeError` (500) where the pre-diff code degraded to `null`. Unreachable for `GAP_DETECTION` today, but a new throw path on a read endpoint; the `Array.isArray` change removes it | Recorded |
+| Risk / perf | `assessmentDocument.findMany` selects full rows on every polled read while only `parseJobId` is used; `select: { parseJobId: true }` narrows it and is mock-compatible | Recorded |
+
+---
+
+## Coverage Gap — ⚠️ ESCALATED TO USER
+
+**`requirements.md` FR-DDP-002 Sc 4's clause *"AND IT MUST stay readable if B's parse fails"* has no gate anywhere in the plan** — automated or manual.
+
+- `tasks.md` §5 names Sc 4's owners as *T-002 (serve fixture), T-005, T-008 §5*. None of the three covers this clause.
+- T-002's fixture 1 gives the added document `parseJobId: 'job-B'` — added **and parsed**. No fixture anywhere sets `parseJobId: null` or `status: 'FAILED'`.
+- Manual step 5 walks upload → parse → run. It never induces a parse failure.
+
+So the clause is covered **by argument, not by evidence** — and the argument offered for it was the false one about `parseJobId`. This is precisely the failure mode `tasks.md` §5 exists to prevent: the coverage table asserts ownership that does not hold at clause granularity.
+
+The Reviewer classified it advisory and correctly declined to gate T-005 on it — the clause is outside T-005's contract, which reads "T-002's four fixtures turn green". **This is a `tasks.md` traceability defect, not a T-005 defect.**
+
+Cost to close: roughly 8 lines — a fifth fixture with `{ id: 'doc-B', parseJobId: 'job-B', status: 'FAILED' }` alongside `{ id: 'doc-A', parseJobId: 'job-A' }`, asserting `superseded === false`. It would have caught the mental-model error at authoring time.
+
+Escalated rather than absorbed: minting work from a review finding without approval is exactly what `/akili-execute` → *Advisory Never Becomes A Task* forbids, and the honest alternative — leaving `tasks.md` §5 asserting coverage that does not exist — is worse. Nothing is blocked; T-006 and T-007 can proceed either way.

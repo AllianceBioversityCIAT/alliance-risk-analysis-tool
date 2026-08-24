@@ -9,7 +9,14 @@ import {
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
-import { JobType, ALLOWED_DOCUMENT_MIME_TYPES, MAX_FILE_SIZE_PDF, MAX_FILE_SIZE_OTHER, DEFAULT_COUNTRY } from '@alliance-risk/shared';
+import {
+  JobType,
+  ALLOWED_DOCUMENT_MIME_TYPES,
+  MAX_FILE_SIZE_PDF,
+  MAX_FILE_SIZE_OTHER,
+  DEFAULT_COUNTRY,
+  MergedContentResponse,
+} from '@alliance-risk/shared';
 import {
   CreateAssessmentDto,
   UpdateAssessmentDto,
@@ -402,7 +409,7 @@ export class AssessmentsService {
   async getMergedContent(
     assessmentId: string,
     userId: string,
-  ): Promise<{ mergedMarkdown: string | null }> {
+  ): Promise<MergedContentResponse> {
     await this.findOne(assessmentId, userId); // Ownership check
 
     const gapJob = await this.prisma.job.findFirst({
@@ -414,10 +421,47 @@ export class AssessmentsService {
       orderBy: { completedAt: 'desc' },
     });
 
-    if (!gapJob?.result) return { mergedMarkdown: null };
+    if (!gapJob?.result) return { mergedMarkdown: null, superseded: false };
 
-    const result = gapJob.result as { mergedMarkdown?: string };
-    return { mergedMarkdown: result.mergedMarkdown ?? null };
+    const result = gapJob.result as {
+      mergedMarkdown?: string;
+      sourceParseJobIds?: string[];
+    };
+
+    // A snapshot recorded before this fix carries no `sourceParseJobIds` key
+    // at all, so supersession cannot be evaluated against it. Fail closed:
+    // treat it as superseded rather than trust unevaluable content.
+    if (!('sourceParseJobIds' in result)) {
+      return { mergedMarkdown: null, superseded: true };
+    }
+
+    // "Current" documents: every AssessmentDocument row that exists right
+    // now, with no status filter, no ordering, and no time window — exactly
+    // what design.md §7.3 requires so an added-but-unparsed or
+    // still-parsing document is still "current" and cannot supersede.
+    const currentDocuments = await this.prisma.assessmentDocument.findMany({
+      where: { assessmentId },
+    });
+    const currentParseJobIds = new Set(
+      currentDocuments
+        .map((document) => document.parseJobId)
+        .filter((parseJobId): parseJobId is string => parseJobId !== null),
+    );
+
+    // The one rule: superseded iff the snapshot references a parse job that
+    // is no longer any current document's parseJobId. One-directional
+    // subtraction — sourceParseJobIds \ currentParseJobIds — never a set
+    // comparison. An addition only grows currentParseJobIds, so it can
+    // never make this true; only a removed/re-parsed document can.
+    const sourceParseJobIds = result.sourceParseJobIds ?? [];
+    const superseded = sourceParseJobIds.some(
+      (jobId) => !currentParseJobIds.has(jobId),
+    );
+
+    return {
+      mergedMarkdown: superseded ? null : (result.mergedMarkdown ?? null),
+      superseded,
+    };
   }
 
   async addComment(
