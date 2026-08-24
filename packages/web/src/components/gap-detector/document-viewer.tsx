@@ -481,7 +481,7 @@ export function DocumentViewer({
         <div className="flex flex-col items-center gap-3 max-w-sm">
           <FileX className="h-10 w-10 text-muted-foreground opacity-30" />
           <p className="text-sm text-muted-foreground">
-            No documents remain on this assessment.
+            No documents on this assessment.
           </p>
           {onManageDocuments && (
             <Button
@@ -519,7 +519,7 @@ export function DocumentViewer({
             <AlertTriangle className="h-6 w-6 text-warning" />
           </div>
           <p className="text-sm font-medium text-foreground">
-            This analysis no longer matches the current documents — one of them was removed or replaced.
+            This analysis is out of date — it doesn&apos;t reflect the documents currently on this assessment.
           </p>
           {onReAnalyze && (
             <Button

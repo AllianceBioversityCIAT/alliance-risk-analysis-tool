@@ -658,3 +658,31 @@ The subtlety is that the run finishes at *job* terminal state, long after the ki
 | Readability | A comment claims "a second click while disabled must not enqueue a second run" above an assertion that performs no second click — the claim is actually proven elsewhere |
 
 ---
+
+### OQ-1 and OQ-3 resolved (Leader decisions, 2026-08-24)
+
+The user declined to arbitrate these and directed the Leader to decide. Both are recorded in `requirements.md` §8 with their reasoning.
+
+**OQ-1 — notice copy. Decided and implemented.**
+
+| State | Final copy |
+|---|---|
+| Withheld | *"This analysis is out of date — it doesn't reflect the documents currently on this assessment."* |
+| Zero documents | *"No documents on this assessment."* |
+
+Two defects in the provisional wording drove this:
+- The withheld string had a **dangling referent** — *"the current documents — one of them was removed or replaced"* points grammatically at the current set, which by definition **excludes** the removed document. Found by the T-007 Reviewer.
+- The zero-documents string had **drifted from `design.md` §8.1 during implementation**, from "No documents on this assessment" to "No documents **remain**". "Remain" asserts there were documents before — false for a DRAFT UPLOAD assessment that never had any, which is a reachable state. Found by the Leader while deciding OQ-1.
+
+"Out of date" is honest for all three causes the rule fires on — deletion, re-parse, and a pre-fix analysis — **without asserting which**, which is what FR-DDP-003 Sc 1's *"must NOT state a cause the application cannot know"* requires. "It" refers unambiguously to the analysis.
+
+- **Verification:** `document-viewer|gap-detector-client` → **36/36**; lint clean.
+- **Reduced ceremony, recorded as a deliberate Leader deviation:** no Reviewer was spawned for this change. The diff is **two JSX text nodes and nothing else** — the Leader verified that inline by filtering the diff for non-string lines and finding none. The behavioural properties the copy must hold are already gated by the existing suite (the notice must be textually distinguishable from both other states, and must never say "deleted"), and those assertions were updated to the new strings rather than relaxed. Spawning the triad for a literal string, with 36 tests green and the disqualifier assertions intact, is ceremony without added assurance. Every other code change in this spec went through `author ≠ auditor` unchanged.
+
+**OQ-3 — panel mounting / layout change. Decided: keep it.**
+
+`design.md` §14's reversion challenge already established the reflow is **not eliminated** either way: `hasDocument` derives from `intakeMode`, which is `undefined` while the assessment query is in flight, so a one-to-two-column reflow still happens on first paint. So the real choice is between *one reflow, earlier* and *one reflow, later plus a panel that vanishes in several states* — and the second is the behaviour this whole fix exists to remove. Mounting the panel is also what makes `DocumentViewer`'s states reachable at all; without it there is no surface for the notice.
+
+Reversible in one line (`gap-detector-client.tsx`'s `hasDocument` argument) if the T-008 walkthrough disagrees. **T-008 should eyeball the first paint of a normal upload** and say whether the placeholder reads acceptably.
+
+---

@@ -26,13 +26,13 @@ describe('DocumentViewer — withheld content and empty states (FR-DDP-003)', ()
   // presence of *some* text. ─────────────────────────────────────────────
 
   describe('superseded — the withheld-content notice (FR-DDP-003 Sc 1)', () => {
-    it('states the analysis no longer matches the current documents, without asserting a cause', () => {
+    it('states the analysis is out of date, without asserting a cause', () => {
       render(
         <DocumentViewer markdownContent={null} documents={DOCS} superseded />,
       );
 
       expect(
-        screen.getByText(/this analysis no longer matches the current documents/i),
+        screen.getByText(/this analysis is out of date/i),
       ).toBeInTheDocument();
       // The copy must not assert deletion specifically — it covers deletion,
       // re-parsing, and pre-fix analyses alike (design.md §7.3, §8.1).
@@ -144,7 +144,7 @@ describe('DocumentViewer — withheld content and empty states (FR-DDP-003)', ()
   });
 
   describe('zero documents remain — offers Manage Documents, not re-analysis (FR-DDP-003 Sc 3)', () => {
-    it('states no documents remain and offers Manage Documents', () => {
+    it('states no documents on this assessment and offers Manage Documents', () => {
       render(
         <DocumentViewer
           markdownContent={null}
@@ -155,7 +155,7 @@ describe('DocumentViewer — withheld content and empty states (FR-DDP-003)', ()
       );
 
       expect(
-        screen.getByText(/no documents remain on this assessment/i),
+        screen.getByText(/no documents on this assessment/i),
       ).toBeInTheDocument();
       expect(screen.getByTestId('no-documents-notice')).toBeInTheDocument();
     });
@@ -177,7 +177,7 @@ describe('DocumentViewer — withheld content and empty states (FR-DDP-003)', ()
         screen.queryByRole('button', { name: /re-analyse now/i }),
       ).not.toBeInTheDocument();
       expect(
-        screen.queryByText(/this analysis no longer matches the current documents/i),
+        screen.queryByText(/this analysis is out of date/i),
       ).not.toBeInTheDocument();
     });
 
@@ -232,7 +232,7 @@ describe('DocumentViewer — withheld content and empty states (FR-DDP-003)', ()
       expect(screen.getByTestId('document-empty-state')).toBeInTheDocument();
       expect(screen.queryByTestId('no-documents-notice')).not.toBeInTheDocument();
       expect(
-        screen.queryByText(/no documents remain on this assessment/i),
+        screen.queryByText(/no documents on this assessment/i),
       ).not.toBeInTheDocument();
     });
   });

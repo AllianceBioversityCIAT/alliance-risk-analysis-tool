@@ -221,12 +221,14 @@ An empty `sourceParseJobIds: []` is **not** the legacy case — it is a complete
 
 | Condition | Copy (OQ-1 — confirm at HITL) | Action |
 |-----------|-------------------------------|--------|
-| `superseded` | "This analysis no longer matches the current documents — one of them was removed or replaced." | **"Re-analyse now"** |
+| `superseded` | "This analysis is out of date — it doesn't reflect the documents currently on this assessment." | **"Re-analyse now"** |
 | Content present | existing viewer | existing |
 | No content, not superseded, documents exist | existing "No document content available" | none |
-| No content, no documents | existing empty state | "Manage Documents" |
+| No content, no documents | "No documents on this assessment." | "Manage Documents" |
 
-The copy says **"removed or replaced"** rather than asserting a removal: the rule fires on deletion, on re-parse, and on legacy snapshots, and the server cannot always distinguish which. v1.x's copy asserted a removal for all three, which was false for two of them.
+The copy says **"out of date"** rather than naming a cause: the rule fires on deletion, on re-parse, and on legacy snapshots, and the server cannot distinguish which. v1.x's copy asserted a *removal* for all three, which was false for two of them.
+
+*Copy finalised 2026-08-24 (OQ-1).* The interim wording — "the current documents — one of them was removed or replaced" — still named a cause **and** carried a dangling referent, since the removed document is by definition not among the current ones. "It doesn't reflect the documents currently on this assessment" refers unambiguously to the analysis and asserts nothing the server cannot support.
 
 Token: `--warning` (`#F48C06`, `docs/ux-ui/design.md:129`). No raw hex.
 
