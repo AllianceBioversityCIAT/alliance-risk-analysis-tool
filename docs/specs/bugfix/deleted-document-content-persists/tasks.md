@@ -218,7 +218,9 @@ Closure at **scenario and clause** granularity — a requirement ID appearing in
 | FR-DDP-002 | Sc 1 (delete only doc), incl. "not at any later point" | T-002, T-005 |
 | | Sc 2 (delete one of several, never re-run) | T-002, T-005 |
 | | Sc 3 (survives reload), incl. "not from any client-side cache" | T-006, T-008 §2 |
-| | Sc 4 (addition withholds nothing) — all three `AND IT MUST` and the "at any point" clause | T-002 (serve fixture), T-005, T-008 §5 |
+| | Sc 4 (addition withholds nothing) — the added-and-parsed clause | T-002 (fixture 1), T-005, T-008 §5 |
+| | Sc 4 — **the added-with-failed-parse clause** | T-002 (fixture 5, added 2026-08-24) |
+| | Sc 4 — the "remain readable on screen" and "at any point" clauses | T-007, T-008 §5 |
 | FR-DDP-003 | Sc 1, incl. "distinguishable from never analysed", "must NOT render deleted text", "must NOT drop the panel", "must not state a cause it cannot know" | T-007, T-008 §2 |
 | | Sc 2 (clears without manual reload) | T-006, T-008 §8 |
 | | Sc 3 (last document deleted — offer upload, not re-analysis) | T-007, T-008 §4 |
@@ -234,6 +236,8 @@ Closure at **scenario and clause** granularity — a requirement ID appearing in
 | BR-DDP-004 | deletion never triggers AI work | T-004 |
 
 Every scenario and every `AND IT MUST` / `BUT it must NOT` clause has a named owner. No gap is discharged by citing a different requirement.
+
+> **One gap was found and closed during execution (2026-08-24).** FR-DDP-002 Sc 4's *"stay readable if B's parse fails"* clause had **no gate** — automated or manual — while this table asserted three owners for Sc 4 as a whole. Row-level ownership of a *scenario* had been mistaken for clause-level closure, which is the exact failure mode this section's own rule warns about. Worse, the clause had been argued safe on a **false premise**: that a failed parse leaves `parseJobId` null. It does not — `parseJobId` is written at job creation and a failure sets only `status`/`errorMessage`. Fixture 5 now proves the verdict against the *real* mechanism. Sc 4's rows are split by clause above so the distinction cannot collapse again.
 
 ---
 

@@ -549,5 +549,31 @@ describe('AssessmentsService', () => {
       expect(result.mergedMarkdown).toBeNull();
       expect((result as { superseded?: boolean }).superseded).toBe(true);
     });
+
+    it("[D2 fixture 5 / FR-DDP-002 Sc4] serves the analysis when the ADDED document's parse FAILED — recorded [jobA], current documents {A, B(parseJobId='job-B', status='FAILED')}", async () => {
+      // Why this fixture exists: a failed parse does NOT null out
+      // parseJobId. parseJobId is written at job *creation*
+      // (assessments.service.ts:270-273, :330-333); failure only sets
+      // status: 'FAILED' and errorMessage (parse-document.handler.ts:59-67),
+      // leaving parseJobId populated. An earlier defense of this clause
+      // wrongly assumed a failed parse leaves parseJobId null — it does not,
+      // so this is NOT the same case as an unparsed document, and it needs
+      // its own fixture rather than resting on that false premise.
+      mockCompletedGapJob({
+        mergedMarkdown: '## Document: A.pdf\n\nA content',
+        sourceParseJobIds: ['job-A'],
+      });
+      mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+        { id: 'doc-A', parseJobId: 'job-A' },
+        { id: 'doc-B', parseJobId: 'job-B', status: 'FAILED' },
+      ]);
+
+      const result = await service.getMergedContent('assess-1', 'user-1');
+
+      // A failed document contributes nothing, so it can neither supersede
+      // nor withhold — same verdict as an ordinary addition (fixture 1).
+      expect(result.mergedMarkdown).toBe('## Document: A.pdf\n\nA content');
+      expect((result as { superseded?: boolean }).superseded).toBe(false);
+    });
   });
 });

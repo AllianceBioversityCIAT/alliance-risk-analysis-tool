@@ -402,3 +402,19 @@ The Reviewer classified it advisory and correctly declined to gate T-005 on it �
 Cost to close: roughly 8 lines — a fifth fixture with `{ id: 'doc-B', parseJobId: 'job-B', status: 'FAILED' }` alongside `{ id: 'doc-A', parseJobId: 'job-A' }`, asserting `superseded === false`. It would have caught the mental-model error at authoring time.
 
 Escalated rather than absorbed: minting work from a review finding without approval is exactly what `/akili-execute` → *Advisory Never Becomes A Task* forbids, and the honest alternative — leaving `tasks.md` §5 asserting coverage that does not exist — is worse. Nothing is blocked; T-006 and T-007 can proceed either way.
+
+### Coverage gap closed (approved follow-on to T-005)
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ closed |
+| **Date** | 2026-08-24 |
+| **Clause** | FR-DDP-002 Sc 4 — *"AND IT MUST stay readable if B's parse fails"* |
+
+- **Added:** `[D2 fixture 5 / FR-DDP-002 Sc4]` in `assessments.service.spec.ts` — a recorded `['job-A']` analysis against current documents `{A (parsed), B (parseJobId: 'job-B', status: 'FAILED')}`, asserting `superseded === false` and content served verbatim.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` → **27 passed, 27 total.**
+- **Leader inline check** (one file, puntual): read the diff and confirmed the fixture encodes a **populated** `parseJobId` alongside `status: 'FAILED'` — the real post-failure state — rather than the null-`parseJobId` state the earlier false argument assumed. Pure 26-line addition; the four existing fixtures and all production source untouched.
+
+**Why this was worth doing rather than accepting as a risk.** `getMergedContent` reads only `parseJobId`, never `status`. So the clause's correct verdict comes from B's populated job id being absent from the *snapshot* — not, as previously argued, from it being null. The fixture proves the clause against the **actual mechanism**. Had it existed at authoring time, it would have caught the mental-model error before it reached a Reviewer.
+
+**`tasks.md` §5 corrected:** Sc 4's single row is now split by clause, and a note records that row-level ownership of a *scenario* had been mistaken for clause-level closure — the exact failure mode that section's own rule warns about.
