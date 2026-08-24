@@ -178,7 +178,17 @@ export default function GapDetectorClient() {
     documents,
     allParsed,
     isProcessing: docsProcessing,
+    isSettled: documentsSettled,
   } = useMultiDocumentStatus(id, hasDocument ?? false);
+
+  // Whether the documents-poll query behind `documents` has produced a
+  // confirmed answer, sourced from the hook itself (`use-multi-document-status.ts`)
+  // rather than re-derived here. An empty `documents` array alone is
+  // ambiguous — it is also what a disabled, still-fetching, or permanently
+  // errored query reports — so anything gated on "zero documents remain"
+  // must wait for `documentsSettled`, not just `documents.length === 0`
+  // (design.md §14; requirements.md FR-DDP-003 preamble).
+  const documentsLoading = !documentsSettled;
 
   // ─── Re-analyze on save ──────────────────────────────────────────────────────
   const { mutateAsync: reAnalyze } = useReAnalyzeGaps(id ?? '');
@@ -233,6 +243,31 @@ export default function GapDetectorClient() {
     }
     prevGapTotalRef.current = total;
   }, [gapData?.total, queryClient, id]);
+
+  // Triggers a fresh analysis run from the withheld-content notice
+  // (design.md §8.4, FR-DDP-003 Sc 1) — the only reachable remedy when the
+  // Analyst has no field to edit and therefore no other path to
+  // useReAnalyzeGaps. Reuses the same mutation and polling as the
+  // debounced field-save flow; a failure here surfaces via sileo since,
+  // unlike the debounced path, there is no other affordance signalling it.
+  const handleReAnalyzeNow = useCallback(async () => {
+    try {
+      const { jobId } = await reAnalyze();
+      startPolling(jobId);
+    } catch (err) {
+      sileo.error({
+        title: 'Failed to start re-analysis',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
+  }, [reAnalyze, startPolling]);
+
+  // Withheld-notice remedy: navigates to document management for the
+  // zero-documents case (FR-DDP-003 Sc 3) — mirrors the existing "Manage
+  // Documents" buttons in the header above.
+  const handleManageDocuments = useCallback(() => {
+    router.push(`/assessments/upload?id=${id}`);
+  }, [router, id]);
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string, currentStatus?: GapFieldStatus) => {
@@ -732,7 +767,7 @@ export default function GapDetectorClient() {
           </div>
         ) : (
           <GapLayout
-            hasDocument={hasDocument && !!mergedMarkdown}
+            hasDocument={hasDocument}
             documentPanel={
               <DocumentViewer
                 markdownContent={mergedMarkdown}
@@ -742,6 +777,23 @@ export default function GapDetectorClient() {
                   fileName: d.fileName,
                   mimeType: d.mimeType,
                 }))}
+                superseded={mergedContentData?.superseded ?? false}
+                // Gated on the same settled signal as the zero-documents
+                // guard below, not on the ambiguous count alone: offering
+                // the remedy while the count is still unknown is safe in
+                // both resolutions — it settles at zero, DocumentViewer's
+                // own zero-documents branch (guarded by `documentsLoading`)
+                // takes precedence and hides the button regardless; or it
+                // settles above zero, and the button was correct all along.
+                // A re-analyse fired during that window with genuinely zero
+                // documents is non-destructive — `createSkeletonFields` is
+                // guarded behind `!isReAnalyze` (T-003). Gating on
+                // `documents.length > 0` alone left the notice with no
+                // remedy for the entire cold-load window, since `documents`
+                // reads `[]` before the documents query has settled.
+                onReAnalyze={documentsLoading || documents.length > 0 ? handleReAnalyzeNow : undefined}
+                onManageDocuments={handleManageDocuments}
+                documentsLoading={documentsLoading}
               />
             }
             fieldsPanel={

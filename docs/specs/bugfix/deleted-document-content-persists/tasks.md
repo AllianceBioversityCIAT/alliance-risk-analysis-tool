@@ -175,7 +175,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-007: Explain withheld content and surface failed deletions `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` — PASS on attempt 3; see `execution.md`
 - **Skills:** `shadcn-ui`, `tailwind-design-system`, `vercel-react-best-practices`
 - **Size:** M · **Dependencies:** T-001, T-005 · **Requirements:** FR-DDP-003 Sc 1–3, FR-DDP-004 Sc 3 · **Design Ref:** §8.1, §8.4, §10
 - **Scope:**

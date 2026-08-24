@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
-import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown, AlertTriangle, RefreshCw, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +22,39 @@ interface DocumentViewerProps {
   /** Document metadata for section badges and navigation */
   documents?: DocumentMeta[];
   className?: string;
+  /**
+   * True when the stored analysis describes a document that no longer
+   * exists on the assessment (FR-DDP-002). Content is withheld and the
+   * viewer must say so — without asserting *why*, since the server cannot
+   * distinguish deletion, re-parsing, and a pre-fix analysis from the
+   * stored record alone (design.md §7.3, §8.1).
+   */
+  superseded?: boolean;
+  /**
+   * Triggers a fresh analysis run from the withheld-content notice
+   * (design.md §8.4). Omitted (or ignored) when zero documents remain —
+   * re-analysing then cannot produce content (FR-DDP-003 Sc 3).
+   */
+  onReAnalyze?: () => void;
+  /**
+   * Navigates to document management when zero documents remain on the
+   * assessment (FR-DDP-003 Sc 3) — the remedy there is uploading a
+   * document, not re-analysing.
+   */
+  onManageDocuments?: () => void;
+  /**
+   * True while the caller's documents query has not yet produced a
+   * confirmed answer — including the window before it is even enabled.
+   * An empty `documents` array is ambiguous on its own: it is what both a
+   * genuinely empty assessment *and* an unresolved (disabled, still
+   * fetching, or permanently errored) query report. Without this flag the
+   * zero-documents notice below cannot tell those apart from the signal
+   * alone, and would assert documents are gone during an ordinary load —
+   * or forever, if the request fails (FR-DDP-003 preamble). Defaults to
+   * `false` so existing callers that already know their count is settled
+   * are unaffected.
+   */
+  documentsLoading?: boolean;
 }
 
 // Stop words excluded from highlight matching (too generic to be useful)
@@ -68,6 +101,10 @@ export function DocumentViewer({
   highlightKeyword,
   documents,
   className,
+  superseded = false,
+  onReAnalyze,
+  onManageDocuments,
+  documentsLoading = false,
 }: DocumentViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fontIdx, setFontIdx] = useState(DEFAULT_FONT_IDX);
@@ -401,9 +438,95 @@ export function DocumentViewer({
     [],
   );
 
+  // The three states below are only reachable when there is no content to
+  // show — real content always takes priority, however `documents` or
+  // `superseded` happen to be set.
+  //
+  // ─── Zero documents remain (FR-DDP-003 Sc 3) ────────────────────────────
+  // Checked ahead of `superseded`: with no documents left, the remedy is
+  // uploading one, never re-analysing — this must be true regardless of how
+  // the analysis record itself reads.
+  //
+  // Guarded by `!documentsLoading`: an empty `documents` array alone does not
+  // mean zero documents remain — it is also what an unresolved query
+  // reports (disabled, still fetching, or errored). Asserting removal on
+  // that signal would fire on every cold load of an UPLOAD assessment, and
+  // forever on a fetch error, both of which read as "documents are gone"
+  // when in fact nothing is known. Falling through to the ordinary,
+  // cause-neutral empty state below is the same placeholder used while
+  // waiting for real content and is safe in every one of those cases.
+  if (!markdownContent && !documentsLoading && (documents?.length ?? 0) === 0) {
+    return (
+      <div
+        data-testid="no-documents-notice"
+        className={cn(
+          'flex flex-col h-full items-center justify-center text-center px-6',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-3 max-w-sm">
+          <FileX className="h-10 w-10 text-muted-foreground opacity-30" />
+          <p className="text-sm text-muted-foreground">
+            No documents remain on this assessment.
+          </p>
+          {onManageDocuments && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1"
+              onClick={onManageDocuments}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              Manage Documents
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Withheld analysis (FR-DDP-002, FR-DDP-003 Sc 1) ────────────────────
+  // The stored analysis describes a document that no longer exists. The
+  // copy deliberately does not assert a cause — deletion, re-parsing, and a
+  // pre-fix analysis are indistinguishable from the stored record alone
+  // (design.md §7.3, §8.1) — and it must read as distinct from both "never
+  // analysed" (below) and the ordinary loading state.
+  if (!markdownContent && superseded) {
+    return (
+      <div
+        data-testid="document-withheld-notice"
+        className={cn(
+          'flex flex-col h-full items-center justify-center text-center px-6',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-3 max-w-sm">
+          <div className="flex items-center justify-center h-12 w-12 rounded-full bg-warning/10">
+            <AlertTriangle className="h-6 w-6 text-warning" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            This analysis no longer matches the current documents — one of them was removed or replaced.
+          </p>
+          {onReAnalyze && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+              onClick={onReAnalyze}
+            >
+              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              Re-analyse now
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!markdownContent) {
     return (
       <div
+        data-testid="document-empty-state"
         className={cn(
           'flex flex-col h-full items-center justify-center text-muted-foreground',
           className,

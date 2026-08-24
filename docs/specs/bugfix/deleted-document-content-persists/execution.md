@@ -495,3 +495,115 @@ Escalated rather than absorbed: minting work from a review finding without appro
 | Risk | **`use-multi-document-status.ts:30-37` has the same polling shape with no cap** — `if (!docs || docs.length === 0) return 3000` polls forever on an empty list or a document stuck in `PARSING`. Same defect class this task exists to close | Recorded as a **follow-up candidate**, out of scope under NFR-DDP-012. Not minted as a task |
 
 ---
+
+### T-007 — Explain withheld content and surface failed deletions `[FE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-24 |
+| **Requirements covered** | FR-DDP-003 Sc 1–3, FR-DDP-004 Sc 3 |
+| **Design ref** | §8.1, §8.4, §10 |
+| **Effort** | attempt 1 `high` → attempt 2 `xhigh` |
+| **Skills** | `shadcn-ui`, `tailwind-design-system`, `vercel-react-best-practices` |
+
+#### Attempt 1 — Reviewer `STATUS: FAIL` (1 issue)
+
+- **Files changed:** `document-viewer.tsx` (+102), `gap-detector-client.tsx` (+30), `upload-business-plan-modal.tsx` (+20), plus a new `document-viewer` suite.
+- **Verification:** `document-viewer` **12/12**; `gap-detector-client|use-merged-content|use-multi-document-status` **33/33**. Full web suite 166/168, the 2 failures being the pre-existing unrelated `assessment-table.test.tsx`.
+
+**Confirmed sound — the rework must not undo these:**
+
+- **State precedence is right, and for the right reason.** Zero-documents is checked before `superseded`, which is load-bearing: deleting the last document makes `superseded` true *and* leaves zero documents, so a `superseded`-first order would render "Re-analyse now" in exactly the state FR-DDP-003 Sc 3 forbids it. Two independent guards enforce it — the ordering, and `onReAnalyze` passed only when documents remain.
+- **The disqualifier is cleared.** The suite distinguishes states by user-visible strings, not only by `data-testid`: one test asserts the empty-state copy is *absent* from the withheld notice, another that it is *present* in the empty state, so reusing the copy fails the suite. 11 of 12 tests can fail (the exception is noted below).
+- `GapLayout`'s contract is untouched; the panel now mounts for every UPLOAD assessment. MANUAL_ENTRY unaffected.
+- `DocumentViewer` stayed presentational — no hook, no `apiClient`, no React Query.
+- Tokens only: `bg-warning/10`, `text-warning`, `border-warning/40`, resolved through `--color-warning` in `globals.css:50`. No raw hex added.
+- **The delete failure path is sound**, including the edge cases: a network error is still an `AxiosError` but with `response === undefined`, so it takes the toast-and-keep-the-row branch; a non-Axios throw fails the `instanceof` and does the same. `apiClient`'s interceptor re-rejects the original error, so the `instanceof` is reliable.
+- **The added `onManageDocuments` prop is justified, not scope creep.** FR-DDP-003 Sc 3 requires offering an upload remedy and §8.1's table names "Manage Documents" as that row's action; keeping the component presentational rules out embedding `useRouter`, and keeping the FR-DDP-003 gate on the `document-viewer` suite rules out moving the state up. A third optional callback was the cheapest conforming option, and it was disclosed.
+- No pre-existing test was edited — the correct call given this spec's history.
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** The zero-documents branch keys on `(documents?.length ?? 0) === 0`, which in this application means *"no documents, or we do not yet know"*. `useMultiDocumentStatus` returns `documents = query.data ?? []` (`use-multi-document-status.ts:40`), and that query is only *enabled* once the assessment resolves (`gap-detector-client.tsx:181`), while `GapLayout` renders as soon as `isLoading = assessmentLoading || gapLoading` clears (`:399`, `:748`). The documents request therefore starts one round trip *after* the two queries that gate the render, so on any cold entry to the Gap Detector for an UPLOAD assessment the panel asserts **"No documents remain on this assessment."** with a Manage Documents button for roughly one round trip before flipping to the real content. Second manifestation: if the documents request *fails*, `documents` stays `[]` and that false assertion is permanent on an assessment that still has documents. Third: a DRAFT UPLOAD assessment where nothing was ever uploaded gets copy claiming documents no longer "remain".
+
+   Note that the same file already treats this signal as ambiguous — `gap-detector-client.tsx:598` reads `{/* Fallback when no documents loaded yet */}` and deliberately uses neutral copy (`"Uploaded Documents"`) for `docCount === 0`. The new branch makes a definite claim on the signal the adjacent code documents as unknowable. Test `document-viewer.test.tsx:177` locks the conflation in.
+   - **Violated Rule:** `requirements.md` FR-DDP-003 preamble — *"It SHALL NOT present a silently empty or absent document panel, which is indistinguishable from 'still loading' and from 'nothing was ever uploaded'."* The implementation **inverts, rather than avoids, that conflation**: the terminal zero-documents state is now indistinguishable from "still loading". Compounding: FR-DDP-003 Sc 3's GIVEN is *"an assessment whose only document has been deleted"*, and this fires well outside it. `design.md` §14 (DD-DDP-007) sanctioned the new initial render as *"two-column with a placeholder"* — the neutral pre-existing placeholder — not as a state that asserts documents are gone and offers a remedy for it. OQ-3 routes the *layout* change to HITL; it does not cover shipping a false claim on the normal path.
+   - **Remediation Suggestion:** Give the component a loading-aware signal rather than inferring absence from an empty array. Add `documentsLoading?: boolean` to `DocumentViewerProps`, guard the branch as `if (!markdownContent && !documentsLoading && (documents?.length ?? 0) === 0)`, and let it fall through to the ordinary empty state while unresolved — which is exactly the placeholder §14 sanctioned. Wire it from `gap-detector-client.tsx` off `useMultiDocumentStatus`'s already-returned `isLoading`; verify the flag is true for the whole window in which an *enabled* documents query has not yet returned, since React Query v5 reports `isLoading === false` for a disabled query, and consider `isPending && enabled` or `!isFetched` if `isLoading` proves too narrow. Add one test — `documents={[]}` with `documentsLoading` renders the empty state, not the no-documents notice — and confirm it fails against the current code before the fix.
+
+**Leader adjudication.** Correct and in scope. The requirement's preamble names the conflation explicitly, and attempt 1 reproduced it in the opposite direction — which is subtler than the original bug and would have shipped, since every fixture passes `documents` as a settled value. The Reviewer's own evidence that the codebase already treats this signal as unknowable (the adjacent neutral-copy fallback) is what makes it unambiguous.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | **The 404 branch bypasses `useDeleteDocument`'s `onSuccess`**, so `['merged-content']` and `['gap-fields']` are not invalidated on a path whose server-side end state is identical to a successful delete. Up to 60 s of now-deleted content can survive it | **Raised with the user at the approval gate** — it touches FR-DDP-002 Sc 3's "must not be re-served from any client-side cache", so it may be a clause gap rather than an advisory. Not absorbed into T-007's rework |
+| Reliability | `document-viewer.test.tsx:57-63` cannot fail — the pre-existing `!markdownContent` guard already guarantees no content node, so it holds even with the superseded branch deleted. The clause it nominally covers is genuinely enforced server-side by T-005, and both fields arrive atomically from one query, so no client desync is possible | Recorded |
+| Risk / coverage | **The single line that stops the panel vanishing has no automated assertion anywhere.** `DocumentViewerStub` exists in the client suite but is never queried, so nothing would catch a revert to `hasDocument && !!mergedMarkdown`. T-008 §2 is the only gate | **Raised with the user** — closing it means editing a pre-existing suite, which is a Leader call |
+| Readability | The notice copy has an ambiguous referent: *"the current documents — one of them was removed or replaced"*, but the removed document is by definition not among the current ones | **Raised with the user** alongside OQ-1 |
+| a11y | Neither new state carries `role="status"` or `aria-live`, so the transition from content to the withheld notice is silent to assistive technology — the one class of user for whom "the panel changed" is not self-evident | Recorded |
+
+#### Attempt 2 — Reviewer `STATUS: FAIL` (1 issue)
+
+- **Files changed:** `document-viewer.tsx` (new `documentsLoading` prop + guard), `gap-detector-client.tsx` (wiring), `document-viewer.test.tsx` (+1 test).
+- **Verification:** `document-viewer` **13/13**; the three sibling suites **33/33**; lint clean.
+
+**Confirmed sound by the Reviewer:**
+
+- **The signal choice was verified, not accepted.** The Implementer built two empirical probes against the real query-core rather than assuming, and found that `isLoading` *would* have covered the cold-entry window (TanStack's optimistic-result mechanism starts the fetch synchronously during the render that enables the query, so there is no stale-`false` frame) but reads `false` after an error — the "asserts forever" mode. The Reviewer independently confirmed against `query.ts` that `status !== 'success'` is the only signal true across disabled, fetching **and** errored, and false only on a confirmed answer.
+- The hardcoded key matches `use-multi-document-status.ts:22` exactly, and resolves under the default hash function.
+- The new test genuinely gates, and the five pre-existing zero-documents tests still gate what they did.
+- No pre-existing test file was edited; the react-query mock is untouched, which is exactly why the optional chaining was needed.
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** The rework disambiguated `documents.length === 0` inside `DocumentViewer` but left the *identical* conflation in the caller that supplies the remedy. `gap-detector-client.tsx:792` still reads `onReAnalyze={documents.length > 0 ? handleReAnalyzeNow : undefined}`. The new guard makes `superseded && documentsLoading && documents.length === 0` a reachable render path — it now falls through the zero-documents branch into the withheld-notice branch — and in that path `onReAnalyze` is `undefined`, so the notice renders **with no "Re-analyse now" button at all**.
+
+   This is not an edge case, it is the first painted frame of the primary scenario. `useMergedContent` is enabled on mount, whereas the documents query is enabled only once `assessment` resolves — and the panel itself only mounts after `assessmentLoading || gapLoading` clears. So on every cold load of a superseded assessment, `superseded` is already known while the documents query is still `'pending'`: the Analyst sees "This analysis no longer matches the current documents" with no action for a full documents round trip, after which the button pops in. For the duration of any outage of the documents endpoint, `status` stays `'error'`, `documentsLoading` stays `true`, and the panel is inert with a notice and no remedy for as long as the outage lasts. **Attempt 1 rendered a false claim *with* an action in this state; attempt 2 renders honest copy with *no* action, which is the clause-level violation.**
+   - **Violated Rule:** `requirements.md:151` (FR-DDP-003 preamble — "the Gap Detector SHALL say so **and name how to refresh it**") and `:157` (Sc 1 — "**and offers a way to re-analyse**"). Also `tasks.md` T-007 "Done when": "the re-analyse action reaches the existing endpoint".
+   - **Remediation Suggestion:** Gate the remedy on the same settled signal the guard uses, not on the ambiguous count — `onReAnalyze={documentsLoading || documents.length > 0 ? handleReAnalyzeNow : undefined}`. Offering re-analysis while the count is unknown is safe in both resolutions: if it settles at zero, the zero-documents branch takes precedence and hides the button anyway (already asserted); if it settles above zero, the button was correct all along. A re-analyse fired during the unknown window with genuinely zero documents is **non-destructive because T-003 already guards `createSkeletonFields` behind `!isReAnalyze`**. Add one test pinning it. (Passing `onReAnalyze` unconditionally and letting the component decide is an equally acceptable shape; what must not survive is a remedy gated on a signal the spec says cannot distinguish "zero" from "unknown".)
+
+**Leader adjudication.** Correct. The defect is the *same* one attempt 2 was sent to fix, surviving one layer up — the guard moved, the remedy gate did not. Worth naming plainly: this spec has now seen the same shape three separate times (T-002's mock, T-006's counter, and here) — a fix applied at the site the finding named, while an identical instance one level away went unexamined.
+
+**Leader constraint lifted for attempt 3.** The Reviewer recommends the signal belong to the hook rather than the caller, and notes correctly that **the constraint barring `use-multi-document-status.ts` was mine.** I am lifting it. Its reasoning holds: exposing the signal from the hook deletes the hardcoded `['assessment-documents-poll', id]` duplication, deletes the `getQueryState?.` optional-chaining workaround (the hook is already mocked wholesale in the client suite, so no react-query mock change is needed), and removes a non-subscribed cache read — whose failure mode is the *unsafe* direction: a key rename would pin `documentsLoading` to `true` forever, making both the zero-documents notice and the re-analyse button permanently unreachable, with **no automated test able to see it**.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | `getQueryState` is read during render without a subscription. The load-bearing pending→success flip is observed because `data` changes `undefined` → `[]`, but a background poll failure after a first success changes neither tracked prop, so the flag can read stale until an unrelated render. Benign today; it is the tearing the hook's own return value exists to prevent — another argument for moving the signal into the hook |
+| Resilience | query-core sets `status: 'error'` even when prior data exists, so a single failed 3 s poll on a genuinely empty assessment flips the panel between notice and placeholder and back. Cosmetic flapping only; self-heals |
+| Readability | `documentsLoading` defaults to `false` — the component still trusts a bare `[]` unless told otherwise. Fine with one caller, but the conservative default is the footgun-free choice for a flag whose purpose is "do not trust the empty array" |
+
+#### Attempt 3 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `use-multi-document-status.ts` (+`isSettled`), `gap-detector-client.tsx` (hook wiring + the FAIL site), `document-viewer.test.tsx` (+1), `use-multi-document-status.test.ts` (+3).
+- **Verification:** `document-viewer` **14/14**; the three sibling suites **36/36**; lint clean.
+- **Not Done / Assumptions:** none.
+
+**The fix:** `onReAnalyze={documentsLoading || documents.length > 0 ? … : undefined}` — the predicate is now "unknown or non-empty", belt-and-braces with the component's own guard. The Reviewer evaluated all three resolutions: unsettled → button present; settles at zero → the zero-documents branch takes precedence and shows Manage Documents; settles above zero → button correct.
+
+**The lifted constraint paid off.** A repo-wide grep confirms `getQueryState` returns **zero hits** and `assessment-documents-poll` now appears only at its own declaration — the hardcoded key and the optional-chaining workaround are *gone, not bypassed*. `isSettled: query.isSuccess` is semantically identical to the previously-verified `status !== 'success'`, including staying `false` on error, which a new test pins.
+
+**The sweep worked, and was not exhaustive.** The Implementer named seven consumer sites with verdicts, all independently verified correct. The Reviewer then found **two more it had missed** — `gap-detector-client.tsx:609` (`hasDocument && docCount === 0`, the negative twin of a bar the sweep *did* name) and `use-multi-document-status.ts:32`. Both benign, neither a violation. Recorded because the miss is the exact "fixed the site, missed its twin" shape this spec has now hit three times.
+
+**The coverage gap — Reviewer's judgment, and I accept it.** The Implementer disclosed honestly that reverting its own one-line fix left all 50 tests green: `gap-detector-client.test.tsx` stubs `DocumentViewer`, so no test in the permitted file set can exercise the caller's JSX. The Reviewer ruled this an **accepted, recorded gap rather than a FAIL**, on four grounds — and the second is the one that decides it:
+
+1. `requirements.md` §6 maps **D6** to the `document-viewer` suite, and that gate *can* be made to fail by its named input; the new test adds the `documentsLoading` case to it. The "a check that cannot fail is not evidence" rule indicts the *gate*, and this gate is not indicted.
+2. **T-007's own disqualifier forbids `gap-detector-client` as evidence**, on precisely the stub argument. Demanding a stub-prop assertion would require building evidence the spec has already declared non-evidentiary, in a file the Implementer was barred from editing. *"I will not FAIL a task for declining to violate its own disqualifier."*
+3. The property has an owner: `requirements.md` §6 **steps 2 and 8** both fail in a browser if this line regresses — the D4/D6 class §6 routes to manual QA rather than pretending to automate.
+4. The residue is a *future* revert shipping silently — a bounded maintenance risk on one boolean, not a defect in what ships.
+
+**Leader action taken:** recorded here, with **T-008 step 8 named as its owning gate.** The walkthrough is not optional for this line. Closing it automatically later means a new caller-level suite rendering the real `DocumentViewer` — a scope expansion, not a T-007 rework.
+
+**Final status: ✅ PASS on attempt 3 of 3.**
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | With `isSettled` as the signal, a **permanently failing documents fetch** leaves `documentsLoading` true forever — so the confirmed-zero "Manage Documents" state is unreachable and the notice keeps offering a re-analysis that cannot produce content. Safe (T-003's skeleton guard), and an accepted consequence of the verified signal choice | Recorded as the Reviewer requested |
+| Reliability | The sweep missed `gap-detector-client.tsx:609`, the negative twin of a site it did name. Verdict benign | Recorded |
+| Risk | **"Re-analyse now" has no `disabled` state while a run is in flight**, and the notice persists until refetch — so repeated clicks enqueue repeated Bedrock runs. NFR-DDP-011 governs deletion only, so not a violation, but one click away from avoidable spend | **Raised with the user** |
+| Resilience | `use-multi-document-status.ts:32` polls every 3 s indefinitely on a genuinely empty list. Pre-existing, outside NFR-DDP-010's scope (which governs merged-content), but adjacent to its intent | Recorded — same follow-up candidate noted in T-006 |
+| Readability | The 13-line comment at the call site is longer than the expression it explains and restates the hook's own doc comment | Recorded |

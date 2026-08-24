@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { sileo } from 'sileo';
+import { AxiosError } from 'axios';
 import { Button } from '@/components/ui/button';
 import { UploadDropzone, type SelectedFile } from './upload-dropzone';
 import { FileListItem, ProcessingQueue, type FileItemStatus } from './file-list-item';
@@ -181,12 +182,25 @@ export function UploadBusinessPlanModal({ assessmentId }: UploadBusinessPlanModa
       const tf = files[index];
       if (!tf) return;
 
-      // If document was already registered with the API, delete it
+      // If document was already registered with the API, delete it.
+      // A 404 means the server already agrees it is gone — remove the row.
+      // Any other failure must NOT be swallowed: silently removing the row
+      // anyway would reproduce this very bug with a stronger illusion of
+      // success (design.md §10, FR-DDP-004 Sc 3) — the document, its parse
+      // job, and a matching snapshot would all still exist server-side
+      // while the Analyst believes the document is gone.
       if (tf.documentId) {
         try {
           await deleteDocumentApi({ assessmentId, documentId: tf.documentId });
-        } catch {
-          // Ignore — might not exist yet
+        } catch (err) {
+          const isAlreadyGone = err instanceof AxiosError && err.response?.status === 404;
+          if (!isAlreadyGone) {
+            sileo.error({
+              title: 'Failed to remove document',
+              description: err instanceof Error ? err.message : 'Please try again.',
+            });
+            return; // Keep the row listed — the deletion did not succeed.
+          }
         }
       }
 

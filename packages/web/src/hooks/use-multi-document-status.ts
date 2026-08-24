@@ -54,6 +54,23 @@ export function useMultiDocumentStatus(
     anyFailed,
     isProcessing,
     isLoading: query.isLoading,
+    /**
+     * True only once this query has produced a confirmed answer — i.e.
+     * `documents` reflects a real response, not an empty array standing in
+     * for "disabled", "still fetching", or "errored". `query.isLoading`
+     * cannot serve this purpose: it is `isPending && isFetching`, and a
+     * *disabled* query (before `enabled` flips true) reports `isFetching:
+     * false`, so `isLoading` reads `false` before any fetch has ever run —
+     * exactly the window in which `documents` is `[]` for a reason
+     * unrelated to "zero documents remain". `isSuccess` (`status ===
+     * 'success'`) is the one signal that is false across disabled, pending,
+     * and errored alike, and true only once data is confirmed — verified
+     * against the installed @tanstack/query-core (design.md §14;
+     * requirements.md FR-DDP-003 preamble). A failed fetch must read the
+     * same as "not yet known", never as a confirmed empty list, so a
+     * network error never permanently asserts zero documents.
+     */
+    isSettled: query.isSuccess,
     refetch: query.refetch,
   };
 }
