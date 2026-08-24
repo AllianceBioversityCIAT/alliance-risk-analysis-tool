@@ -1,6 +1,7 @@
 'use client';
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import apiClient from '@/lib/api-client';
 import type { DocumentInfo } from '@alliance-risk/shared';
 
@@ -100,9 +101,29 @@ export function useTriggerParseAll() {
  * and this is the only refresh path reachable from the deletion screen itself
  * (`/assessments/upload`), which is a different screen from the one rendering
  * that cached content (`/assessments/gap-detector`).
+ *
+ * A 404 gets the exact same treatment (T-007 Reviewer advisory, Gap 1). The
+ * server already agrees the document is gone in that case — the end state is
+ * identical to a successful delete, so FR-DDP-002 Sc 3's "must NOT be
+ * re-served from any client-side cache" applies just as much. This is
+ * handled here, in the hook, rather than at each call site: "404 means it's
+ * already gone" is a fact about this mutation's own semantics, not something
+ * every future consumer of `useDeleteDocument` should have to rediscover and
+ * re-implement. Any other failure leaves server-side state unclear and must
+ * NOT invalidate — the row should stay listed so the failure is visible.
  */
 export function useDeleteDocument() {
   const queryClient = useQueryClient();
+
+  const invalidateDependentCaches = (assessmentId: string) => {
+    queryClient.invalidateQueries({
+      queryKey: ['merged-content', assessmentId],
+    });
+    queryClient.invalidateQueries({
+      queryKey: ['gap-fields', assessmentId],
+    });
+  };
+
   return useMutation({
     mutationFn: async ({
       assessmentId,
@@ -116,12 +137,12 @@ export function useDeleteDocument() {
       );
     },
     onSuccess: (_data, variables) => {
-      queryClient.invalidateQueries({
-        queryKey: ['merged-content', variables.assessmentId],
-      });
-      queryClient.invalidateQueries({
-        queryKey: ['gap-fields', variables.assessmentId],
-      });
+      invalidateDependentCaches(variables.assessmentId);
+    },
+    onError: (error, variables) => {
+      if (error instanceof AxiosError && error.response?.status === 404) {
+        invalidateDependentCaches(variables.assessmentId);
+      }
     },
   });
 }

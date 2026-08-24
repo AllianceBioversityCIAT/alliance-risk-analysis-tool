@@ -255,4 +255,63 @@ describe('DocumentViewer — withheld content and empty states (FR-DDP-003)', ()
       expect(screen.queryByTestId('document-withheld-notice')).not.toBeInTheDocument();
     });
   });
+
+  // ─── T-007 Reviewer advisory, Gap 2: the "Re-analyse now" button had no
+  // disabled state at all while a run was in flight, so repeated clicks
+  // could enqueue repeated Bedrock runs. `DocumentViewer` stays purely
+  // presentational — the in-flight signal arrives as a `reAnalyzeInFlight`
+  // prop, exactly like `documentsLoading` and `superseded` already do; the
+  // parent (`gap-detector-client.tsx`) owns computing when that span starts
+  // and ends. ─────────────────────────────────────────────────────────────
+  describe('reAnalyzeInFlight — the "Re-analyse now" button disables during a run (T-007 Gap 2)', () => {
+    it('is enabled and reads "Re-analyse now" when no run is in flight', () => {
+      render(
+        <DocumentViewer
+          markdownContent={null}
+          documents={DOCS}
+          superseded
+          onReAnalyze={jest.fn()}
+          reAnalyzeInFlight={false}
+        />,
+      );
+
+      const button = screen.getByRole('button', { name: /re-analyse now/i });
+      expect(button).not.toBeDisabled();
+    });
+
+    // Catches the wrong implementation this gap actually shipped with: a
+    // button with no `disabled` prop wired at all (so it stays clickable
+    // for the whole run), or one gated only on a boolean that happens to
+    // already be false by this point. Either wrong implementation renders
+    // an enabled, "Re-analyse now" button here; the fix must render it
+    // disabled and visibly busy.
+    it('disables the button and shows an in-flight affordance while a run is in flight', async () => {
+      const onReAnalyze = jest.fn();
+      render(
+        <DocumentViewer
+          markdownContent={null}
+          documents={DOCS}
+          superseded
+          onReAnalyze={onReAnalyze}
+          reAnalyzeInFlight
+        />,
+      );
+
+      const button = screen.getByRole('button', { name: /re-analysing/i });
+      expect(button).toBeDisabled();
+      expect(button).toHaveAttribute('aria-busy', 'true');
+      // The stale "Re-analyse now" label must not still be present —
+      // otherwise the control reads as clickable when it is not.
+      expect(
+        screen.queryByRole('button', { name: /^re-analyse now$/i }),
+      ).not.toBeInTheDocument();
+
+      // A disabled native <button> does not fire its click handler even if
+      // something (e.g. a stray event) tries — confirms this is a real,
+      // enforced disabled state and not merely a relabeled enabled button.
+      const user = userEvent.setup();
+      await user.click(button);
+      expect(onReAnalyze).not.toHaveBeenCalled();
+    });
+  });
 });

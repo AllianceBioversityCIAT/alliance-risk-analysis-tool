@@ -37,6 +37,19 @@ interface DocumentViewerProps {
    */
   onReAnalyze?: () => void;
   /**
+   * True from the moment "Re-analyse now" is clicked until the triggered
+   * job reaches a terminal state — not merely while the kickoff request
+   * (the mutation) is pending. `handleReAnalyzeNow` in `gap-detector-client.tsx`
+   * calls the re-analyze mutation and then starts job polling; the run is
+   * only actually finished once that job completes or fails, well after the
+   * mutation itself resolves (T-007 Reviewer advisory, Gap 2). Disables the
+   * button and swaps its icon/label for a visible in-flight affordance so
+   * repeated clicks cannot enqueue repeated Bedrock runs and the control does
+   * not read as unresponsive. Defaults to `false` so existing callers are
+   * unaffected.
+   */
+  reAnalyzeInFlight?: boolean;
+  /**
    * Navigates to document management when zero documents remain on the
    * assessment (FR-DDP-003 Sc 3) — the remedy there is uploading a
    * document, not re-analysing.
@@ -105,6 +118,7 @@ export function DocumentViewer({
   onReAnalyze,
   onManageDocuments,
   documentsLoading = false,
+  reAnalyzeInFlight = false,
 }: DocumentViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fontIdx, setFontIdx] = useState(DEFAULT_FONT_IDX);
@@ -513,9 +527,16 @@ export function DocumentViewer({
               size="sm"
               className="mt-1 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
               onClick={onReAnalyze}
+              disabled={reAnalyzeInFlight}
+              aria-busy={reAnalyzeInFlight}
             >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              Re-analyse now
+              <RefreshCw
+                className={cn(
+                  'h-3.5 w-3.5 mr-1.5',
+                  reAnalyzeInFlight && 'animate-spin',
+                )}
+              />
+              {reAnalyzeInFlight ? 'Re-analysing…' : 'Re-analyse now'}
             </Button>
           )}
         </div>

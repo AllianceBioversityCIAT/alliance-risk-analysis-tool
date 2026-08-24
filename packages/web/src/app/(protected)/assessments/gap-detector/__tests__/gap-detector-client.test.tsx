@@ -40,10 +40,30 @@ jest.mock('next/navigation', () => ({
 }));
 
 // next/dynamic — replace the lazily-imported DocumentViewer with a stub so we
-// never touch the real (markdown-heavy) component.
+// never touch the real (markdown-heavy) component. The stub renders enough
+// of the real "Re-analyse now" contract (an onClick trigger gated by a
+// disabled prop) that T-007 Gap 2's in-flight wiring — computed in
+// gap-detector-client.tsx and passed down as a prop, exactly like
+// `documentsLoading` — can be exercised without rendering the real,
+// markdown-heavy DocumentViewer.
 jest.mock('next/dynamic', () => () => {
-  function DocumentViewerStub() {
-    return <div data-testid="document-viewer-stub" />;
+  function DocumentViewerStub(props: {
+    onReAnalyze?: () => void;
+    reAnalyzeInFlight?: boolean;
+  }) {
+    return (
+      <div data-testid="document-viewer-stub">
+        {props.onReAnalyze && (
+          <button
+            type="button"
+            onClick={props.onReAnalyze}
+            disabled={!!props.reAnalyzeInFlight}
+          >
+            {props.reAnalyzeInFlight ? 'Re-analysing…' : 'Re-analyse now'}
+          </button>
+        )}
+      </div>
+    );
   }
   DocumentViewerStub.displayName = 'DocumentViewerStub';
   return DocumentViewerStub;
@@ -352,6 +372,74 @@ describe('GapDetectorClient — country mismatch validation', () => {
       render(<GapDetectorClient />);
 
       expect(mockInvalidateQueries).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('"Re-analyse now" in-flight guard (T-007 Gap 2)', () => {
+    // Catches the naive fix: a guard keyed only on the re-analyze mutation's
+    // own pending state. `mockReAnalyze` resolves immediately (it is a
+    // `mockResolvedValue`, not a pending promise), so by the time this test
+    // asserts, the mutation itself has long since settled — exactly the
+    // "resolved but the job has not terminated" window the naive guard
+    // misses, since `mockJobStatus` (the mocked useJobPolling `status`) is
+    // still `null`, i.e. not yet COMPLETED or FAILED. A guard based only on
+    // the mutation's pending flag would already read as idle here and
+    // re-enable the button; the fix must not.
+    it('disables the button after the kickoff mutation resolves but before the job reaches a terminal state', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockJobStatus = null;
+      const user = userEvent.setup();
+      const { rerender } = render(<GapDetectorClient />);
+
+      const initialButton = screen.getByRole('button', { name: /re-analyse now/i });
+      expect(initialButton).not.toBeDisabled();
+
+      await user.click(initialButton);
+
+      // The kickoff mutation has resolved and startPolling was called with
+      // its jobId — but no job status has arrived yet (mockJobStatus is
+      // still null, matching the mocked useJobPolling's fixed `status`).
+      await waitFor(() => expect(mockStartPolling).toHaveBeenCalledWith('job-1'));
+      rerender(<GapDetectorClient />);
+
+      expect(screen.getByRole('button', { name: /re-analysing/i })).toBeDisabled();
+
+      // A second click while disabled must not enqueue a second run.
+      expect(mockReAnalyze).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-enables the button once the job reaches a terminal state (COMPLETED)', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockJobStatus = null;
+      const user = userEvent.setup();
+      const { rerender } = render(<GapDetectorClient />);
+
+      await user.click(screen.getByRole('button', { name: /re-analyse now/i }));
+      await waitFor(() => expect(mockStartPolling).toHaveBeenCalledWith('job-1'));
+      rerender(<GapDetectorClient />);
+      expect(screen.getByRole('button', { name: /re-analysing/i })).toBeDisabled();
+
+      mockJobStatus = JobStatus.COMPLETED;
+      rerender(<GapDetectorClient />);
+
+      expect(screen.getByRole('button', { name: /^re-analyse now$/i })).not.toBeDisabled();
+    });
+
+    it('re-enables the button if the job instead reaches a terminal state (FAILED)', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockJobStatus = null;
+      const user = userEvent.setup();
+      const { rerender } = render(<GapDetectorClient />);
+
+      await user.click(screen.getByRole('button', { name: /re-analyse now/i }));
+      await waitFor(() => expect(mockStartPolling).toHaveBeenCalledWith('job-1'));
+      rerender(<GapDetectorClient />);
+      expect(screen.getByRole('button', { name: /re-analysing/i })).toBeDisabled();
+
+      mockJobStatus = JobStatus.FAILED;
+      rerender(<GapDetectorClient />);
+
+      expect(screen.getByRole('button', { name: /^re-analyse now$/i })).not.toBeDisabled();
     });
   });
 

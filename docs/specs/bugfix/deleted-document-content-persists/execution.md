@@ -607,3 +607,54 @@ Escalated rather than absorbed: minting work from a review finding without appro
 | Risk | **"Re-analyse now" has no `disabled` state while a run is in flight**, and the notice persists until refetch — so repeated clicks enqueue repeated Bedrock runs. NFR-DDP-011 governs deletion only, so not a violation, but one click away from avoidable spend | **Raised with the user** |
 | Resilience | `use-multi-document-status.ts:32` polls every 3 s indefinitely on a genuinely empty list. Pre-existing, outside NFR-DDP-010's scope (which governs merged-content), but adjacent to its intent | Recorded — same follow-up candidate noted in T-006 |
 | Readability | The 13-line comment at the call site is longer than the expression it explains and restates the hook's own doc comment | Recorded |
+
+### Two approved gap closures (follow-on to T-007)
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-24 |
+| **Authorisation** | Both raised as T-007 Reviewer advisories, put to the user, approved |
+| **Effort** | `medium` · **Skills** `vercel-react-best-practices`, `shadcn-ui` |
+
+**Gap 1 — the 404 delete path skipped cache invalidation.** Closes `requirements.md` FR-DDP-002 Sc 3's *"must NOT be re-served from any client-side cache"*: the already-gone path removed the row but bypassed `onSuccess`, so up to 60 s of deleted content could survive on the Gap Detector.
+
+Placed in `useDeleteDocument`'s own `onError`, **not** the call site — the Implementer's argument being that "404 means already gone" is a fact about the mutation's semantics, not something each future consumer should rediscover. `upload-business-plan-modal.tsx` needed **zero changes**.
+
+Reviewer verification, done against the installed library rather than assumed:
+- `@tanstack/query-core@5.90.20` `mutation.js` awaits `onError` at `:159` and only reaches `throw error` at `:192` — so the hook's handler completes before `mutateAsync` rejects into the modal's existing catch. Mutations default to `retry: 0`, so it fires exactly once.
+- The hook's 404 predicate is **character-for-character** the modal's own, same axios import, no drift possible.
+- A non-404 does **not** invalidate — gated by a 500 test, which is what catches a status-blind `instanceof AxiosError` check. That wrong implementation would have been *worse than the original gap*.
+- The cited `use-assessments.ts:121-129` precedent (409 in `onError`) is real and says what was claimed.
+
+**Gap 2 — "Re-analyse now" had no in-flight state**, so repeated clicks enqueued repeated Bedrock runs. Not required by any clause; approved as prudence.
+
+The subtlety is that the run finishes at *job* terminal state, long after the kickoff mutation resolves. The Implementer used a local flag set **before** the mutation call and cleared only on a terminal `jobStatus`, arguing `useJobPolling`'s own `isProcessing` is insufficient because it turns true only once the first status fetch resolves. The Reviewer traced the full span and confirmed **no re-enable window exists**:
+
+| Moment | Button |
+|---|---|
+| click → mutation pending | disabled |
+| **mutation resolves with `jobId`** | **disabled** ← the window a mutation-only guard loses |
+| `startPolling`, first fetch in flight | disabled |
+| polls PENDING/PROCESSING → terminal | disabled → enabled |
+
+**Can it stick disabled forever?** This mattered — a permanently disabled remedy would be worse than the defect. The Reviewer verified the mechanism rather than trusting the comment: for a job reset to `PENDING` that nothing retries (the platform defect DD-DDP-006 records), `useJobPolling` polls past `maxAttempts = 100`, sets `timedOut`, and **computes `status` as `FAILED`** — which trips the clear path. Bounded at ~5 minutes. The same recovery holds for the pathological `startPolling(undefined)` case.
+
+**The widened stub was the regression risk**, since `gap-detector-client.test.tsx` is a pre-existing suite. Verified additive collision-wise, not just by assertion: the stub's only new node is a button whose accessible name matches no pre-existing query in the file, and no existing test queries the stub, counts buttons, or counts renders. All 17 pre-existing tests intact.
+
+**A useful side effect.** The props-aware stub **partly closes T-008 step 8's caller-line gap for free** — the three new tests now prove `onReAnalyze` → `handleReAnalyzeNow` → `reAnalyze()` → `startPolling`. The Reviewer named the cheap remainder (one test flipping `jobStatus` to `COMPLETED` and asserting both invalidations; one setting the documents mock to settled-and-empty to assert no button). **Not done here** — it is a scope expansion, and the genuinely un-automatable half of step 8 stays T-008's.
+
+- **Verification:** 4 suites, **57 passed** (baseline 50 + 7 new); lint clean. Each new test verified red pre-fix by stashing only the relevant source file.
+- **Not Done / Assumptions:** none.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | The in-flight flag keys on *any* terminal `jobStatus`, not the `jobId` this button started. Interleaving edge: click Re-analyse (job A) → save a field → the debounce starts job B → B's terminal state clears the flag while A may still run. Costs at most one extra Bedrock run in a rare sequence |
+| Reliability | The ~5-minute ceiling rests entirely on `useJobPolling`'s `maxAttempts` → `timedOut` → `FAILED` path, and the call-site comment does not say so. A future change to `maxAttempts` could silently become a stuck-remedy bug |
+| Reliability | Unmounting the Gap Detector mid-run resets the flag, so returning re-enables the button while the job still runs. Pre-existing property, same as the debounced path — **noted for the T-008 walkthrough** |
+| Risk | The three new client tests depend on an *incidental* property of the pre-existing documents mock (it omits `isSettled`). Anyone completing that mock would silently invert the precondition and get "unable to find button" rather than a meaningful failure |
+| Readability | A comment claims "a second click while disabled must not enqueue a second run" above an assertion that performs no second click — the claim is actually proven elsewhere |
+
+---

@@ -1,5 +1,6 @@
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { AxiosError, type AxiosResponse } from 'axios';
 import React from 'react';
 import { useDeleteDocument, useMultiDocumentStatus } from '../use-multi-document-status';
 
@@ -93,6 +94,79 @@ describe('useDeleteDocument — cache invalidation on success (design.md §8.3, 
           documentId: 'doc-1',
         }),
       ).rejects.toThrow('network error');
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(invalidateSpy).not.toHaveBeenCalled();
+  });
+
+  // T-007 Reviewer advisory, Gap 1: `handleRemoveFile` in
+  // upload-business-plan-modal.tsx swallows a 404 (the server already agrees
+  // the document is gone) and removes the row without going through
+  // `onSuccess`. Without this, the wrong implementation — invalidation
+  // wired only into `onSuccess`, as it was before this fix — leaves
+  // `['merged-content']` and `['gap-fields']` serving up to `staleTime` of
+  // now-deleted content on the Gap Detector (FR-DDP-002 Sc 3: "must NOT be
+  // re-served from any client-side cache"). This test catches exactly that
+  // implementation: it fails against the pre-fix hook, which only ever
+  // invalidated inside `onSuccess`.
+  it('invalidates both merged-content and gap-fields when the delete rejects with a 404 (already gone server-side)', async () => {
+    const notFound = new AxiosError('Not Found');
+    notFound.response = {
+      status: 404,
+      statusText: 'Not Found',
+      data: {},
+      headers: {},
+      config: {} as AxiosResponse['config'],
+    };
+    mockDelete.mockRejectedValue(notFound);
+    const { Wrapper, queryClient } = createWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useDeleteDocument(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          assessmentId: 'assessment-1',
+          documentId: 'doc-1',
+        }),
+      ).rejects.toThrow();
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['merged-content', 'assessment-1'],
+    });
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['gap-fields', 'assessment-1'],
+    });
+  });
+
+  it('does NOT invalidate when the delete rejects with a non-404 error (e.g. 500) — the row must stay listed, not silently cleared', async () => {
+    const serverError = new AxiosError('Internal Server Error');
+    serverError.response = {
+      status: 500,
+      statusText: 'Internal Server Error',
+      data: {},
+      headers: {},
+      config: {} as AxiosResponse['config'],
+    };
+    mockDelete.mockRejectedValue(serverError);
+    const { Wrapper, queryClient } = createWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useDeleteDocument(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          assessmentId: 'assessment-1',
+          documentId: 'doc-1',
+        }),
+      ).rejects.toThrow();
     });
 
     await waitFor(() => expect(result.current.isError).toBe(true));

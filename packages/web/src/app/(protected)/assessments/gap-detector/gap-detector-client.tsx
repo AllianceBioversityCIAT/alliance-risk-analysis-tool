@@ -195,6 +195,21 @@ export default function GapDetectorClient() {
   const { startPolling, isProcessing: isReAnalyzing, status: jobStatus } = useJobPolling();
   const reAnalyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Tracks the "Re-analyse now" button's own in-flight span (T-007 Reviewer
+  // advisory, Gap 2) — from the click through to the triggered job's
+  // terminal state, not merely while the kickoff mutation is pending. A
+  // guard keyed only on the mutation's `isPending` re-enables the button as
+  // soon as the kickoff request resolves with a `jobId`, which is well
+  // before the job (and its Bedrock call) actually finishes — most of the
+  // window that matters. This flag is set the moment the click handler
+  // fires and only cleared once the completion effect below observes
+  // `jobStatus` reach COMPLETED or FAILED, so it spans the whole run
+  // regardless of `useJobPolling`'s own internal timing. It also folds in
+  // `isReAnalyzing` (below) so the button stays disabled if a run is
+  // already active via the debounced field-save path (`handleUpdateField`),
+  // which drives the same underlying job.
+  const [isReAnalyzeNowInFlight, setIsReAnalyzeNowInFlight] = useState(false);
+
   // Clean up debounce timer on unmount
   useEffect(() => {
     return () => {
@@ -213,8 +228,10 @@ export default function GapDetectorClient() {
       queryClient.invalidateQueries({ queryKey: ['merged-content', id] });
       queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
       sileo.success({ title: 'Re-analysis complete', description: 'Gap fields updated with new insights.' });
+      setIsReAnalyzeNowInFlight(false);
     } else if (jobStatus === JobStatus.FAILED) {
       sileo.error({ title: 'Re-analysis failed', description: 'Please try again.' });
+      setIsReAnalyzeNowInFlight(false);
     }
   }, [jobStatus, queryClient, id]);
 
@@ -251,16 +268,23 @@ export default function GapDetectorClient() {
   // debounced field-save flow; a failure here surfaces via sileo since,
   // unlike the debounced path, there is no other affordance signalling it.
   const handleReAnalyzeNow = useCallback(async () => {
+    if (isReAnalyzeNowInFlight) return;
+    setIsReAnalyzeNowInFlight(true);
     try {
       const { jobId } = await reAnalyze();
       startPolling(jobId);
     } catch (err) {
+      // The kickoff request itself failed — no job was ever started, so the
+      // completion effect above will never see a terminal `jobStatus` to
+      // clear this flag. Clear it here so the button doesn't stay
+      // disabled forever after a failed kickoff.
+      setIsReAnalyzeNowInFlight(false);
       sileo.error({
         title: 'Failed to start re-analysis',
         description: err instanceof Error ? err.message : 'Please try again.',
       });
     }
-  }, [reAnalyze, startPolling]);
+  }, [reAnalyze, startPolling, isReAnalyzeNowInFlight]);
 
   // Withheld-notice remedy: navigates to document management for the
   // zero-documents case (FR-DDP-003 Sc 3) — mirrors the existing "Manage
@@ -794,6 +818,12 @@ export default function GapDetectorClient() {
                 onReAnalyze={documentsLoading || documents.length > 0 ? handleReAnalyzeNow : undefined}
                 onManageDocuments={handleManageDocuments}
                 documentsLoading={documentsLoading}
+                // Covers the whole in-flight span (T-007 Gap 2): the local
+                // click-to-terminal flag above, OR'd with `isReAnalyzing`
+                // (useJobPolling's own signal) so the button also disables
+                // when a run was kicked off via the debounced field-save
+                // path instead of this button.
+                reAnalyzeInFlight={isReAnalyzeNowInFlight || isReAnalyzing}
               />
             }
             fieldsPanel={

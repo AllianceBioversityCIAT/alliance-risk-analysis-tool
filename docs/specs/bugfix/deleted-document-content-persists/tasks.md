@@ -217,7 +217,7 @@ Closure at **scenario and clause** granularity — a requirement ID appearing in
 | | Sc 3 (no deletions — unchanged), incl. separator format | T-002, T-003 |
 | FR-DDP-002 | Sc 1 (delete only doc), incl. "not at any later point" | T-002, T-005 |
 | | Sc 2 (delete one of several, never re-run) | T-002, T-005 |
-| | Sc 3 (survives reload), incl. "not from any client-side cache" | T-006, T-008 §2 |
+| | Sc 3 (survives reload), incl. "not from any client-side cache" | T-006, T-008 §2, **+ the 404-path closure (2026-08-24)** — the already-gone delete path bypassed invalidation until then |
 | | Sc 4 (addition withholds nothing) — the added-and-parsed clause | T-002 (fixture 1), T-005, T-008 §5 |
 | | Sc 4 — **the added-with-failed-parse clause** | T-002 (fixture 5, added 2026-08-24) |
 | | Sc 4 — the "remain readable on screen" and "at any point" clauses | T-007, T-008 §5 |
