@@ -452,7 +452,7 @@ describe('GapDetectorClient — country mismatch validation', () => {
     // invalidate ['assessment', id] when useGapFields()'s own
     // poll-until-populated signal (gapData.total) transitions from 0 to a
     // positive count.
-    it('invalidates ["assessment", id] exactly once when gapData.total transitions from 0 to positive', () => {
+    it('invalidates ["assessment", id], ["merged-content", id], and ["gap-fields", id] when gapData.total transitions from 0 to positive', () => {
       mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
       mockGapData = { ...mockGapData, total: 0, data: [] };
       const { rerender } = render(<GapDetectorClient />);
@@ -465,34 +465,56 @@ describe('GapDetectorClient — country mismatch validation', () => {
       mockGapData = { ...mockGapData, total: 1 };
       rerender(<GapDetectorClient />);
 
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      // design.md §8.3: this completion effect now invalidates THREE keys per
+      // firing (assessment, merged-content, gap-fields), not one — the count
+      // moved from 1 to 3 because the fix's surface grew, not because the
+      // one-shot guarantee weakened. The next test isolates that guarantee.
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(3);
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ['assessment', 'assessment-1'],
       });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['merged-content', 'assessment-1'],
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['gap-fields', 'assessment-1'],
+      });
     });
 
-    it('does NOT invalidate again once total is already positive and stays positive across further re-renders (ref-based one-shot)', () => {
+    it('does NOT invalidate ["assessment", id] again once total is already positive and stays positive across further re-renders (ref-based one-shot)', () => {
       mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
       mockGapData = { ...mockGapData, total: 0, data: [] };
       const { rerender } = render(<GapDetectorClient />);
 
+      // Count firings of the ['assessment', id] invalidation specifically,
+      // not raw invalidateQueries call totals. design.md §8.3 made one
+      // firing of this effect invalidate three keys instead of one, so a
+      // raw-count assertion breaks every time a key is added even though
+      // the one-shot property it was meant to express still holds — that
+      // is exactly what happened to this test before this retarget.
+      const assessmentInvalidations = () =>
+        mockInvalidateQueries.mock.calls.filter(
+          ([arg]) =>
+            JSON.stringify(arg?.queryKey) === JSON.stringify(['assessment', 'assessment-1']),
+        );
+
       // Trigger the one, legitimate 0 -> positive transition.
       mockGapData = { ...mockGapData, total: 1 };
       rerender(<GapDetectorClient />);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(assessmentInvalidations()).toHaveLength(1);
 
       // Re-render with the same positive total — proves the ref actually
       // gates on the transition itself, not merely "total is truthy".
       mockGapData = { ...mockGapData, total: 1 };
       rerender(<GapDetectorClient />);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(assessmentInvalidations()).toHaveLength(1);
 
       // Re-render with a different, still-positive total — a positive ->
       // positive change must not be mistaken for a new 0 -> positive
       // transition either.
       mockGapData = { ...mockGapData, total: 2 };
       rerender(<GapDetectorClient />);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(assessmentInvalidations()).toHaveLength(1);
     });
   });
 });

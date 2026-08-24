@@ -158,7 +158,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-006: Bound the poll and invalidate the cache `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` — PASS on attempt 2; see `execution.md`
 - **Skills:** `vercel-react-best-practices`
 - **Size:** M · **Dependencies:** T-001, T-005 · **Requirements:** NFR-DDP-010, FR-DDP-002 Sc 3, FR-DDP-003 Sc 2 · **Design Ref:** §8.2, §8.3
 - **Scope:**

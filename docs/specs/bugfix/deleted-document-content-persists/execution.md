@@ -418,3 +418,80 @@ Escalated rather than absorbed: minting work from a review finding without appro
 **Why this was worth doing rather than accepting as a risk.** `getMergedContent` reads only `parseJobId`, never `status`. So the clause's correct verdict comes from B's populated job id being absent from the *snapshot* — not, as previously argued, from it being null. The fixture proves the clause against the **actual mechanism**. Had it existed at authoring time, it would have caught the mental-model error before it reached a Reviewer.
 
 **`tasks.md` §5 corrected:** Sc 4's single row is now split by clause, and a note records that row-level ownership of a *scenario* had been mistaken for clause-level closure — the exact failure mode that section's own rule warns about.
+
+### T-006 — Bound the poll and invalidate the cache `[FE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-24 |
+| **Requirements covered** | NFR-DDP-010, FR-DDP-002 Sc 3, FR-DDP-003 Sc 2 |
+| **Design ref** | §8.2, §8.3 |
+| **Effort** | attempt 1 `high` → attempt 2 `xhigh` |
+| **Skills** | `vercel-react-best-practices` |
+
+#### Attempt 1 — Reviewer `STATUS: FAIL` (1 issue)
+
+- **Files changed:** `use-merged-content.ts`, `use-multi-document-status.ts`, `gap-detector-client.tsx`, `gap-detector-client.test.tsx`, plus two new hook test suites.
+- **Verification:** hooks 14/14, gap-detector-client 17/17.
+- **Leader-authorised owed scope:** the Implementer's first pass correctly reported that amending both completion effects broke two pre-existing tests it was barred from touching. That was owed scope, not new scope — my brief told it to amend both effects without checking what asserted on them — so I re-spawned rather than escalating. Both tests were retargeted, not weakened.
+
+**Confirmed sound by the Reviewer** (the rework must not undo these):
+
+- **Both** completion effects amended with all three keys, including the server-chained path FR-DDP-003 Sc 2 depends on. Keys verified to match their producers exactly.
+- The two retargeted tests keep their subjects. The one-shot gate is load-bearing and the Reviewer named the concrete regression: `useQueryClient` is mocked as a fresh object literal per render, so the effect's dep array churns every render — deleting `prevGapTotalRef.current === 0 &&` makes the second rerender re-fire and the filtered count reach 2. The `total: 1 → 2` rerender also catches the weaker `total !== prev` variant.
+- **The cap's stated basis was verified, not accepted:** `gap-detector-client.tsx:926` really carries `subtitle="This typically takes 30–60 seconds"`, and `use-job-polling.ts:39` really is `maxAttempts = 100` at 3000 ms ≈ 300 s.
+- **The `staleTime` claim was verified in React Query's source**, not accepted: `queryClient.js:149-165` routes `invalidateQueries` → `refetchQueries({ type: 'active' })` → `query.fetch()` directly, with **no `isStaleByTime` gate** on that path (unlike `fetchQuery` at `:188`). So the invalidation is not blunted by the 60 s `staleTime`, and FR-DDP-002 Sc 3 holds.
+- Shared type genuinely replaces the local one — exactly one declaration repo-wide.
+- Both new suites are real gates, with concrete caught-regressions named for each, and collect 14 tests (clearing the `--passWithNoTests` disqualifier).
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** `getMergedContentRefetchInterval` bounds the poll on `query.state.dataUpdateCount`, which in TanStack Query v5 is incremented **only on a successful fetch**. Verified in `@tanstack/query-core@5.90.20/build/modern/query.js`: `:346` `dataUpdateCount: state.dataUpdateCount + 1` under `case "success"`, while `:360` increments a separate `errorUpdateCount` under the error action. The refetch interval keeps running regardless of error state — `queryObserver.js:214-218` re-arms the timer with no error check, and `:424-428` recomputes it on every query update. So a merged-content request that **fails on every attempt** never advances the counter, `data` stays `undefined`, and the function returns `5000` forever.
+
+   This is reachable: `getMergedContent` returns `200 {mergedMarkdown: null, superseded: false}` for the no-job case (`assessments.service.ts:424`), so it does not error on the benign path — but `findOne`'s ownership check at `:413` throws `NotFound` for an assessment deleted or unshared in another tab, and any 5xx or expired-refresh 401 behaves the same. In every one of those states the Gap Detector polls `/merged-content` every 5 s indefinitely, which is precisely the "any state that will never produce content polls forever" defect the NFR exists to remove.
+
+   The repo's own cited precedent counts the right thing: `use-job-polling.ts:48` increments `attemptCountRef` inside `queryFn` *before* the request, outcome-independent, and hard-disables the query via `enabled: … && !timedOut` (`:58`) once the cap trips.
+   - **Violated Rule:** `requirements.md` NFR-DDP-010 — "**THEN** polling stops after a bounded number of **attempts**" (an errored request is an attempt; the implementation bounds successes only). Also `design.md` §8.2 — "a response that will never carry content polls forever" is the stated defect, and DD-DDP-006's decision is to "cap consecutive empty polls" without needing to know *why* content is absent; an error is exactly such a case. `tasks.md` T-006 "Done when: polling … stops at it".
+   - **Remediation Suggestion:** Count attempts, not successes. Pass `query.state.dataUpdateCount + query.state.errorUpdateCount` (both exist on `QueryState` in 5.90.20 — `query.js:417,420`) and widen the parameter name. Add two test cases: the interval still `5000` below the cap when the count is composed of failures, and `false` at the cap when *no* fetch has ever succeeded — the second is the case that is currently red-proof. Update the JSDoc, which describes the counter as "the number of completed fetches, including the initial one" — true only of successes.
+
+**Leader adjudication.** In scope and correct. The defect is the same shape as the one that escalated the v1.x design: a bound that looks like a bound but cannot fire in the state it exists for. It is invisible in every green test because no fixture exercises a failing request — which is also why the remediation's second new case matters more than the first.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Readability | The cap's JSDoc attributes the "30–60 seconds" copy to `GAP_PIPELINE_STEPS`; it is actually the `subtitle` prop passed to `PipelineStepper` at `gap-detector-client.tsx:926`. Cite the line, not the constant |
+| Readability | "Consecutive empty polls" overstates the guarantee — `dataUpdateCount` is cumulative for the cache lifetime. Safe (it can only ever be tighter), but "total completed fetches while content is absent" is accurate |
+| Reliability | The 0 → positive effect invalidates `['gap-fields', id]`, the very query whose `total` produced the signal. `prevGapTotalRef` prevents a loop today, so it costs one redundant refetch — but a future change loosening that guard would turn it into a self-retriggering cycle. Worth an inline note |
+| Resilience | `use-merged-content.test.ts:31` passes `1` for the "no response yet" case where the real value is `0`. Harmless under `>=`, but `0` is the truthful fixture |
+
+#### Attempt 2 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `use-merged-content.ts` (call site + parameter rename + JSDoc) and its test suite. Nothing else touched.
+- **Verification:** hooks **16 passed, 16 total**; `gap-detector-client` **17 passed, 17 total**; `tsc --noEmit` clean.
+- **Not Done / Assumptions:** none.
+
+**The fix:** the call site now passes `dataUpdateCount + errorUpdateCount`. The Implementer verified both fields on the installed 5.90.20 rather than trusting the Reviewer's line numbers, and found the same idiom used internally at `query.js:95`.
+
+**How it was proven.** The Implementer temporarily reverted the call site to `dataUpdateCount` alone, reran the at-the-cap test, and observed `Expected: 60, Received: 71` before restoring. The **Reviewer independently reproduced that arithmetic by construction** — mount fetch is call 1, each interval fire is call *n*, the arm after call 59 produces call 60 whose settle returns `false` and clears the interval; under a success-only cap the counter never leaves 0, so 70 loop iterations yield 71 calls. Corroborated, not merely asserted.
+
+**A judgment call worth recording.** The Implementer chose integration-style tests over pure-function ones, arguing that `getMergedContentRefetchInterval(data, N)` is agnostic to what `N` represents, so no fixture over the pure function could distinguish the two implementations — the defect lives entirely in *which expression the call site supplies*. The Reviewer judged this sound: **the integration approach was necessary, not preferred.** This is the reason the defect survived 14 green tests in attempt 1.
+
+**Fake timers + React Query determinism** was specifically audited, since that pairing is a common source of flake. Both tests use `act(async () => await jest.advanceTimersByTimeAsync(...))` rather than `waitFor`, React Query's `timeoutManager` wraps globals in closures so late-installed fake timers still intercept, a settle re-arms at the same fake instant so each advance produces exactly one fetch, and `retry: false` removes retry-delay ambiguity. **Outcome is a function of the counter, not of elapsed wall time.**
+
+**Third variant of the bound-cannot-fire class: searched, none found.** Disabled queries return early before the interval is armed; a remount inside `gcTime` preserves the counters and past it starts a fresh budget (per-session bounding, not unbounded); focus refetches and §8.3 invalidations *consume* the budget rather than resetting it; malformed payloads still advance the counter. Every residual case errs toward over-bounding.
+
+**Final status: ✅ PASS on attempt 2 of 3.**
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | **Production runs `retry: 1`** (`query-provider.tsx:13`) while the tests use `retry: false`. Each capped attempt is therefore **two** HTTP requests in the real app, so reaching the cap takes longer than the 300 s the JSDoc basis records. The bound still holds; the basis is mildly optimistic | **Carried into T-008's brief** — step 3 waits ~60 s for polling to stop and should not be surprised by the timing |
+| Resilience | The counter is cumulative over the cached query's lifetime, so invalidation-driven and focus refetches draw on the same 60-attempt budget. A long-lived session could exhaust it and then not re-arm in a later genuine waiting state. This is the **over-bounding** direction, and §8.3's invalidation is the refresh path NFR-DDP-010 explicitly relies on | Recorded. **T-008 step 5 is what would expose it** if the invalidation backstop ever regressed |
+| Resilience | The interval *timer* is unbounded even though the *requests* are — while the tab is hidden the callback fires but skips the fetch, and `api-client.ts` sets no axios timeout. Neither state advances a counter nor emits HTTP traffic, so the NFR is satisfied; the residue is a ticking timer | Recorded |
+| Readability | The below-cap test asserts `> 1` and `< 60` where its sibling pins an exact count | Recorded |
+| Risk | **`use-multi-document-status.ts:30-37` has the same polling shape with no cap** — `if (!docs || docs.length === 0) return 3000` polls forever on an empty list or a document stuck in `PARSING`. Same defect class this task exists to close | Recorded as a **follow-up candidate**, out of scope under NFR-DDP-012. Not minted as a task |
+
+---

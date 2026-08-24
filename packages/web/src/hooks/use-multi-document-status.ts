@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '@/lib/api-client';
 import type { DocumentInfo } from '@alliance-risk/shared';
 
@@ -76,8 +76,16 @@ export function useTriggerParseAll() {
 /**
  * Mutation to delete a single document from an assessment before parsing.
  * Calls DELETE /api/assessments/:assessmentId/documents/:documentId (HTTP 204).
+ *
+ * On success, invalidates the merged-content and gap-fields caches for that
+ * assessment (design.md §8.3) — otherwise a correct backend still serves up
+ * to `staleTime` of now-deleted content from the client cache (FR-DDP-002 Sc 3),
+ * and this is the only refresh path reachable from the deletion screen itself
+ * (`/assessments/upload`), which is a different screen from the one rendering
+ * that cached content (`/assessments/gap-detector`).
  */
 export function useDeleteDocument() {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async ({
       assessmentId,
@@ -89,6 +97,14 @@ export function useDeleteDocument() {
       await apiClient.delete(
         `/api/assessments/${assessmentId}/documents/${documentId}`,
       );
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ['merged-content', variables.assessmentId],
+      });
+      queryClient.invalidateQueries({
+        queryKey: ['gap-fields', variables.assessmentId],
+      });
     },
   });
 }

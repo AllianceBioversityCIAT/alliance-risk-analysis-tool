@@ -196,6 +196,12 @@ export default function GapDetectorClient() {
   useEffect(() => {
     if (jobStatus === JobStatus.COMPLETED) {
       queryClient.invalidateQueries({ queryKey: ['assessment', id] });
+      // Also invalidate merged-content and gap-fields (design.md §8.3): a
+      // re-analysis is exactly the remedy the superseded notice offers, so
+      // the notice must clear and the panel must refresh without a manual
+      // reload once the run completes (FR-DDP-003 Sc 2).
+      queryClient.invalidateQueries({ queryKey: ['merged-content', id] });
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
       sileo.success({ title: 'Re-analysis complete', description: 'Gap fields updated with new insights.' });
     } else if (jobStatus === JobStatus.FAILED) {
       sileo.error({ title: 'Re-analysis failed', description: 'Please try again.' });
@@ -216,6 +222,14 @@ export default function GapDetectorClient() {
     const total = gapData?.total ?? 0;
     if (prevGapTotalRef.current === 0 && total > 0) {
       queryClient.invalidateQueries({ queryKey: ['assessment', id] });
+      // Also invalidate merged-content and gap-fields (design.md §8.3). This
+      // is the server-chained run's only completion signal — it never goes
+      // through useJobPolling, so without this invalidation here the
+      // superseded notice (or an unbounded poll) would have no refresh path
+      // at all for a re-analysis kicked off after upload rather than a field
+      // edit.
+      queryClient.invalidateQueries({ queryKey: ['merged-content', id] });
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
     }
     prevGapTotalRef.current = total;
   }, [gapData?.total, queryClient, id]);
