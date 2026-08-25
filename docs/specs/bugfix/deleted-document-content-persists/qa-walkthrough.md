@@ -6,7 +6,7 @@
 
 ## 1. Qué estás verificando, y por qué a mano
 
-El bug: **borrar un documento no quitaba su contenido del análisis ni del visor.** Ya está arreglado en código y hay 583 tests automáticos en verde.
+El bug: **borrar un documento no quitaba su contenido del análisis ni del visor.** Ya está arreglado en código y toda la suite automática está en verde.
 
 Pero tres tipos de fallo **ningún test puede verlos**, por razones estructurales:
 

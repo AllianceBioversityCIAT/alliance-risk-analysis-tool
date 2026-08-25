@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Module** | `docs/specs/bugfix/deleted-document-content-persists` |
-| **Requirements ref** | `./requirements.md` (v2.0) |
-| **Proposal ref** | `./proposal.md` (v1.2) |
+| **Requirements ref** | `./requirements.md` (v2.1) |
+| **Proposal ref** | `./proposal.md` (v1.3) |
 | **Review history** | `./judgment.md` — v1.x lineage, escalated |
 | **Version** | 2.1 |
 | **Date** | 2026-08-21 |
@@ -351,8 +351,10 @@ Mocked suites remain structurally blind to cross-screen cache invalidation (D4),
 | Metric | Original estimate | Re-baselined 2026-08-21 | **v2.1 (post-T-008)** |
 |--------|-------------------|--------------------------|------------------------|
 | Tasks | 8 | 8 | **9** — T-009 added for the T-008 fixes |
-| Lines of code | ~300 (≈90 be, ≈80 fe, ≈130 tests) | **~1,050** (≈115 be, ≈140 fe, ≈795 tests) |
-| Review rounds | 1 | **2** (T-002 needed 3 attempts) |
+| Lines of code | ~300 | ~1,050 | **2,797 measured** (15 shared · 1,031 api · 1,751 web) |
+| Review rounds | 1 | 2 | **7 measured** (Reviewer FAIL verdicts: T-002 ×2, T-006 ×1, T-007 ×2, T-009 ×2) |
+
+> **The tripwire fired once and then stopped working — recorded as the spec's most useful Kaizen datum.** It escalated correctly at 447 LOC after T-002, the budget was re-baselined to ~1,050 with user approval, and it was **never re-evaluated again** while T-006, T-007 and T-009 landed. Final actual is **2.7× the re-baselined figure and 9.3× the original**, and review rounds ran 3.5× the estimate. Measured during `/akili-validate`, not during execution — which is exactly the gap: a tripwire that is checked only when someone remembers is not a tripwire. The mechanism needs to re-evaluate after **every** task, not once.
 
 **Re-baselined after T-002, on a tripwire hit escalated to and approved by the user.** Measured actuals after 2 of 8 tasks were 447 LOC against a ~300 whole-spec budget, with **441 of those in tests** against a ~130 test budget.
 
@@ -399,7 +401,7 @@ Sized against the finished design. **Standard** depth, comfortably — the v1.x 
 **Context:** v1.x classified the relationship between snapshot and documents into five states, then added an orthogonal in-flight flag, a recency window, and a client cap to contain the consequences. It escalated with two severe findings still open, having relocated the same defect three times.
 **Decision:** Ask only whether the snapshot references a document that no longer exists — a one-directional set subtraction. Serve the content otherwise.
 **Alternatives:** *Set equality (v1.x)* — conflates addition with removal, so every upload reads as a deletion; every subsequent fix narrowed the window in which that misreading applied rather than removing it. *A persisted staleness flag* — a migration, plus a second source of truth that can drift from the document set it describes. *Deleting superseded job rows* — destroys run history.
-**Consequences:** No migration, no enum, no state machine, no time windows. Addition, re-parse, parse failure, and in-flight runs all fall out of the single rule without special cases. The trade is that supersession cannot distinguish deletion from re-parse from a legacy snapshot — which is why §8.1's copy says "removed or replaced" instead of asserting a cause it does not know.
+**Consequences:** No migration, no enum, no state machine, no time windows. Addition, re-parse, parse failure, and in-flight runs all fall out of the single rule without special cases. The trade is that supersession cannot distinguish deletion from re-parse from a legacy snapshot — which is why §8.1's copy names no cause at all. *(That copy was finalised at OQ-1 — the interim "removed or replaced" wording this record originally cited was **rejected** for naming a cause *and* carrying a dangling referent. Corrected during validation; the point survives, only the quoted string was stale.)*
 
 ### DD-DDP-004: Transactional orphan cleanup, scoped by identity and type
 

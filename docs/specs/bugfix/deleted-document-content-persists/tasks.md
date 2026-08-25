@@ -5,8 +5,8 @@
 | Field | Value |
 |-------|-------|
 | **Module** | `docs/specs/bugfix/deleted-document-content-persists` |
-| **Requirements** | `./requirements.md` (v2.0) |
-| **Design** | `./design.md` (v2.0) |
+| **Requirements** | `./requirements.md` (v2.1) |
+| **Design** | `./design.md` (v2.1) |
 | **Version** | 1.0 |
 | **Date** | 2026-08-21 |
 | **Mode** | Bug Mode — T-002 is the mandatory regression task (red before, green after) |
@@ -15,7 +15,7 @@
 
 `design.md` §12 estimated **7 tasks**. Decomposition produced **8**: the manual walkthrough is a task, not a footnote. `requirements.md` §6 records three defect classes with no automated gate (D4, D6, D8), and **KZ-008 exists because exactly that walkthrough was skipped on a prior spec and four real bugs shipped**. A gate nobody owns is a gate nobody runs.
 
-LOC and PR count are unchanged (~300, one PR). The tripwire did its job at authoring time rather than mid-execution.
+*Superseded during `/akili-validate`:* the budget was re-baselined to ~1,050 after T-002, and the measured actual is **2,797 LOC across 9 tasks with 7 review rounds**. `design.md` §12 carries the final figures and the reason the tripwire stopped firing.
 
 ---
 
@@ -194,7 +194,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 - **Status:** `[x]` — PASS on attempt 3; see `execution.md`
 - **Skills:** `nestjs-expert`, `vercel-react-best-practices`, `shadcn-ui`
 - **Size:** M · **Dependencies:** T-008 (partially run — findings recorded) · **Requirements:** FR-DDP-003 Sc 4, FR-DDP-004 Sc 4, NFR-DDP-010 · **Design Ref:** §6, §7.3, §8.1, §8.2, §8.3, DD-DDP-006
-- **Why this task exists:** T-008 halted at step 2 with three findings. Two are real defects and one was an error in the walkthrough guide. Full mechanism in `execution.md` → *Pivot Record: T-008*. **None of the 583 automated tests could have caught any of them** — they are the D4/D6 classes `requirements.md` §6 records as having no automated gate.
+- **Why this task exists:** T-008 halted at step 2 with three findings. Two are real defects and one was an error in the walkthrough guide. Full mechanism in `execution.md` → *Pivot Record: T-008*. **No automated test in this spec could have caught any of them** — they are the D4/D6 classes `requirements.md` §6 records as having no automated gate.
 - **Scope:**
   - **[BE]** `getMergedContent` computes and returns `analysisInFlight` — a non-terminal `PARSE_DOCUMENT` for a current document, or a non-terminal `GAP_DETECTION` for the assessment. Computed **independently** of `superseded`; neither gates the other (§7.3). Add it to `MergedContentResponse` in `@alliance-risk/shared`
   - **[FE]** poll while `analysisInFlight`, still under the existing attempt cap (§8.2, DD-DDP-006). This is the **only** way the client can observe a server-chained completion — that job's id never reaches the browser
@@ -267,7 +267,7 @@ Every scenario and every `AND IT MUST` / `BUT it must NOT` clause has a named ow
 
 **One PR**, ordered `shared → api → web`.
 
-At ~300 LOC across three packages this is a single reviewable unit. No constitutional LOC threshold exists in this project, and repo precedent runs toward single PRs at this size — the tracking-analytics spec recorded *"Single PR recommended … even at the actual ~370 LOC"*.
+At the **measured 2,797 LOC** across three packages this is no longer a single reviewable unit on size alone — but the `shared → api → web` build order still makes one PR the practical shape, and the work is one coherent fix. Reviewers should start at `design.md` §7.3's rule and `execution.md`'s T-008 Pivot Record. No constitutional LOC threshold exists in this project, and repo precedent runs toward single PRs at this size — the tracking-analytics spec recorded *"Single PR recommended … even at the actual ~370 LOC"*.
 
 Commit format: `[SPEC:bugfix/deleted-document-content-persists] <imperative message>`
 

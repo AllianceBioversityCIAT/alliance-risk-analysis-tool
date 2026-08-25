@@ -21,8 +21,8 @@
 | C1 | Product Requirements | `docs/prd.md` |
 | C2 | UX/UI Design | `docs/ux-ui/design.md` |
 | C3 | Technical Requirements | `docs/trd/trd.md` |
-| C4 | Approved proposal | `./proposal.md` (v1.2) |
-| C5 | Design | `./design.md` (v2.0) |
+| C4 | Approved proposal | `./proposal.md` (v1.3) |
+| C5 | Design | `./design.md` (v2.1) |
 | C6 | Review history — v1.x lineage, escalated | `./judgment.md` |
 | C7 | Archived spec sharing the corrupted input | `docs/specs/archive/2026-08-19-changes--country-document-match-validation/` |
 

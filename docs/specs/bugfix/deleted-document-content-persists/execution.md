@@ -5,13 +5,13 @@
 | Field | Value |
 |-------|-------|
 | **Module** | `docs/specs/bugfix/deleted-document-content-persists` |
-| **Requirements** | `./requirements.md` (v2.0) |
-| **Design** | `./design.md` (v2.0) |
+| **Requirements** | `./requirements.md` (v2.1) |
+| **Design** | `./design.md` (v2.1) |
 | **Tasks** | `./tasks.md` (v1.0) |
 | **Started** | 2026-08-21 |
 | **Approval Mode** | `gated` |
 | **Branch** | `bugfix-deleted-document` |
-| **Budget of record** | 8 tasks · ~300 LOC · 1 review round (`design.md` §12) |
+| **Budget of record** | `design.md` §12 — re-baselined once during execution; **measured actual: 9 tasks · 2,797 LOC · 7 review rounds** |
 
 ### Triad configuration
 
@@ -691,7 +691,7 @@ Reversible in one line (`gap-detector-client.tsx`'s `hasDocument` argument) if t
 
 **Status:** ⛔ walkthrough halted at step 2. Three findings from the operator, all reproduced or confirmed by code inspection. **Two are real defects; one is an error in the guide I wrote.** Recorded before any fix, per the Pivot Protocol.
 
-**The walkthrough did exactly what it exists for.** 583 automated tests are green and none of these three could have been caught by them — the first is a cross-screen cache effect (defect class **D4**), the second is a design-level omission with no requirement clause to violate, and the third was a defect in the instructions themselves.
+**The walkthrough did exactly what it exists for.** the whole automated suite was green and none of these three could have been caught by it — the first is a cross-screen cache effect (defect class **D4**), the second is a design-level omission with no requirement clause to violate, and the third was a defect in the instructions themselves.
 
 ### Finding 1 — the deleted document reappears in Manage Documents ⛔ REAL BUG
 
@@ -888,7 +888,7 @@ Code audited **sound**: server-side placement of the bound; `createdAt` as the f
 - **D6** (is the copy comprehensible / is the state honest) — the "out of date" notice shown during an in-flight run.
 - Plus a defect **no defect class had anticipated**: a whole category of analysis completion — the server-chained run — had no client-side signal at all, which produced the intermittent "sometimes I have to refresh".
 
-The third is the most valuable finding of the entire spec. It was invisible to review, to design, and to 583 green tests, and it was only ever going to surface in a browser.
+The third is the most valuable finding of the entire spec. It was invisible to review, to design, and to every green test in the suite, and it was only ever going to surface in a browser.
 
 **Full coverage confirmed.** The operator subsequently confirmed that **all nine steps were run and all nine passed**, so the earlier recording caveat is withdrawn. Every step of `requirements.md` §6's walkthrough has been exercised against a live local stack:
 
