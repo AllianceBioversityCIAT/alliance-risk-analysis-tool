@@ -152,6 +152,8 @@ The re-analyse route responds **201**, not 202: `@Post('re-analyze')` (`gap-fiel
 
 **`analysisInFlight` is a second, orthogonal boolean (v2.1).** True when a non-terminal `PARSE_DOCUMENT` or `GAP_DETECTION` job exists for the assessment. It answers *"is work in progress?"* — a fact about the **run**, never about the content — and it **never suppresses content**: `FRESH` content stays served while it is true. That orthogonality is the whole lesson of Judgment Day round two, where modelling in-flight as a *freshness value* blanked valid analyses (finding R-1, confirmed by both judges).
 
+It is **bounded by job age** — see §7.3; a non-terminal job older than four minutes does not count, because a stuck job is indistinguishable from a slow one and an unbounded signal makes the remedy permanently unreachable.
+
 It exists because the client otherwise **cannot know a server-chained analysis finished**: that job's id is created in `jobs.service.ts` and never returned in any HTTP response, so there is nothing for the client to poll. `analysisInFlight` is the signal that lets the client keep polling until the work lands, and lets the screen say so.
 
 **`superseded` is one boolean, deliberately.** It answers exactly one question — *is the stored analysis describing a document that is gone?* — and nothing else. Everything the client needs beyond that it already has: whether documents exist comes from `useMultiDocumentStatus`, and whether content is present is `mergedMarkdown` itself. v1.x added a five-value enum to describe situations the client could already see, and each added value brought its own reachable-but-unspecified combination.
@@ -205,6 +207,16 @@ Read the latest `COMPLETED` `GAP_DETECTION` job as today (`completedAt: 'desc'`,
 Nothing else. No status filter on the current side, no ordering, no time window.
 
 **Separately and independently (v2.1), compute `analysisInFlight`:** true when a non-terminal `PARSE_DOCUMENT` job exists for one of the current documents, or a non-terminal `GAP_DETECTION` job exists for the assessment. It is computed alongside `superseded` and **neither gates the other** — content availability is a property of the snapshot, work-in-progress is a property of the run.
+
+**Bounded by job age (v2.1, T-009).** A non-terminal job counts as in flight **only if it was created within the last four minutes.** Nothing in this platform retries a job reset to `PENDING` (DD-DDP-006), and the schema writes no heartbeat between `startedAt` and the terminal update — so a long-running-healthy job and a permanently-stuck one are **provably indistinguishable** in this data model. Age from creation is the only available signal, and `createdAt` is the right field: `updatedAt` is touched by the failure-reset write, so a job failing and resetting would restart that clock and evade the bound indefinitely.
+
+Without the bound, a stuck job pins the screen on "Analysing…" forever and makes the **"Re-analyse now" remedy unreachable, even across reloads** — strictly worse than the defect this signal was added to fix. The cost is the opposite error past four minutes: a genuinely slow run reads as not-in-flight and shows a less helpful state. That trade is accepted because the *refresh* behaviour is unchanged either way — the client already stops polling at five minutes — so what the bound changes is only the copy shown after a run has exceeded its stated duration by 5–10×, in exchange for eliminating a permanent, reload-proof dead end.
+
+**Four minutes, not five, deliberately.** The client's own poll budget is exactly 300 s (60 attempts × 5 s). An equal server bound means a continuously-open screen can stop polling on the same tick the server flips, so the reveal would depend on a remount or a focus refetch rather than being observed by construction. A strictly shorter server bound buys a 60-second margin — twelve polls.
+
+*Precisely, because the review caught the claim being stronger than the mechanism:* the client's attempt counter is cumulative for the cached query and is **not reset when a job starts**, so what the margin actually delivers is *"the poll window must not have opened more than 60 s before the job was created"* — not an unconditional guarantee. Outside that window the backstops are a remount and the focus refetch (`staleTime: 60 s` plus React Query's default `refetchOnWindowFocus`). Those are the same paths §8.3 already relies on, so the bound is a strict improvement over an equal one with no downside — just not an absolute one.
+
+*This invariant spans two packages and has no automated guard.* Lowering `MERGED_CONTENT_MAX_EMPTY_POLLS` would silently invert "server bound < client budget" with every suite green. Both constants carry a comment pointing at the other; that pairing is the only thing holding it.
 
 | Situation | `superseded` | Content served? | Why |
 |-----------|--------------|-----------------|-----|
@@ -296,7 +308,7 @@ Fixing the missing retry driver is out of scope — a pre-existing platform defe
 
 | Artifact | Location |
 |----------|----------|
-| `MergedContentResponse` (`{ mergedMarkdown: string \| null; superseded: boolean }`) | `packages/shared/src/types/assessment.types.ts` — replaces the local interface at `use-merged-content.ts:6-8` |
+| `MergedContentResponse` (`{ mergedMarkdown: string \| null; superseded: boolean; analysisInFlight: boolean }`) | `packages/shared/src/types/assessment.types.ts` — replaces the local interface at `use-merged-content.ts:6-8`. **`analysisInFlight` added in v2.1** (§6); this table disagreed with §6 until the T-009 review caught it |
 | Barrel export | `packages/shared/src/index.ts`, as a `type` export |
 
 No new enum. Build order is mandatory: `pnpm --filter @alliance-risk/shared build` before API or Web.

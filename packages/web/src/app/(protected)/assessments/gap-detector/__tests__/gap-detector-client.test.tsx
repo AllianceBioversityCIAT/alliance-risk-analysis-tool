@@ -605,4 +605,51 @@ describe('GapDetectorClient — country mismatch validation', () => {
       expect(assessmentInvalidations()).toHaveLength(1);
     });
   });
+
+  // ─── T-009 — `prevGapTotalRef = useRef(0)` (gap-detector-client.tsx:247)
+  // resets on every mount, so the 0 -> positive effect above fires once per
+  // *mount*, not once per assessment lifetime. This is undocumented but
+  // load-bearing: it is why navigation-based journeys (leave the Gap
+  // Detector, come back) mostly self-heal today even without T-009's other
+  // fixes. T-009 explicitly must NOT seed this ref from cached data — doing
+  // so reads like the obviously-correct change and would silently remove
+  // this refresh path, since a re-mount on an already-analysed assessment
+  // would then see the ref pre-seeded to the same positive total and never
+  // observe a 0 -> positive transition. This test exists because no test
+  // covered this before T-009. ────────────────────────────────────────────
+  describe('mount-time refresh — prevGapTotalRef re-arms on every fresh mount (undocumented, load-bearing; T-009)', () => {
+    it('fires the 0 -> positive invalidation again on a fresh mount of an assessment that already has fields, not only on the first mount ever', () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      // Simulate returning to an assessment that was already analysed in a
+      // prior visit — gapData.total starts positive from the very first
+      // render this component instance ever does.
+      mockGapData = { ...mockGapData, total: 5 };
+
+      const assessmentInvalidations = () =>
+        mockInvalidateQueries.mock.calls.filter(
+          ([arg]) =>
+            JSON.stringify(arg?.queryKey) === JSON.stringify(['assessment', 'assessment-1']),
+        );
+
+      const first = render(<GapDetectorClient />);
+      // useRef(0) starts at 0 on this fresh mount, and total (5) is already
+      // positive on the very first render, so the transition fires
+      // immediately — this is the "fires once per mount for any assessment
+      // with fields" behaviour the task description calls out.
+      expect(assessmentInvalidations()).toHaveLength(1);
+
+      first.unmount();
+      mockInvalidateQueries.mockClear();
+
+      // A second, independent mount — e.g. the Analyst navigated away and
+      // back. `mockGapData.total` is unchanged (still 5, still positive).
+      // An implementation that seeds `prevGapTotalRef` from a cached value
+      // (the exact "obviously correct" change T-009 forbids) would start
+      // this ref already at 5, never observe 0 -> positive, and this
+      // assertion would fail with zero invalidations. `useRef(0)`
+      // re-initializing on every mount is what makes it pass.
+      render(<GapDetectorClient />);
+      expect(assessmentInvalidations()).toHaveLength(1);
+    });
+  });
 });

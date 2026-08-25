@@ -769,3 +769,102 @@ Both completion effects have holes, and together they leave a whole class uncove
 **Changes 1 and 2 re-add what v2.0 removed.** Judgment Day round two diagnosed the correct shape — an orthogonal boolean, not a freshness value — and v1.2 implemented it. v2.0 discarded the boolean along with the five-state enum it was wrongly bundled with. Restoring it is not new design; it is reverting an over-correction, and the reasoning is already on the record in this file.
 
 Spec amendments required before implementation: `design.md` §6 (response shape), §8.1 (state table), §8.2 (poll condition), §8.3 (invalidation set); `requirements.md` FR-DDP-003 (an in-flight clause) and NFR-DDP-010 (poll condition).
+
+### Leader error during the T-009 spec amendment — caught by the Implementer
+
+My amendment script for `requirements.md` **asserted and threw partway through, before writing the file.** The version bump and the two new scenarios (FR-DDP-003 Sc 4, FR-DDP-004 Sc 4) were silently lost; only a later, separate script's NFR-DDP-010 edit landed. **I committed without verifying the result**, so commit `640a414`'s message claims amendments that were not in the tree.
+
+The T-009 Implementer found it: its brief cited those scenarios as things to read, they did not exist, and rather than proceeding on a dangling citation it added them under its own wording and **disclosed the judgment call**. That was the right move — the alternative was implementing against requirements that existed only in a task description.
+
+Corrected: version bumped to 2.1; the scenarios are in place as the Implementer wrote them. Commit history is left intact rather than rewritten — this note is the record. **The lesson is mine: a multi-edit script that can abort mid-way needs its result verified before the commit, not after.**
+
+### T-009 — Fix the three defects manual QA found `[BE]` `[FE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-25 |
+| **Requirements** | FR-DDP-003 Sc 4, FR-DDP-004 Sc 4, NFR-DDP-010 |
+| **Effort** | attempt 1 `xhigh` → attempt 2 `xhigh` (already at the T2 ceiling) |
+| **Skills** | `nestjs-expert`, `vercel-react-best-practices`, `shadcn-ui` |
+
+#### Attempt 1 — Reviewer `STATUS: FAIL` (1 issue) + a Leader-promoted advisory
+
+**Verification reported:** API `assessments.service` 32/32 (baseline 27); web four suites 73/73 (baseline 57); lint clean; full API 410, full web 194 with only the known unrelated failure.
+
+**Confirmed sound — the rework must not undo these:**
+
+- **Orthogonality holds on both ends** — the defect that sank v1.1. Backend: `analysisInFlight` is computed before every return branch and `superseded` reads only the job-id sets; neither reads the other. Frontend: every notice branch is guarded by `!markdownContent`, so content always wins and in-flight adds only a toolbar indicator. Both directions have tests that fail if the wiring is inverted.
+- **`isAnalysisInFlight` was derived from the enum, not assumed.** `JobStatus` has exactly four values; the helper uses `PENDING`/`PROCESSING`, so a `FAILED` job is terminal and cannot read as in flight. Parse jobs are scoped by `id: { in: currentParseJobIds }` **and** type.
+- **The cap is checked before in-flight**, so a permanently in-flight response still terminates at 60 attempts. DD-DDP-006's "in-flight decides whether to keep spending the budget, never how large it is" is honoured.
+- **Precedence matches §8.1** and the both-true test fails against a superseded-first ordering — the task's stated disqualifier.
+- **The documents invalidation names the specific key**, asserts it is *not* invalidated on a 500, and `staleTime: 0` is asserted on the query's own options.
+- **`prevGapTotalRef`'s `useRef(0)` is intact**, and the new mount/unmount/remount test genuinely fails against a cache-seeded ref.
+- **The self-authored requirements are honest.** The Implementer wrote FR-DDP-003 Sc 4 and FR-DDP-004 Sc 4 because my amendment script had silently lost them (see the Leader-error note above). The Reviewer audited whether they were reverse-engineered to fit the code and found they were not: they restate definitions already in `design.md` v2.1, their negative clauses are falsifiable, and FR-DDP-004 Sc 4 is written in user-observable terms naming no query key.
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** Making `analysisInFlight` a **required** member of `MergedContentResponse` breaks the web package's type check. Seven pre-existing fixtures in `use-merged-content.test.ts` annotate object literals with the shared type while omitting the new required field — lines 35, 40, 45, 55, 60, 67, 74. The built declaration confirms the field is not optional, so each is a `TS2741`. `packages/web/tsconfig.json` includes `**/*.ts` with no test exclusion and `next.config.ts` sets no `ignoreBuildErrors`, so `next build` type-checks these files: **`pnpm build`, `pnpm build:web` and therefore `pnpm deploy:web` fail.** Neither of T-009's verification commands can see this — Jest compiles via SWC (types stripped) and `next lint` does not type-check, which is exactly why it survived a green 73/73 and a clean lint.
+   - **Violated Rule:** root `CLAUDE.md` § Build & Development Commands and § Deployment; `tasks.md` T-009 *"Done when: all four code changes land green"*; `design.md` §6/§9.
+   - **Remediation Suggestion:** Add `analysisInFlight: false` to the seven annotated literals — a field addition that edits no assertion. Then verify with a **type check**, not Jest: `pnpm --filter @alliance-risk/web exec tsc --noEmit`, and record that command, because the task's stated verification is structurally blind to this class.
+
+**Leader verification:** I ran `tsc --noEmit` myself. Exactly 7 `TS2741` errors at exactly those lines. Confirmed.
+
+**Leader adjudication — one advisory promoted to a required fix.**
+
+The Reviewer recorded as advisory: a `GAP_DETECTION` job stuck in `PENDING`/`PROCESSING` never becomes terminal — `design.md` §8.2 itself records that **nothing in this platform retries a job reset to `PENDING`**. Because in-flight now outranks superseded with **no time bound**, such an assessment shows "Analysing your documents…" indefinitely and the **"Re-analyse now" remedy becomes unreachable, even across reloads.** The poll cap bounds network waste, not this dead end.
+
+The Reviewer declined to gate on it because the precedence is what §8.1 mandates. **I wrote §8.1, and I am overruling that classification.** FR-DDP-003's preamble requires the screen to *"say so **and name how to refresh it**"* — a remedy that is unreachable forever does not satisfy it. And this is the same shape that has now bitten this spec four times: **a bound that cannot fire in the state it exists for.** Shipping a worse dead end than the defect we set out to fix is not an acceptable trade.
+
+Included in the rework, with the remedy left to the Implementer's judgment between the two the Reviewer named.
+
+**Gate gap this exposed.** `tsc --noEmit` is now a **permanent** verification for any task touching a shared type. Neither Jest nor `next lint` can see a type error, and this spec has now shipped one past both.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | `isAnalysisInFlight`'s `where` clause is never asserted — the mock keys only on `where.type`, so widening the status filter to `{ not: 'COMPLETED' }` or dropping the id scope would stay green. One `toHaveBeenCalledWith(expect.objectContaining(...))` closes both |
+| Risk / perf | Every poll now issues two extra `job.count` queries, one filtering a JSON path (`input->>'assessmentId'`) that no index covers — and in-flight lengthens the polling window. Measurable on RDS with several Gap Detectors open |
+| Resilience | `useMultiDocumentStatus` polls forever on a zero-document list; newly reachable, and `staleTime: 0` adds mount/focus refetches on top |
+| Readability | **`design.md` §9's Shared Contracts table still shows the two-field shape** while §6 shows three — the document disagrees with itself. **Leader-owned; I will fix it** |
+| Readability | `job.count.mockReset()` in a `beforeEach` discards the file-level default for any later describe. Safe only because that block is currently last |
+
+#### Attempt 2 — Reviewer `STATUS: FAIL` (documentation, not code)
+
+Code audited **sound**: server-side placement of the bound; `createdAt` as the field — the Reviewer independently established `updatedAt` would be **wrong**, since the failure-reset write touches it and a job failing at 4:50 would restart that clock and evade the bound forever; the dead end genuinely closed including on reload; the `staleTime` cast a legitimate narrowing of a real library typing gap that still gates; and the age test gating on production output rather than its own mock's arithmetic.
+
+**The FAIL:** three spec documents stated a rule the code deliberately did not implement — the age bound was justified only in a code comment. A maintainer reading the constitutional documents would have seen the `createdAt` filter as unexplained drift, and the obvious "fix" (deleting it to match §7.3) reopens the exact dead end the attempt was commissioned to close.
+
+**Leader absorbed it** rather than spending a rework cycle, as the Reviewer explicitly suggested and consistent with having claimed §9's table on the same grounds. Amended `design.md` §6, `design.md` §7.3, and `requirements.md` FR-DDP-003 Sc 4.
+
+**A premise correction worth recording.** The attempt-1 review claimed the seven `TS2741` errors broke `pnpm build` / `deploy:web`. **I verified that and it is wrong — the build passes**, before and after; `next build` does not in practice type-check those test files despite `tsconfig` including `**/*.ts`. The finding was real and worth fixing; only its blast radius was inflated. I also stated `tsc --noEmit` as a hard "must be clean" gate, which is **unsatisfiable**: 190 pre-existing errors (189 `TS2339` + 1 `TS2739`) come from a jest-dom / `@types/jest` augmentation drift. **Zero** mention `analysisInFlight`, `MergedContentResponse`, or `TS2741`. The correct gate is *"no new errors attributable to the change"* — satisfied.
+
+#### Attempt 3 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `assessments.service.ts` (the constant + its comment), `assessments.service.spec.ts` (tests).
+- **Verification:** API `assessments.service` **35/35**; full API **413 passed**, 2 skipped, 0 failed; web four suites **73/73** unchanged; full web **194 passed** with only the known unrelated failure; **`pnpm --filter @alliance-risk/web build` passes.**
+
+**The change:** `ANALYSIS_IN_FLIGHT_MAX_AGE_MS` 5 min → **4**. The 5-minute figure was well-sourced but landed on *exactly* the client's poll budget (60 × 5000 ms), so a continuously-open screen could stop polling on the same tick the server flipped the flag — the reveal reachable by luck rather than construction. **The coincidence was the defect.**
+
+**Reviewer verification, done independently rather than accepted:**
+- Both derivation figures confirmed at their source, and the cap confirmed to be a hard stop.
+- **The arithmetic of the bracketing fixtures was worked out**, not trusted: they require `C > 180 000` and `C < 300 000`, so 30 s and 9 min both fail deterministically. The Implementer's mutation-testing claims hold.
+- The `PARSE_DOCUMENT` age branch — which previously had **no gate at all**, so deleting its age spread stayed green — now has one, and on the *age* behaviour specifically.
+- The where-clause assertion catches both mutations: `expect.objectContaining` relaxes only *which keys* are required, not their values, so a widened status filter no longer deep-equals and a dropped id scope removes a required key.
+- The Leader's three spec amendments are accurate and at the right altitude. On whether a concrete duration belongs in a *requirement*: **yes here** — it is user-observable and it is what acceptance tests against, while the constant, the file and the client-budget derivation all correctly stay in design.
+
+**Two Leader corrections applied after the PASS:**
+1. A test comment still read *"well past the 5 minute bound"* — the only place in the repo still asserting 5, twenty lines above the block that correctly says 4. Corrected.
+2. `design.md` §7.3 claimed a shorter bound *"guarantees"* a poll sees the flip. The Reviewer showed the claim is stronger than the mechanism: the client's attempt counter is cumulative and is not reset when a job starts, so the real invariant is that the poll window must not have opened more than 60 s before the job was created; outside that, the backstops are remount and focus refetch. **Corrected to say what is actually true**, and the cross-package invariant recorded as having no automated guard.
+
+**Final status: ✅ PASS on attempt 3 of 3.**
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | The upper bracket sits at exactly 5 min, so the specific mutation the comment warns against (`C = 300 000`) is caught only on a millisecond race. ~4.5 min would make it deterministic |
+| Reliability | The cross-package invariant "server bound < client budget" has **no automated guard** — lowering `MERGED_CONTENT_MAX_EMPTY_POLLS` would silently invert it with every suite green. Held only by paired comments |
+| Risk / perf | The `GAP_DETECTION` count still filters the unindexed JSON path `input->>'assessmentId'`; the comment's index claim is true for the status/createdAt columns only |
+| Readability | "Four minutes" now lives in four places; §6 could defer the numeral to §7.3 |

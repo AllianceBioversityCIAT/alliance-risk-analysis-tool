@@ -802,6 +802,13 @@ export default function GapDetectorClient() {
                   mimeType: d.mimeType,
                 }))}
                 superseded={mergedContentData?.superseded ?? false}
+                // T-009: the only signal by which the client can observe a
+                // server-chained analysis completing, and it takes
+                // precedence over `superseded` in DocumentViewer's own
+                // rendering (design.md §8.1 v2.1) — passed straight through
+                // rather than re-derived here, since DocumentViewer stays
+                // presentational.
+                analysisInFlight={mergedContentData?.analysisInFlight ?? false}
                 // Gated on the same settled signal as the zero-documents
                 // guard below, not on the ambiguous count alone: offering
                 // the remedy while the count is still unknown is safe in

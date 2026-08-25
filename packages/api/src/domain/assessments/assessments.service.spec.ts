@@ -73,6 +73,12 @@ const mockPrisma = {
   job: {
     findFirst: jest.fn(),
     delete: jest.fn(),
+    // T-009: backs `isAnalysisInFlight`'s two non-terminal-job checks
+    // (PARSE_DOCUMENT among current documents, GAP_DETECTION for the
+    // assessment). Defaults to 0 so every pre-existing test — none of which
+    // anticipates this call — resolves analysisInFlight to `false` without
+    // needing its own setup.
+    count: jest.fn().mockResolvedValue(0),
   },
   // Exists only to prove BR-DDP-003: getMergedContent() (T-005) is a pure
   // read of a stored snapshot and must never touch an Analyst's own
@@ -480,6 +486,11 @@ describe('AssessmentsService', () => {
 
     beforeEach(() => {
       mockPrisma.job.findFirst.mockReset();
+      // Reset to the shared default (0/0 → analysisInFlight false) so a
+      // `mockImplementation` installed by one in-flight test cannot leak
+      // into the next — mirrors the `deleteDocument` describe block's own
+      // reset discipline above.
+      mockPrisma.job.count.mockReset().mockResolvedValue(0);
     });
 
     it('[D2 fixture 1 / FR-DDP-002 Sc4] serves the analysis when a document was ADDED — recorded [jobA], current documents {A, B}', async () => {
@@ -574,6 +585,308 @@ describe('AssessmentsService', () => {
       // nor withhold — same verdict as an ordinary addition (fixture 1).
       expect(result.mergedMarkdown).toBe('## Document: A.pdf\n\nA content');
       expect((result as { superseded?: boolean }).superseded).toBe(false);
+    });
+
+    // ─── T-009 — analysisInFlight (design.md §7.3 v2.1, §6, DD-DDP-006) ───────
+    //
+    // History this restores: v1.1 modelled in-flight as a sixth freshness
+    // state and blanked valid analyses (finding R-1, Judgment Day round two).
+    // v1.2 fixed it as an orthogonal boolean; v2.0 discarded the boolean along
+    // with the enum it was wrongly bundled with. These fixtures must fail
+    // against both wrong shapes: a v1.1-style implementation that ties
+    // analysisInFlight to (or derives it from) `superseded`, and a v2.0-style
+    // implementation that never computes it at all (field always `false`/
+    // `undefined`).
+    describe('getMergedContent — analysisInFlight, computed independently of superseded (T-009)', () => {
+      // Differentiates the two `job.count` calls `isAnalysisInFlight` makes by
+      // the `type` filter in their `where` clause — a single blanket
+      // `mockResolvedValue` cannot distinguish "a PARSE_DOCUMENT job is
+      // in flight" from "a GAP_DETECTION job is in flight", and this suite's
+      // whole point is to prove each is detected on its own.
+      function mockInFlightCounts({
+        parseInFlight = 0,
+        gapInFlight = 0,
+      }: {
+        parseInFlight?: number;
+        gapInFlight?: number;
+      }) {
+        mockPrisma.job.count.mockImplementation(
+          ({ where }: { where: { type: string } }) => {
+            if (where.type === 'PARSE_DOCUMENT') return Promise.resolve(parseInFlight);
+            if (where.type === 'GAP_DETECTION') return Promise.resolve(gapInFlight);
+            return Promise.resolve(0);
+          },
+        );
+      }
+
+      it('[T-009] is true when a non-terminal PARSE_DOCUMENT job exists for a current document', async () => {
+        mockCompletedGapJob(null); // nothing analysed yet
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-parsing-A' },
+        ]);
+        mockInFlightCounts({ parseInFlight: 1, gapInFlight: 0 });
+
+        const result = await service.getMergedContent('assess-1', 'user-1');
+
+        expect(result.analysisInFlight).toBe(true);
+      });
+
+      it('[T-009] is true when a non-terminal GAP_DETECTION job exists for the assessment', async () => {
+        mockCompletedGapJob(null);
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-A' },
+        ]);
+        mockInFlightCounts({ parseInFlight: 0, gapInFlight: 1 });
+
+        const result = await service.getMergedContent('assess-1', 'user-1');
+
+        expect(result.analysisInFlight).toBe(true);
+      });
+
+      it('[T-009] is false when every related job is terminal', async () => {
+        mockCompletedGapJob({
+          mergedMarkdown: '## Document: A.pdf\n\nA content',
+          sourceParseJobIds: ['job-A'],
+        });
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-A' },
+        ]);
+        mockInFlightCounts({ parseInFlight: 0, gapInFlight: 0 });
+
+        const result = await service.getMergedContent('assess-1', 'user-1');
+
+        expect(result.analysisInFlight).toBe(false);
+      });
+
+      // ─── The disqualifier-proof fixture: analysisInFlight must never
+      // suppress content. A v1.1-style implementation that treats in-flight as
+      // a freshness value (e.g. forcing mergedMarkdown to null, or forcing
+      // superseded to true, whenever analysisInFlight is true) fails this —
+      // the stored analysis is still valid (superseded: false) and a second
+      // document is merely being added and parsed alongside it. ─────────────
+      it('[T-009] does not suppress content: true alongside superseded: false while a valid analysis is still served', async () => {
+        mockCompletedGapJob({
+          mergedMarkdown: '## Document: A.pdf\n\nA content',
+          sourceParseJobIds: ['job-A'],
+        });
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-A' }, // still current — not superseded
+          { id: 'doc-B', parseJobId: 'job-parsing-B' }, // newly added, parsing now
+        ]);
+        mockInFlightCounts({ parseInFlight: 1, gapInFlight: 0 });
+
+        const result = await service.getMergedContent('assess-1', 'user-1');
+
+        expect(result.analysisInFlight).toBe(true);
+        expect(result.superseded).toBe(false);
+        // The load-bearing assertion: content stays served. An implementation
+        // that lets analysisInFlight gate mergedMarkdown (the exact v1.1
+        // defect) fails here even though it might pass the true/false
+        // fixtures above in isolation.
+        expect(result.mergedMarkdown).toBe('## Document: A.pdf\n\nA content');
+      });
+
+      // ─── The other pairing: both true at once. Proves the two booleans are
+      // read from genuinely independent sources — superseded from the stored
+      // snapshot vs. current documents, analysisInFlight from live job state —
+      // not derived from one another in either direction. `mergedMarkdown`
+      // stays null here, but because `superseded` withheld it under its own
+      // pre-existing rule (fixture 2 above), never because analysisInFlight
+      // did. ──────────────────────────────────────────────────────────────
+      it('[T-009] is independent of superseded in the other direction: true alongside superseded: true (deletion, new run already started)', async () => {
+        mockCompletedGapJob({
+          mergedMarkdown: '## Document: A.pdf\n\nA content',
+          sourceParseJobIds: ['job-A'],
+        });
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-B', parseJobId: 'job-B' }, // A was deleted; only B remains
+        ]);
+        mockInFlightCounts({ parseInFlight: 0, gapInFlight: 1 });
+
+        const result = await service.getMergedContent('assess-1', 'user-1');
+
+        expect(result.superseded).toBe(true);
+        expect(result.analysisInFlight).toBe(true);
+        expect(result.mergedMarkdown).toBeNull();
+      });
+
+      // ─── T-009 attempt 2 (Leader-promoted from advisory) ───────────────────
+      //
+      // Nothing in this platform retries a job reset to PENDING (design.md
+      // §8.2, DD-DDP-006), and in-flight now outranks `superseded` with no
+      // other bound (§8.1). Without an age bound, a job stuck non-terminal
+      // reads as "in flight" forever: the panel shows "Analysing your
+      // documents…" and "Re-analyse now" is unreachable, even across
+      // reloads — a dead end worse than the bug this spec fixes.
+      //
+      // This fixture plays database for `job.count` by comparing a
+      // simulated job's `createdAt` against the `where.createdAt.gte`
+      // cutoff the production code is expected to supply. A status-only
+      // implementation — the exact regression this test exists to catch —
+      // never sends that cutoff, so `where.createdAt` is `undefined`, the
+      // mock counts the stuck job regardless of its age, and the first
+      // assertion below fails.
+      it('[T-009] a non-terminal job stuck past the age bound does not read as in flight, but a fresh one does', async () => {
+        mockCompletedGapJob(null);
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-A' },
+        ]);
+
+        function mockGapCountAgainstSimulatedJobCreatedAt(simulatedCreatedAt: Date) {
+          mockPrisma.job.count.mockImplementation(
+            ({
+              where,
+            }: {
+              where: { type: string; createdAt?: { gte?: Date } };
+            }) => {
+              if (where.type !== 'GAP_DETECTION') return Promise.resolve(0);
+              const cutoff = where.createdAt?.gte;
+              // No cutoff sent at all => the age bound was dropped, and this
+              // simulated database would (wrongly) count every non-terminal
+              // job regardless of age.
+              const counted = !cutoff || simulatedCreatedAt >= cutoff;
+              return Promise.resolve(counted ? 1 : 0);
+            },
+          );
+        }
+
+        // A GAP_DETECTION job created 10 minutes ago — well past the 4
+        // minute bound — but still PENDING/PROCESSING in the DB, exactly
+        // the state a job reset to PENDING and never retried is left in.
+        mockGapCountAgainstSimulatedJobCreatedAt(
+          new Date(Date.now() - 10 * 60 * 1000),
+        );
+        const stuckResult = await service.getMergedContent('assess-1', 'user-1');
+        expect(stuckResult.analysisInFlight).toBe(false);
+
+        // The identical shape of job, freshly created, must still read as
+        // in flight — the bound must not overcorrect into "in-flight never
+        // fires", which would reproduce the blank-panel-during-a-genuinely-
+        // running-analysis defect this whole feature exists to prevent.
+        mockGapCountAgainstSimulatedJobCreatedAt(new Date());
+        const freshResult = await service.getMergedContent('assess-1', 'user-1');
+        expect(freshResult.analysisInFlight).toBe(true);
+
+        // ─── T-009 attempt 3 (Leader-promoted from Reviewer finding) ────────
+        //
+        // The stuck (10 min)/fresh (~0 min) pair above only constrains the
+        // cutoff to somewhere between "now" and 10 minutes — a constant of
+        // 30 seconds or 9 minutes keeps both assertions green. The exact
+        // value is now load-bearing (ANALYSIS_IN_FLIGHT_MAX_AGE_MS's own
+        // comment: it must stay strictly below the client's poll budget,
+        // 60 × 5000ms = 300 000ms), so bracket it tightly around the real
+        // 4-minute cutoff. A job ~3 minutes old must still read as in
+        // flight (a 30s constant would already have expired it); a job ~5
+        // minutes old must not (a 9-minute constant would still count it).
+        mockGapCountAgainstSimulatedJobCreatedAt(
+          new Date(Date.now() - 3 * 60 * 1000),
+        );
+        const threeMinResult = await service.getMergedContent(
+          'assess-1',
+          'user-1',
+        );
+        expect(threeMinResult.analysisInFlight).toBe(true);
+
+        mockGapCountAgainstSimulatedJobCreatedAt(
+          new Date(Date.now() - 5 * 60 * 1000),
+        );
+        const fiveMinResult = await service.getMergedContent(
+          'assess-1',
+          'user-1',
+        );
+        expect(fiveMinResult.analysisInFlight).toBe(false);
+      });
+
+      // ─── T-009 attempt 3 — the PARSE_DOCUMENT branch had no age gate at
+      // all. `mockGapCountAgainstSimulatedJobCreatedAt` above only ever
+      // resolves the GAP_DETECTION call from a simulated createdAt; the
+      // PARSE_DOCUMENT call always defaulted to 0 in every fixture in this
+      // file, so the age spread on that `job.count` call
+      // (assessments.service.ts's parse-count query inside
+      // `isAnalysisInFlight`) was never exercised — deleting the `notStuck`
+      // spread from only that query stays green today. This mirrors the
+      // stuck/fresh GAP_DETECTION pair, but against a current document's
+      // PARSE_DOCUMENT job, so a document stuck in PARSING cannot read as
+      // in flight forever. ─────────────────────────────────────────────────
+      it('[T-009] a non-terminal PARSE_DOCUMENT job stuck past the age bound does not read as in flight, but a fresh one does', async () => {
+        mockCompletedGapJob(null);
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-parsing-A' },
+        ]);
+
+        function mockParseCountAgainstSimulatedJobCreatedAt(
+          simulatedCreatedAt: Date,
+        ) {
+          mockPrisma.job.count.mockImplementation(
+            ({
+              where,
+            }: {
+              where: { type: string; createdAt?: { gte?: Date } };
+            }) => {
+              if (where.type !== 'PARSE_DOCUMENT') return Promise.resolve(0);
+              const cutoff = where.createdAt?.gte;
+              const counted = !cutoff || simulatedCreatedAt >= cutoff;
+              return Promise.resolve(counted ? 1 : 0);
+            },
+          );
+        }
+
+        // A PARSE_DOCUMENT job created 10 minutes ago — well past the
+        // bound — still PENDING/PROCESSING, exactly a document stuck in
+        // PARSING forever with nothing to retry it.
+        mockParseCountAgainstSimulatedJobCreatedAt(
+          new Date(Date.now() - 10 * 60 * 1000),
+        );
+        const stuckResult = await service.getMergedContent(
+          'assess-1',
+          'user-1',
+        );
+        expect(stuckResult.analysisInFlight).toBe(false);
+
+        // The identical shape of job, freshly created, must still read as
+        // in flight.
+        mockParseCountAgainstSimulatedJobCreatedAt(new Date());
+        const freshResult = await service.getMergedContent(
+          'assess-1',
+          'user-1',
+        );
+        expect(freshResult.analysisInFlight).toBe(true);
+      });
+
+      // ─── Standing advisory, raised twice by the Reviewer: nothing
+      // asserted the `where` clause's status set or its `id: { in:
+      // currentParseJobIds } }` scope on either `job.count` call. Widening
+      // the status filter to `{ not: 'COMPLETED' }` (making FAILED read as
+      // in flight) or dropping the id scope (counting parse jobs belonging
+      // to already-deleted documents) both stayed green before this test.
+      it('[T-009] scopes both job.count calls to the correct status set and id/assessment filters', async () => {
+        mockCompletedGapJob(null);
+        mockPrisma.assessmentDocument.findMany.mockResolvedValue([
+          { id: 'doc-A', parseJobId: 'job-A' },
+        ]);
+        mockPrisma.job.count.mockReset().mockResolvedValue(0);
+
+        await service.getMergedContent('assess-1', 'user-1');
+
+        expect(mockPrisma.job.count).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              id: { in: ['job-A'] },
+              type: 'PARSE_DOCUMENT',
+              status: { in: ['PENDING', 'PROCESSING'] },
+            }),
+          }),
+        );
+        expect(mockPrisma.job.count).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: expect.objectContaining({
+              type: 'GAP_DETECTION',
+              status: { in: ['PENDING', 'PROCESSING'] },
+              input: { path: ['assessmentId'], equals: 'assess-1' },
+            }),
+          }),
+        );
+      });
     });
   });
 });

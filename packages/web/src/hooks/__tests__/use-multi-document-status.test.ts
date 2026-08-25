@@ -56,6 +56,97 @@ describe('useDeleteDocument — cache invalidation on success (design.md §8.3, 
     });
   });
 
+  // ─── T-009 / T-008 finding 1 — the documents list itself must be
+  // invalidated too, not merely "some key". Asserting only that
+  // `invalidateQueries` was called (or called some number of times) would
+  // pass against the pre-T-009 hook, which invalidates two *other* keys and
+  // none of this one — that is the exact defect this test exists to catch:
+  // the deleted document reappearing in Manage Documents because
+  // `['assessment-documents-poll', assessmentId]` was never told to
+  // refetch. ───────────────────────────────────────────────────────────────
+  it('invalidates the documents-list query (["assessment-documents-poll", assessmentId]) specifically, on a successful delete (T-009)', async () => {
+    mockDelete.mockResolvedValue({ data: undefined });
+    const { Wrapper, queryClient } = createWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useDeleteDocument(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await result.current.mutateAsync({
+        assessmentId: 'assessment-1',
+        documentId: 'doc-1',
+      });
+    });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['assessment-documents-poll', 'assessment-1'],
+    });
+  });
+
+  it('invalidates the documents-list query on a 404 (already gone server-side) too, not only on a clean success', async () => {
+    const notFound = new AxiosError('Not Found');
+    notFound.response = {
+      status: 404,
+      statusText: 'Not Found',
+      data: {},
+      headers: {},
+      config: {} as AxiosResponse['config'],
+    };
+    mockDelete.mockRejectedValue(notFound);
+    const { Wrapper, queryClient } = createWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useDeleteDocument(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          assessmentId: 'assessment-1',
+          documentId: 'doc-1',
+        }),
+      ).rejects.toThrow();
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: ['assessment-documents-poll', 'assessment-1'],
+    });
+  });
+
+  it('does NOT invalidate the documents-list query on a non-404 failure — the row must stay listed', async () => {
+    const serverError = new AxiosError('Internal Server Error');
+    serverError.response = {
+      status: 500,
+      statusText: 'Internal Server Error',
+      data: {},
+      headers: {},
+      config: {} as AxiosResponse['config'],
+    };
+    mockDelete.mockRejectedValue(serverError);
+    const { Wrapper, queryClient } = createWrapper();
+    const invalidateSpy = jest.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useDeleteDocument(), { wrapper: Wrapper });
+
+    await act(async () => {
+      await expect(
+        result.current.mutateAsync({
+          assessmentId: 'assessment-1',
+          documentId: 'doc-1',
+        }),
+      ).rejects.toThrow();
+    });
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+
+    expect(invalidateSpy).not.toHaveBeenCalledWith({
+      queryKey: ['assessment-documents-poll', 'assessment-1'],
+    });
+  });
+
   it('scopes invalidation to the specific assessmentId of the deleted document, not a different one', async () => {
     mockDelete.mockResolvedValue({ data: undefined });
     const { Wrapper, queryClient } = createWrapper();
@@ -233,5 +324,51 @@ describe('useMultiDocumentStatus — isSettled (T-007 rework: the caller-level r
     // `isSettled` (or its negation) does not lock the remedy away forever
     // on an outage (requirements.md FR-DDP-003 preamble).
     expect(result.current.isSettled).toBe(false);
+  });
+});
+
+// ─── T-009 / T-008 finding 1 — this query previously had no `staleTime`
+// override at all, so it silently inherited the provider's 5-minute default
+// (query-provider.tsx:12). Combined with the poll self-disabling once every
+// cached document is terminal (above), nothing corrected a stale read for up
+// to five minutes after a delete — not a fresh mount, not window focus, not
+// the poll itself. A test that only checks the invalidation call (above)
+// cannot catch a regression here: TanStack Query treats an invalidated-but-
+// still-fresh query differently only insofar as `staleTime` governs what
+// "fresh" means, so this needs its own assertion on the query's own options. ─
+describe('useMultiDocumentStatus — explicit staleTime (T-009, design.md §8.3 v2.1)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it('sets an explicit staleTime on the assessment-documents-poll query, rather than inheriting the provider default', async () => {
+    mockGet.mockResolvedValue({ data: [] });
+    const { Wrapper, queryClient } = createWrapper();
+
+    const { result } = renderHook(
+      () => useMultiDocumentStatus('assessment-1', true),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isSettled).toBe(true));
+
+    const query = queryClient
+      .getQueryCache()
+      .find({ queryKey: ['assessment-documents-poll', 'assessment-1'] });
+
+    // `Query.options` is statically typed as `QueryOptions`, which omits
+    // `staleTime` (that field lives on `QueryObserverOptions`, one level up
+    // — see `@tanstack/query-core`'s `hydration-*.d.ts`). The runtime object
+    // is a superset built from the merged observer options, so the value is
+    // genuinely present; the cast below is type-only and reads the exact
+    // same property this assertion always read.
+    const staleTime = (query?.options as { staleTime?: number } | undefined)
+      ?.staleTime;
+
+    // Fails against the pre-T-009 hook, which sets no `staleTime` at all on
+    // this query — its options carry no `staleTime` key, so this reads
+    // `undefined`, not `0`. `undefined` here is the "inherits the provider's
+    // 5 minutes" bug this test exists to catch.
+    expect(staleTime).toBe(0);
   });
 });

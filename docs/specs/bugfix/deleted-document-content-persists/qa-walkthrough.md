@@ -88,11 +88,15 @@ En cada uno: **qué haces**, **qué deberías ver**, y **qué sería un bug**. A
 
 > **Además, este paso cubre D4.** Borraste en `/assessments/upload` y estás verificando en `/assessments/gap-detector` — dos pantallas, dos cachés. Ningún test automático puede ver este cruce.
 
+> **Nuevo (T-009): el estado "en curso".** Mientras B parsea y el análisis nuevo corre, es normal ver *"Analysing your documents…"* en vez del aviso de desactualizado — aunque técnicamente el análisis viejo ya no aplica (borraste A), mostrar "está desactualizado" mientras el remedio está corriendo delante de tus ojos no ayuda a nadie. Si en algún punto de esa ventana ves el aviso de *"out of date"* en lugar de *"Analysing…"*, anótalo — es la regresión exacta que encontró T-008.
+
 ---
 
 ### Paso 2 — Borrar sin reemplazar
 
-**Haces:** con el assessment ya analizado, entra a *Manage Documents*, borra el documento, y **no subas nada**. Vuelve al Gap Detector.
+> **Corregido (T-009).** La versión anterior de este paso decía "borra el documento" sobre un assessment sin especificar cuántos documentos tiene. Si es el **único** documento, `design.md` §8.1 y FR-DDP-003 Sc 3 exigen el estado de **cero documentos** — *"No documents on this assessment."* — no el aviso de desactualizado. Los pasos 2 y 4 chocaban exactamente por eso. Este paso ahora usa explícitamente un assessment con **más de un documento**; el paso 4 sigue cubriendo el caso del último documento.
+
+**Haces:** usa un assessment ya analizado que tenga **al menos dos documentos** (por ejemplo, el mismo del Paso 1 tras subir B, o sube un segundo documento C antes de empezar). Entra a *Manage Documents*, borra **uno solo** de los documentos (no todos), y **no subas nada**. Vuelve al Gap Detector.
 
 **Deberías ver:** no aparece nada del documento borrado. El panel del documento **sigue ahí** (no desaparece) y muestra:
 
@@ -101,6 +105,8 @@ En cada uno: **qué haces**, **qué deberías ver**, y **qué sería un bug**. A
 con un botón **"Re-analyse now"**.
 
 **Sería un bug:** sigue viéndose el contenido del documento borrado, o el panel derecho **desaparece** dejando la pantalla en una sola columna sin explicación.
+
+> **Ojo con el nuevo estado "en curso" (T-009).** Borrar sin reemplazar **no** dispara ningún trabajo de IA (NFR-DDP-011) — no hay parseo ni re-análisis en marcha — así que **no** deberías ver *"Analysing your documents…"* en ningún momento de este paso. Si lo ves, es un bug: nada debería estar "en vuelo" después de un borrado sin reemplazo. (El estado "en curso" sí es esperado en los Pasos 1 y 5, donde subes un documento nuevo — ver sus notas.)
 
 > **Aquí evalúas D6.** Ponte en el lugar de alguien que no trabajó en esto: *¿el mensaje explica qué pasó y qué hacer?* Si tu reacción es "¿y ahora qué hago?", el texto falló aunque el código funcione. **Anota tu impresión honesta** — es el único gate que tiene.
 
@@ -115,6 +121,8 @@ con un botón **"Re-analyse now"**.
 **Sería un bug:** siguen apareciendo para siempre.
 
 > **Ojo con el tiempo.** Producción reintenta una vez, así que cada intento son **dos** peticiones HTTP. Si el estado desactualizado se alcanza sin contenido previo, el tope es de 60 intentos — puede tardar más de los 5 minutos que dice el comentario del código. Lo que verificas aquí es que **paran**, no exactamente cuándo.
+
+> **Nuevo (T-009): esto asume que nada está "en curso".** El polling ahora también sigue mientras `analysisInFlight` sea verdadero — es la única forma en que la pantalla se entera de que un análisis encadenado por el servidor terminó, ya que ese job nunca llega al navegador por ninguna respuesta HTTP. En este paso (Paso 2, borrar sin reemplazar) eso no debería aplicar, porque borrar no dispara ningún trabajo — por eso el polling para igual. Si quieres ver el polling *seguir* legítimamente, quédate en el Paso 5 mientras el análisis nuevo corre.
 
 ---
 
@@ -136,10 +144,13 @@ con un botón **"Re-analyse now"**.
 
 **Deberías ver:** el análisis existente **sigue visible y legible todo el tiempo**. Y cuando el análisis nuevo termina, la pantalla se actualiza sola.
 
+> **Nuevo (T-009): un indicador, no un spinner que tapa todo.** Mientras el análisis nuevo corre, es correcto ver un indicador pequeño y discreto tipo *"Analysing the latest documents…"* junto al contenido — el contenido en sí **no debe desaparecer ni taparse**. Eso es distinto del estado de pantalla completa *"Analysing your documents…"* que viste en el Paso 1 (ese aparece cuando **todavía no hay contenido que mostrar**; aquí ya lo hay).
+
 **Sería un bug, cualquiera de estos:**
 - el panel se pone en blanco o muestra un spinner en cualquier momento
 - dice que el análisis está desactualizado (**no lo está** — agregaste, no borraste)
 - termina el análisis y la pantalla **no** se actualiza hasta que recargas a mano
+- el indicador de "en curso" **reemplaza** el contenido en vez de acompañarlo
 
 > No sueltes el paso cuando el documento termine de parsear. **La ventana que falló la última vez es mientras corre el análisis**, después del parseo.
 
@@ -212,7 +223,7 @@ con un botón **"Re-analyse now"**.
 | Paso | Resultado | Nota |
 |---|---|---|
 | 1 — borrar y reemplazar | ☐ pasa / ☐ falla | |
-| 2 — borrar sin reemplazar | ☐ pasa / ☐ falla | ¿se entiende el mensaje? |
+| 2 — borrar sin reemplazar (≥2 documentos) | ☐ pasa / ☐ falla | ¿se entiende el mensaje? ¿NO aparece "Analysing…"? |
 | 3 — el polling para | ☐ pasa / ☐ falla | |
 | 4 — último documento | ☐ pasa / ☐ falla | |
 | 5 — agregar no oculta ⭐ | ☐ pasa / ☐ falla | ¿durante el análisis también? |

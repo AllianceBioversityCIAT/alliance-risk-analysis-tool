@@ -33,4 +33,13 @@ export interface AssessmentStats {
 export interface MergedContentResponse {
   mergedMarkdown: string | null;
   superseded: boolean;
+  /**
+   * True when work is actively in progress for this assessment: a
+   * non-terminal PARSE_DOCUMENT job for one of its current documents, or a
+   * non-terminal GAP_DETECTION job for the assessment itself (design.md
+   * §7.3 v2.1). Computed independently of `superseded` — neither gates the
+   * other. Content availability is a property of the snapshot;
+   * work-in-progress is a property of the run.
+   */
+  analysisInFlight: boolean;
 }

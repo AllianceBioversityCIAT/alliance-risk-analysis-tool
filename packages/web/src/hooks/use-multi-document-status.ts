@@ -28,6 +28,19 @@ export function useMultiDocumentStatus(
       return response.data;
     },
     enabled: enabled && !!assessmentId,
+    // Explicit staleTime (T-009, design.md §8.3 v2.1). This query previously
+    // had no override, so it inherited the provider's 5-minute default
+    // (query-provider.tsx:12) while its own poll below self-disables once
+    // every cached document reaches a terminal state — so after a delete,
+    // nothing corrected it: not a fresh mount, not window focus, not the
+    // poll itself, for up to five minutes (T-008 finding 1, "worse than
+    // first diagnosed"). `staleTime: 0` matches this codebase's precedent
+    // for an actively-polled status query (`use-job-polling.ts:66`): the
+    // query is always considered stale, so the explicit
+    // `invalidateQueries` call `useDeleteDocument` now issues below reliably
+    // triggers a refetch rather than being swallowed by a multi-minute
+    // staleness window.
+    staleTime: 0,
     refetchInterval: (q) => {
       const docs = q.state.data as DocumentInfo[] | undefined;
       if (!docs || docs.length === 0) return 3000;
@@ -121,6 +134,17 @@ export function useDeleteDocument() {
     });
     queryClient.invalidateQueries({
       queryKey: ['gap-fields', assessmentId],
+    });
+    // T-008 finding 1 / T-009: the documents list itself was never
+    // invalidated, so `documents.length` stayed at its pre-delete count from
+    // stale cache — the deleted document reappeared in Manage Documents, and
+    // it also kept `DocumentViewer`'s zero-documents branch from ever firing
+    // after the only document on an assessment was deleted (design.md §8.3
+    // v2.1). This is the query the upload modal and DocumentViewer both read
+    // (`use-multi-document-status.ts` above), on a different screen from
+    // where the deletion happens.
+    queryClient.invalidateQueries({
+      queryKey: ['assessment-documents-poll', assessmentId],
     });
   };
 

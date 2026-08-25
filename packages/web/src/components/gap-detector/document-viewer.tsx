@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
-import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown, AlertTriangle, RefreshCw, Upload } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown, AlertTriangle, RefreshCw, Upload, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -55,6 +55,26 @@ interface DocumentViewerProps {
    * document, not re-analysing.
    */
   onManageDocuments?: () => void;
+  /**
+   * True while work is actively in progress for this assessment: a
+   * non-terminal PARSE_DOCUMENT job for one of its current documents, or a
+   * non-terminal GAP_DETECTION job for the assessment itself
+   * (`MergedContentResponse.analysisInFlight`, design.md §7.3, §8.1 v2.1).
+   *
+   * Takes precedence over `superseded` (below zero-documents, above
+   * content/empty — design.md §8.1's table): T-008 found the reverse
+   * ordering in practice — after deleting a document and uploading a
+   * replacement, the panel announced "This analysis is out of date" while
+   * the new analysis was visibly running on the same screen. Both facts
+   * were true; only one was useful.
+   *
+   * Never suppresses content — when `markdownContent` is already present,
+   * this renders the ordinary viewer with an unobtrusive indicator rather
+   * than replacing it, which is the whole lesson of Judgment Day round two
+   * (finding R-1): modelling in-flight as a freshness value blanked valid
+   * analyses. Defaults to `false` so existing callers are unaffected.
+   */
+  analysisInFlight?: boolean;
   /**
    * True while the caller's documents query has not yet produced a
    * confirmed answer — including the window before it is even enabled.
@@ -115,6 +135,7 @@ export function DocumentViewer({
   documents,
   className,
   superseded = false,
+  analysisInFlight = false,
   onReAnalyze,
   onManageDocuments,
   documentsLoading = false,
@@ -499,12 +520,46 @@ export function DocumentViewer({
     );
   }
 
+  // ─── An analysis is in flight, no content to show yet (design.md §8.1
+  // v2.1, FR-DDP-003 in-flight clause) ──────────────────────────────────────
+  // Checked ahead of `superseded`: T-008 found the reverse ordering in
+  // practice — after deleting a document and uploading a replacement, the
+  // panel announced "This analysis is out of date" while the new analysis
+  // was visibly running on the same screen. Both facts were true; only one
+  // was useful, so in-flight wins whenever there is no content to fall back
+  // on regardless of whether `superseded` also happens to be true (design.md
+  // §7.3: analysisInFlight and superseded are computed independently and
+  // neither reads the other — this precedence lives entirely in rendering,
+  // not in the server's contract).
+  if (!markdownContent && analysisInFlight) {
+    return (
+      <div
+        data-testid="document-analysing-notice"
+        className={cn(
+          'flex flex-col h-full items-center justify-center text-center px-6',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-3 max-w-sm">
+          <div className="flex items-center justify-center h-12 w-12 rounded-full bg-primary/10">
+            <Loader2 className="h-6 w-6 text-primary animate-spin" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            Analysing your documents…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   // ─── Withheld analysis (FR-DDP-002, FR-DDP-003 Sc 1) ────────────────────
   // The stored analysis describes a document that no longer exists. The
   // copy deliberately does not assert a cause — deletion, re-parsing, and a
   // pre-fix analysis are indistinguishable from the stored record alone
   // (design.md §7.3, §8.1) — and it must read as distinct from both "never
-  // analysed" (below) and the ordinary loading state.
+  // analysed" (below) and the ordinary loading state. Only reached when
+  // nothing is in flight — the branch above already claimed the
+  // analysisInFlight-and-superseded case.
   if (!markdownContent && superseded) {
     return (
       <div
@@ -569,6 +624,19 @@ export function DocumentViewer({
           {hasMultipleDocs && (
             <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
               {docNames.length} docs
+            </span>
+          )}
+          {/* Content stays fully readable while a newer run computes — this
+              is the case that defeated v1.x three times (design.md §7.3) —
+              with only an unobtrusive indicator that something newer is on
+              the way (design.md §8.1: "content present" row). */}
+          {analysisInFlight && (
+            <span
+              data-testid="document-analysing-indicator"
+              className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground"
+            >
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Analysing the latest documents…
             </span>
           )}
         </div>

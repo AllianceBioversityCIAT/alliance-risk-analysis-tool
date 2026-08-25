@@ -6,7 +6,7 @@
 |-------|-------|
 | **Module** | `bugfix/deleted-document-content-persists` |
 | **Project** | CGIAR Risk Intelligence Tool |
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Date** | 2026-08-21 |
 | **Author** | Daniela Gómez (via Claude Code) |
 | **Type** | Bug |
@@ -177,6 +177,17 @@ When content is withheld under FR-DDP-002, the Gap Detector SHALL say so and nam
 - **THEN** the screen states that no documents remain and offers to upload one
 - **BUT it must NOT** offer re-analysing as the remedy, since re-analysing with zero documents cannot produce content
 
+#### Scenario 4: An analysis is in flight (added v2.1, T-009)
+
+*Added per `## Pivot Record: T-008` in `execution.md` — T-008 found no gate, automated or manual, for "an analysis is running", and the design (§8.1) had no row for it either. Two symptoms traced to the same missing signal: a blank panel during the first-ever analysis, and the withheld notice announcing "out of date" while its own remedy was visibly running.*
+
+- **GIVEN** an assessment where a `PARSE_DOCUMENT` job for one of its current documents, or a `GAP_DETECTION` job for the assessment, has not yet reached a terminal state **and that job was created within the last four minutes** — nothing in this platform retries a job reset to `PENDING`, and no heartbeat distinguishes a slow run from a stuck one, so an older job must not hold the screen hostage with an unreachable remedy (`design.md` §7.3, DD-DDP-006)
+- **WHEN** the Analyst opens the Gap Detector
+- **THEN** the screen indicates an analysis is under way
+- **AND IT MUST** take precedence over the withheld-content notice (Scenario 1) when both are true — announcing "out of date" while the remedy is visibly running is technically true and unhelpful (T-008 finding 2)
+- **BUT it must NOT** take precedence over Scenario 3 — re-analysing with zero documents remains impossible regardless of what else is in flight
+- **BUT it must NOT** hide or replace content that is still valid (not superseded) — a fresh analysis stays visible, with only an unobtrusive indicator that a newer one is coming (BR-DDP-002; this is the exact shape Judgment Day round two required and v1.1 got wrong, finding R-1)
+
 ---
 
 ### FR-DDP-004: Deleting a document removes its orphaned parse job
@@ -208,6 +219,15 @@ Deleting a document SHALL remove the record holding that document's extracted te
 - **WHEN** the Analyst removes the document in the UI
 - **THEN** the failure is surfaced and the document remains listed
 - **BUT it must NOT** disappear from the list, since that reproduces this very bug with a stronger illusion of success
+
+#### Scenario 4: A successful deletion is reflected everywhere, not only where it happened (added v2.1, T-009)
+
+*Added per `## Pivot Record: T-008` in `execution.md`, finding 1. The backend-only view of this requirement (Scenarios 1-3) was satisfied while the deleted document still reappeared in Manage Documents on return, because the client-side documents list was never told to refresh — a different query from the ones `design.md` §8.3 originally named.*
+
+- **GIVEN** a document successfully deleted from the upload/document-management screen
+- **WHEN** the Analyst returns to that screen, or opens the Gap Detector, without a manual page reload
+- **THEN** the deleted document is not listed on either screen
+- **BUT it must NOT** reappear from a stale client-side cache of the documents list, even though the deletion itself succeeded server-side
 
 ---
 

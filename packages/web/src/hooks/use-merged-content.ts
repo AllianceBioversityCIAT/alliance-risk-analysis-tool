@@ -32,9 +32,23 @@ export const MERGED_CONTENT_MAX_EMPTY_POLLS = 60;
  * response shape without needing to fast-forward through the full cap in
  * simulated time.
  *
- * - `superseded` stops the poll immediately — nothing more can arrive that
- *   the client should keep waiting for (design.md §7.3, FR-DDP-002 Sc 3).
- * - Content present stops the poll — nothing left to wait for.
+ * - The attempt cap is checked first and applies **regardless** of
+ *   `analysisInFlight` — DD-DDP-006 (v2.1): in-flight decides whether to
+ *   *keep spending* the budget, never how large it is, so a job stuck
+ *   `PENDING`/`PROCESSING` forever (nothing in this platform retries a job
+ *   reset to `PENDING`) still cannot produce an unbounded poll.
+ * - `analysisInFlight` keeps polling below the cap — the **only** way the
+ *   client can observe a server-chained analysis completing, since that
+ *   job's id is created in `jobs.service.ts` and never returned in any HTTP
+ *   response (design.md §8.2 v2.1, NFR-DDP-010). This overrides both
+ *   `superseded` and "content present" below it: FRESH content stays served
+ *   while a newer run is in flight, and a withheld analysis whose remedy is
+ *   already running must not stop waiting for that remedy to land.
+ * - `superseded` **and nothing in flight** stops the poll immediately —
+ *   nothing more can arrive that the client should keep waiting for
+ *   (design.md §7.3, FR-DDP-002 Sc 3).
+ * - Content present **and nothing in flight** stops the poll — nothing left
+ *   to wait for.
  * - Otherwise poll while `completedFetchCount` stays below the cap; stop
  *   once it is reached.
  *
@@ -53,9 +67,10 @@ export function getMergedContentRefetchInterval(
   data: MergedContentResponse | undefined,
   completedFetchCount: number,
 ): number | false {
+  if (completedFetchCount >= MERGED_CONTENT_MAX_EMPTY_POLLS) return false;
+  if (data?.analysisInFlight) return POLL_INTERVAL_MS;
   if (data?.superseded) return false;
   if (data?.mergedMarkdown) return false;
-  if (completedFetchCount >= MERGED_CONTENT_MAX_EMPTY_POLLS) return false;
   return POLL_INTERVAL_MS;
 }
 

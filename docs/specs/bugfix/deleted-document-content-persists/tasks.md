@@ -191,7 +191,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-009: Fix the three defects manual QA found `[BE]` `[FE]`
 
-- **Status:** `[ ]`
+- **Status:** `[x]` — PASS on attempt 3; see `execution.md`
 - **Skills:** `nestjs-expert`, `vercel-react-best-practices`, `shadcn-ui`
 - **Size:** M · **Dependencies:** T-008 (partially run — findings recorded) · **Requirements:** FR-DDP-003 Sc 4, FR-DDP-004 Sc 4, NFR-DDP-010 · **Design Ref:** §6, §7.3, §8.1, §8.2, §8.3, DD-DDP-006
 - **Why this task exists:** T-008 halted at step 2 with three findings. Two are real defects and one was an error in the walkthrough guide. Full mechanism in `execution.md` → *Pivot Record: T-008*. **None of the 583 automated tests could have caught any of them** — they are the D4/D6 classes `requirements.md` §6 records as having no automated gate.
@@ -244,9 +244,11 @@ Closure at **scenario and clause** granularity — a requirement ID appearing in
 | FR-DDP-003 | Sc 1, incl. "distinguishable from never analysed", "must NOT render deleted text", "must NOT drop the panel", "must not state a cause it cannot know" | T-007, T-008 §2 |
 | | Sc 2 (clears without manual reload) | T-006, T-008 §8 |
 | | Sc 3 (last document deleted — offer upload, not re-analysis) | T-007, T-008 §4 |
+| | Sc 4 (in-flight takes precedence over withheld; never over zero-documents; never suppresses valid content) — **added v2.1** | T-009 |
 | FR-DDP-004 | Sc 1, incl. "by own identity" and "not any other job type" | T-002, T-004 |
 | | Sc 2 (both or neither) | T-002, T-004 |
 | | Sc 3 (failed delete not reported as success) | T-007, T-008 §9 |
+| | Sc 4 (deletion reflected everywhere, not only where it happened — documents-list invalidation) — **added v2.1** | T-009 |
 | NFR-DDP-010 | all four clauses | T-006, T-008 §3 |
 | NFR-DDP-011 | zero model invocations | T-004 |
 | NFR-DDP-012 | no migration, no unrelated cleanup | T-003, T-004, T-005 done-when |
