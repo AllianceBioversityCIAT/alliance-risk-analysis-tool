@@ -189,9 +189,29 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ---
 
-### T-008: Manual browser walkthrough `[QA]`
+### T-009: Fix the three defects manual QA found `[BE]` `[FE]`
 
 - **Status:** `[ ]`
+- **Skills:** `nestjs-expert`, `vercel-react-best-practices`, `shadcn-ui`
+- **Size:** M · **Dependencies:** T-008 (partially run — findings recorded) · **Requirements:** FR-DDP-003 Sc 4, FR-DDP-004 Sc 4, NFR-DDP-010 · **Design Ref:** §6, §7.3, §8.1, §8.2, §8.3, DD-DDP-006
+- **Why this task exists:** T-008 halted at step 2 with three findings. Two are real defects and one was an error in the walkthrough guide. Full mechanism in `execution.md` → *Pivot Record: T-008*. **None of the 583 automated tests could have caught any of them** — they are the D4/D6 classes `requirements.md` §6 records as having no automated gate.
+- **Scope:**
+  - **[BE]** `getMergedContent` computes and returns `analysisInFlight` — a non-terminal `PARSE_DOCUMENT` for a current document, or a non-terminal `GAP_DETECTION` for the assessment. Computed **independently** of `superseded`; neither gates the other (§7.3). Add it to `MergedContentResponse` in `@alliance-risk/shared`
+  - **[FE]** poll while `analysisInFlight`, still under the existing attempt cap (§8.2, DD-DDP-006). This is the **only** way the client can observe a server-chained completion — that job's id never reaches the browser
+  - **[FE]** render the in-flight state, and give it **precedence over `superseded`** (§8.1): announcing "out of date" while the remedy is visibly running is true and useless
+  - **[FE]** `useDeleteDocument` also invalidates `['assessment-documents-poll', assessmentId]`, and that query gets an explicit `staleTime` — it currently inherits **5 minutes** from the provider while its own poll self-disables, so nothing corrects it
+  - **[DOCS]** fix `qa-walkthrough.md` steps 2 and 4, which contradict each other: step 2 only produces the out-of-date notice on an assessment with **more than one** document
+- **Preserve — do not "clean up":** `prevGapTotalRef = useRef(0)` (`gap-detector-client.tsx:247`) resets on every mount, so the 0→positive effect fires once per mount. That is an **undocumented but load-bearing** refresh, and it is why navigation-based journeys mostly work today. Seeding that ref from cache reads like the obviously-correct change and would silently remove it. No test covers it — **add one**
+- **Tests:** backend cases for `analysisInFlight` in both directions and its independence from `superseded`; frontend cases for the poll continuing while in flight, the in-flight state winning over superseded, the documents-list invalidation, and the mount-time refresh above
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` and `pnpm --filter @alliance-risk/web test --testPathPattern='use-merged-content|use-multi-document-status|document-viewer|gap-detector-client'`
+- **Evidence is disqualified if:** the in-flight tests pass against a `superseded`-first precedence, or if the documents-invalidation test asserts only that *some* key was invalidated rather than that specific one. Both would restate the defect as its own gate
+- **Done when:** all four code changes land green, the mount-time refresh has a test, and T-008 can resume from step 1
+
+---
+
+### T-008: Manual browser walkthrough `[QA]`
+
+- **Status:** `[~]` — halted at step 2; three findings, see `## Pivot Record: T-008` in `execution.md`
 - **Skills:** none
 - **Size:** M · **Dependencies:** T-003, T-004, T-005, T-006, T-007 · **Requirements:** FR-DDP-002 Sc 3–4, FR-DDP-003 Sc 1–3, FR-DDP-004 Sc 3, NFR-DDP-010 · **Design Ref:** §11
 - **Scope:** run all nine steps in `requirements.md` §6 against a local stack (`docs/infrastructure.md` §6), recording pass/fail per step in `execution.md`. **A step-by-step operator guide is at [`./qa-walkthrough.md`](./qa-walkthrough.md)** — written for manual execution, with the start commands verified against this machine, what to observe at each step, and what would constitute a bug.

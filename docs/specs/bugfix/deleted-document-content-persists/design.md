@@ -8,10 +8,20 @@
 | **Requirements ref** | `./requirements.md` (v2.0) |
 | **Proposal ref** | `./proposal.md` (v1.2) |
 | **Review history** | `./judgment.md` — v1.x lineage, escalated |
-| **Version** | 2.0 |
+| **Version** | 2.1 |
 | **Date** | 2026-08-21 |
 | **Depth** | Standard (Bug Mode) |
 | **Migration required** | No |
+
+### Why there is a v2.1
+
+Manual QA (T-008) halted at step 2 with three findings, two of them real defects and one a design omission of mine. Full analysis in `execution.md` → *Pivot Record: T-008*. In short:
+
+1. **The documents list is never invalidated on delete**, and it inherits a 5-minute `staleTime` while its own poll self-disables — so the client disagrees with the server for minutes after every deletion, which makes `DocumentViewer` pick the wrong branch.
+2. **A server-chained analysis completing has no invalidation path**, because its job id never reaches the client and the fallback signal can only be observed in a window the client usually misses. This is the "sometimes works, sometimes I must refresh" symptom.
+3. **There is no in-flight state**, so a first analysis reads as an empty panel and a re-analysis after deletion reads as "out of date" while the fix is visibly running.
+
+**Fixes 2 and 3 restore what v2.0 removed.** Judgment Day round two diagnosed the correct shape — *in-flight is an orthogonal fact, not a freshness value* — and v1.2 implemented it as five states plus a boolean. v2.0, rewriting for simplicity, discarded the **boolean** along with the five-state enum it had been wrongly bundled with. That was an over-correction: the boolean was the answer round two had already produced. v2.1 puts it back, on the same orthogonal terms.
 
 ### Why there is a v2.0
 
@@ -134,11 +144,15 @@ Every path that creates a `PARSE_DOCUMENT` job writes `parseJobId` back onto the
 
 | Method | Path | Auth | Response |
 |--------|------|------|----------|
-| `GET` | `/api/assessments/:id/merged-content` | `JwtAuthGuard` + ownership | `{ mergedMarkdown: string \| null, superseded: boolean }` |
+| `GET` | `/api/assessments/:id/merged-content` | `JwtAuthGuard` + ownership | `{ mergedMarkdown: string \| null, superseded: boolean, analysisInFlight: boolean }` |
 | `DELETE` | `/api/assessments/:id/documents/:documentId` | `JwtAuthGuard` + ownership | `204` — unchanged |
 | `POST` | `/api/assessments/:id/gap-fields/re-analyze` | `JwtAuthGuard` + ownership | `201` — unchanged, newly reachable from the UI |
 
 The re-analyse route responds **201**, not 202: `@Post('re-analyze')` (`gap-field.controller.ts:36`) carries no `@HttpCode` decorator, so NestJS's POST default applies — unlike `assessments.controller.ts`, which decorates `ACCEPTED` and `NO_CONTENT` explicitly.
+
+**`analysisInFlight` is a second, orthogonal boolean (v2.1).** True when a non-terminal `PARSE_DOCUMENT` or `GAP_DETECTION` job exists for the assessment. It answers *"is work in progress?"* — a fact about the **run**, never about the content — and it **never suppresses content**: `FRESH` content stays served while it is true. That orthogonality is the whole lesson of Judgment Day round two, where modelling in-flight as a *freshness value* blanked valid analyses (finding R-1, confirmed by both judges).
+
+It exists because the client otherwise **cannot know a server-chained analysis finished**: that job's id is created in `jobs.service.ts` and never returned in any HTTP response, so there is nothing for the client to poll. `analysisInFlight` is the signal that lets the client keep polling until the work lands, and lets the screen say so.
 
 **`superseded` is one boolean, deliberately.** It answers exactly one question — *is the stored analysis describing a document that is gone?* — and nothing else. Everything the client needs beyond that it already has: whether documents exist comes from `useMultiDocumentStatus`, and whether content is present is `mergedMarkdown` itself. v1.x added a five-value enum to describe situations the client could already see, and each added value brought its own reachable-but-unspecified combination.
 
@@ -190,6 +204,8 @@ Read the latest `COMPLETED` `GAP_DETECTION` job as today (`completedAt: 'desc'`,
 
 Nothing else. No status filter on the current side, no ordering, no time window.
 
+**Separately and independently (v2.1), compute `analysisInFlight`:** true when a non-terminal `PARSE_DOCUMENT` job exists for one of the current documents, or a non-terminal `GAP_DETECTION` job exists for the assessment. It is computed alongside `superseded` and **neither gates the other** — content availability is a property of the snapshot, work-in-progress is a property of the run.
+
 | Situation | `superseded` | Content served? | Why |
 |-----------|--------------|-----------------|-----|
 | Document deleted | **true** | No | Its job is in the snapshot and attached to nothing |
@@ -219,9 +235,12 @@ An empty `sourceParseJobIds: []` is **not** the legacy case — it is a complete
 
 `DocumentViewer` stays presentational, gaining `superseded: boolean` and `onReAnalyze?: () => void` from `gap-detector-client.tsx`, where `useReAnalyzeGaps` and `startPolling` already live (`:184-185`). No data fetching moves into the component.
 
-| Condition | Copy (OQ-1 — confirm at HITL) | Action |
+| Condition | Copy | Action |
 |-----------|-------------------------------|--------|
-| `superseded` | "This analysis is out of date — it doesn't reflect the documents currently on this assessment." | **"Re-analyse now"** |
+| **`analysisInFlight`, no content yet** | "Analysing your documents…" | none — work is under way |
+| **`analysisInFlight`, content present** | existing viewer, **plus** an unobtrusive "Analysing the latest documents…" indicator | existing — **content stays readable** |
+| **`analysisInFlight` and `superseded`** | "Analysing your documents…" — **the in-flight state wins.** Announcing "out of date" while the remedy is visibly running is technically true and unhelpful | none — the run *is* the remedy |
+| `superseded`, no run in flight | "This analysis is out of date — it doesn't reflect the documents currently on this assessment." | **"Re-analyse now"** |
 | Content present | existing viewer | existing |
 | No content, not superseded, documents exist | existing "No document content available" | none |
 | No content, no documents | "No documents on this assessment." | "Manage Documents" |
@@ -232,13 +251,22 @@ The copy says **"out of date"** rather than naming a cause: the rule fires on de
 
 Token: `--warning` (`#F48C06`, `docs/ux-ui/design.md:129`). No raw hex.
 
-**Only one new state.** Everything else on this screen is a condition the client can already evaluate from data it holds.
+**Precedence (v2.1):** zero-documents → in-flight → superseded → content → empty. Zero-documents stays first (re-analysing with nothing to analyse is impossible). In-flight comes next because *work under way* is the most actionable thing to tell someone, and because it is the only state that resolves itself.
+
+**Why `analysisInFlight` beats `superseded` when both are true.** T-008 found the reverse ordering in practice: after deleting a document and uploading a replacement, the panel announced "This analysis is out of date" while the new analysis was visibly running on the same screen. Both facts were true; only one was useful.
 
 ### §8.2 Bounded polling (NFR-DDP-010)
 
 `useMergedContent`'s `refetchInterval` returns `5000` whenever `mergedMarkdown` is falsy (`use-merged-content.ts:31`) and `false` once content arrives — so a response that will never carry content polls forever.
 
-**Bound it by attempts, not by knowing why.** Keep polling while content is absent, stop after a bounded number of consecutive empty responses, and stop immediately when `superseded` is true.
+**Poll while work is in flight, or while content is absent — bounded by attempts either way (v2.1).**
+
+- `analysisInFlight` → keep polling. This is the **only** way the client learns a server-chained analysis finished: that job's id never reaches the browser, so there is nothing else to wait on.
+- Content absent and nothing in flight → keep polling under the cap, as before.
+- `superseded` **and nothing in flight** → stop. Nothing is coming.
+- Content present and nothing in flight → stop.
+
+The attempt cap still bounds every case, so a stuck job cannot produce an unbounded poll. v2.0 stopped immediately on `superseded` regardless of in-flight state, which is precisely how the chained-completion signal was lost.
 
 This is deliberately dumber than v1.x's approach, and more robust for it. v1.x tried to poll exactly as long as an analysis was genuinely running, which required tracking job state — and that tracking was itself unbounded, because a job that fails below its attempt limit is reset to `PENDING` and **nothing in the platform ever retries it** (`jobs.service.ts:222-232`; `processJob` is reachable only from `worker.ts:273`, `jobs.service.ts:192`, and `:241` — no queue, scheduler, or reaper). An attempt cap needs no such knowledge and cannot be defeated by a stuck job. The cost is that a genuinely slow run may stop polling before it finishes; §8.3's invalidation on completion is what covers that, and `tasks.md` must set the cap above observed run duration.
 
@@ -247,6 +275,8 @@ Fixing the missing retry driver is out of scope — a pre-existing platform defe
 ### §8.3 Cache invalidation (KZ-008 — defect class D4)
 
 `['merged-content']` is invalidated **nowhere** in the web package. Two sites are needed:
+
+**On deletion — three keys, not two (v2.1).** The original design named `['merged-content']` and `['gap-fields']` and never asked whether the **documents list itself** needs invalidating. It does: `['assessment-documents-poll', assessmentId]` is what the Manage Documents modal and `DocumentViewer`'s zero-documents branch both read. Left stale it inherits the provider's **5-minute** `staleTime` (no override) while its own poll self-disables once cached documents are terminal — so nothing corrects it, and `DocumentViewer` picks the wrong branch. **Give that query an explicit `staleTime` as well.**
 
 **On deletion.** `useDeleteDocument` (`use-multi-document-status.ts:80`) has no `onSuccess` and no `invalidateQueries` at all. With `useMergedContent`'s `staleTime: 60_000`, a correct backend still serves a minute of cached deleted content. Add `onSuccess` invalidating `['merged-content', assessmentId]` and `['gap-fields', assessmentId]`, per the pattern at `use-assessments.ts:118-127`.
 
@@ -306,9 +336,9 @@ Mocked suites remain structurally blind to cross-screen cache invalidation (D4),
 
 ## 12. Budget (tripwire for `/akili-execute`)
 
-| Metric | Original estimate | **Re-baselined 2026-08-21** |
-|--------|-------------------|------------------------------|
-| Tasks | 8 | **8** — unchanged |
+| Metric | Original estimate | Re-baselined 2026-08-21 | **v2.1 (post-T-008)** |
+|--------|-------------------|--------------------------|------------------------|
+| Tasks | 8 | 8 | **9** — T-009 added for the T-008 fixes |
 | Lines of code | ~300 (≈90 be, ≈80 fe, ≈130 tests) | **~1,050** (≈115 be, ≈140 fe, ≈795 tests) |
 | Review rounds | 1 | **2** (T-002 needed 3 attempts) |
 
@@ -378,7 +408,8 @@ Sized against the finished design. **Standard** depth, comfortably — the v1.x 
 
 **Status:** Accepted
 **Context:** The poll runs while content is absent and stops only when content arrives, so a permanently empty response polls forever.
-**Decision:** Cap consecutive empty polls; stop immediately on `superseded`.
+**Decision:** Cap total polls while content is absent; **keep polling while `analysisInFlight`**; stop when nothing is in flight and either content has arrived or it is withheld.
+**Amended in v2.1.** The original decision stopped immediately on `superseded` regardless of in-flight state. That removed the only path by which the client could observe a **server-chained** analysis completing — its job id never reaches the browser — so the panel froze until a manual reload (T-008). The attempt cap is still the bound; in-flight only decides whether to keep spending it.
 **Alternatives:** *Track whether an analysis is in flight (v1.x)* — requires reading job state, and that signal is itself unbounded because nothing retries a job reset to `PENDING`. A cap needs no such knowledge and a stuck job cannot defeat it.
 **Consequences:** A very slow run may stop polling before finishing; §8.3's invalidation on completion is the backstop, and the cap must be set above observed run duration.
 

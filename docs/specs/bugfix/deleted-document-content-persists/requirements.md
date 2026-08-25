@@ -220,9 +220,13 @@ Deleting a document SHALL remove the record holding that document's extracted te
 - **GIVEN** an assessment whose merged content is absent
 - **WHEN** the Gap Detector is left open
 - **THEN** polling stops after a bounded number of attempts
-- **AND IT MUST** stop immediately, without consuming attempts, when content is being withheld under FR-DDP-002
-- **AND IT MUST NOT** rely on knowing whether an analysis is genuinely running — a job that fails below its attempt limit is reset to pending and never retried, so "a job is running" is not a bound either
+- **AND IT MUST** keep polling while an analysis is genuinely in flight, since that is the **only** way the client can learn a **server-chained** run finished — that job's id never reaches the browser, so there is nothing else to wait on
+- **AND IT MUST** stop immediately, without consuming attempts, when content is withheld under FR-DDP-002 **and no analysis is in flight**
+- **AND IT MUST NOT** use "an analysis is running" as the **bound** — a job that fails below its attempt limit is reset to pending and never retried, so it can be true forever. The attempt cap remains the bound in every case
 - **AND IT MUST** still refresh the panel when an analysis completes, whether or not polling is still active (FR-DDP-003 Scenario 2 depends on this)
+
+*v2.1 amends two clauses.* The original forbade relying on whether an analysis was running **at all** — written to stop job state being used as a *bound*, which it cannot be, since nothing retries a job reset to pending. T-008 showed that reading was too strong: it also removed the only signal by which the client can observe a **server-chained** completion, and the panel froze until a manual reload. The distinction v2.1 draws is between using in-flight as a **bound** (still forbidden) and as a reason to **keep** polling under a bound that still applies (now required).
+
 
 ### NFR-DDP-011: Deletion consumes no AI budget
 

@@ -686,3 +686,86 @@ Two defects in the provisional wording drove this:
 Reversible in one line (`gap-detector-client.tsx`'s `hasDocument` argument) if the T-008 walkthrough disagrees. **T-008 should eyeball the first paint of a normal upload** and say whether the placeholder reads acceptably.
 
 ---
+
+## Pivot Record: T-008
+
+**Status:** ⛔ walkthrough halted at step 2. Three findings from the operator, all reproduced or confirmed by code inspection. **Two are real defects; one is an error in the guide I wrote.** Recorded before any fix, per the Pivot Protocol.
+
+**The walkthrough did exactly what it exists for.** 583 automated tests are green and none of these three could have been caught by them — the first is a cross-screen cache effect (defect class **D4**), the second is a design-level omission with no requirement clause to violate, and the third was a defect in the instructions themselves.
+
+### Finding 1 — the deleted document reappears in Manage Documents ⛔ REAL BUG
+
+**Reported:** after deleting a document and returning to Manage Documents, the deleted document is listed again.
+
+**Confirmed by inspection.** `useDeleteDocument` invalidates `['merged-content', assessmentId]` and `['gap-fields', assessmentId]` — **and not `['assessment-documents-poll', assessmentId]`**, which is the documents list itself (`use-multi-document-status.ts:23`). The upload modal reads its existing-documents list from that same query (`upload-business-plan-modal.tsx:61`), so it is served stale cache and re-lists the deleted document.
+
+**How this escaped every gate.** `design.md` §8.3 named two keys to invalidate and the question "does the list the user is *looking at* also need invalidating?" was never asked — not in the design, not in the task, not in review. The T-006 Reviewer verified the two named keys "match their producers exactly", which was true and incomplete: it audited the keys that were specified rather than whether the specification was complete. **This is defect class D4 — the class `requirements.md` §6 explicitly records as having no automated gate, found by the manual step designed to catch it.**
+
+**Likely cascade:** this probably contaminates finding 3. A stale `documents` array keeps `documents.length` at 1 after the delete, so `DocumentViewer`'s zero-documents branch cannot fire and the client's view of the assessment disagrees with the server's.
+
+### Finding 2 — no "analysis running" state ⛔ REAL DESIGN GAP, mine
+
+**Reported:** (a) during the *first* analysis of a freshly uploaded document, the panel is split and the left side is blank; (b) after deleting a document, while the *new* analysis is running, the left shows "This analysis is out of date…" while the right is visibly analysing.
+
+**Both are the design behaving as written**, and the design is wrong.
+
+`design.md` §8.1's state table has **no row for "an analysis is running"**. So:
+- First analysis, no content yet, nothing superseded → falls to the ordinary empty state, *"No document content available"* — which during an active analysis reads as broken.
+- Re-analysis after a deletion → `superseded` is genuinely `true` (the stored analysis really does describe a deleted document), so the notice shows. Technically correct, and unhelpful: it announces a problem while the fix is visibly in progress.
+
+**This is my error, and its history is worth recording.** The v1.x design had an in-flight state. Judgment Day round two found it was modelled *wrong* — as a sixth **freshness** value, so it short-circuited the snapshot rules and suppressed valid content (finding R-1, confirmed by both judges). The correct shape was diagnosed at the time: **in-flight is an orthogonal fact, not a freshness value**, and v1.2 implemented it that way — five states plus a boolean.
+
+Then v2.0, rewriting for simplicity after the lineage escalated, discarded the in-flight signal **entirely** rather than keeping the orthogonal boolean. I described the removed machinery as "scaffolding around the wrong question". That was right about the five-state enum and wrong about the boolean: the boolean was the *answer* round two had already produced, and I threw it out with the scaffolding.
+
+**No requirement clause is violated**, which is why no gate caught it: FR-DDP-003 requires the withheld state be distinguishable from never-analysed, and it is. Nothing in the spec ever said "and say when an analysis is running". That absence is the defect.
+
+### Finding 3 — the notice did not appear after deleting without replacing ⚠️ GUIDE ERROR, plus an open question
+
+**Reported:** after deleting the document and not replacing it, returning to the Gap Detector did not show the out-of-date notice.
+
+**My guide is wrong here.** Step 2 says to delete "the document" and expect the out-of-date notice. But if that is the *only* document, `design.md` §8.1 and FR-DDP-003 Sc 3 require the **zero-documents** state — *"No documents on this assessment."* with a Manage Documents button — and that branch deliberately takes precedence, because offering re-analysis with nothing to analyse promises something impossible. Step 2 only produces the out-of-date notice on an assessment with **more than one** document. Steps 2 and 4 of my guide collide as written.
+
+**Open question:** the operator reported what did *not* appear, not what did. If the panel showed "No documents on this assessment", the app was correct and only the guide was wrong. If it showed the bare empty state or nothing, there is a third real defect — most likely downstream of finding 1's stale list. **Not fixing anything here until that is answered.**
+
+### Disposition
+
+T-008 marked `[~]`. No code changed yet. Findings 1 and 2 need spec amendments before implementation — finding 1 to `design.md` §8.3's invalidation set, finding 2 to §8.1's state table and to `requirements.md` FR-DDP-003 — and the Pivot Protocol requires user approval on that plan before execution resumes.
+
+### Pivot Record: T-008 — investigation results
+
+A scoped investigation mapped **every** mechanism that can refresh `['merged-content', id]` and every user transition that has none. It changed the diagnosis: my initial read was correct but understated, and it missed a second defect entirely.
+
+**Refresh paths that exist:** mount-with-stale, the delete mutation's invalidation, two completion effects, the 5 s poll, window-focus, reconnect, full reload. **Verified in the installed query-core source:** `invalidateQueries` with no mounted observer only marks stale (`queryClient.js:149-165`, `utils.js:41`, `query.js:86-90`), but a later mount *does* refetch, because `isStaleByTime` short-circuits on `isInvalidated` (`query.js:120`) **before** consulting `staleTime`. So the two keys the delete does invalidate work as intended — for the keys they name.
+
+#### Defect 1 — the documents list, worse than first diagnosed (hit rate: **100% of deletes**)
+
+Beyond the missing invalidation: `['assessment-documents-poll']` has **no `staleTime` override**, so it inherits **5 minutes** from `query-provider.tsx:12`, and its own poll **self-disables** once every cached document is terminal (`use-multi-document-status.ts:31-38`). So after a delete, nothing corrects it — not mount, not focus, not the poll — for up to five minutes.
+
+**This cascades into the operator's finding 3.** Journey E, traced: delete the only document → merged-content correctly reports `superseded` → but `documents.length` is still 1 from cache → `DocumentViewer`'s zero-documents branch **cannot fire** (`document-viewer.tsx:472`) → the screen shows "This analysis is out of date" **instead of** "No documents on this assessment", and offers a "Re-analyse now" that would burn a job against zero documents. Deterministic, no timing dependency, testable in ten seconds.
+
+#### Defect 2 — server-chained analysis completion has *no* invalidation path (this is the intermittency)
+
+Both completion effects have holes, and together they leave a whole class uncovered:
+- **Effect A** (job-polling status) can only fire when *this component* called `startPolling`. A server-chained `GAP_DETECTION` job's id is created inside `jobs.service.ts:169-193` and **never returned to any HTTP response**, so the client cannot poll it.
+- **Effect B** (`gapData.total` 0 → positive) requires witnessing the rising edge — but `useGapFields` polls **only while `total === 0`** (`use-gap-detection.ts:31-35`). If the Gap Detector mounts with `total: 10`, the poll never arms and the transition is never sampled.
+
+**The falsifiable explanation of "it works sometimes":** self-healing depends on whether the gap-fields query happens to sample `total === 0` during the ~30–60 s window in which the chained job has deleted the old fields but not yet written the new ones. The modal's auto-redirect (`upload-business-plan-modal.tsx:111-119`) lands the user *inside* that window, so the guided path works. Navigating back manually lands *before* it, and the panel freezes until a reload — or until a tab-switch after 60 s triggers the focus refetch, which is why it reads as flaky rather than broken.
+
+#### Defect 3 — no in-flight state (unchanged from the first record; see above for its history)
+
+#### An incidental finding worth preserving
+
+`prevGapTotalRef = useRef(0)` (`gap-detector-client.tsx:247`) **resets on every mount**, so Effect B fires once on *every* Gap Detector mount for any assessment with fields — an undocumented, load-bearing mount-time refresh that is why navigation-based journeys mostly look fine. **A future "obvious" fix seeding that ref from cache would silently remove it**, and no test covers it.
+
+### Proposed plan — awaiting approval
+
+| # | Change | Fixes |
+|---|--------|-------|
+| 1 | **Backend:** `merged-content` response gains `analysisInFlight: boolean` — true when a non-terminal `PARSE_DOCUMENT` or `GAP_DETECTION` job exists for the assessment | Defects 2 and 3 |
+| 2 | **Frontend:** poll while in-flight (not only while content is absent); render an explicit "analysing" state; stop leading with "out of date" while a run is visibly in progress | Defects 2 and 3 |
+| 3 | **Frontend:** invalidate `['assessment-documents-poll', id]` on delete, and give that query an explicit `staleTime` | Defect 1 |
+| 4 | **Docs:** fix `qa-walkthrough.md` steps 2 and 4, which contradict each other | Guide error |
+
+**Changes 1 and 2 re-add what v2.0 removed.** Judgment Day round two diagnosed the correct shape — an orthogonal boolean, not a freshness value — and v1.2 implemented it. v2.0 discarded the boolean along with the five-state enum it was wrongly bundled with. Restoring it is not new design; it is reverting an over-correction, and the reasoning is already on the record in this file.
+
+Spec amendments required before implementation: `design.md` §6 (response shape), §8.1 (state table), §8.2 (poll condition), §8.3 (invalidation set); `requirements.md` FR-DDP-003 (an in-flight clause) and NFR-DDP-010 (poll condition).
