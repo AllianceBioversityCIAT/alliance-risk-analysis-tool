@@ -890,4 +890,20 @@ Code audited **sound**: server-side placement of the bound; `createdAt` as the f
 
 The third is the most valuable finding of the entire spec. It was invisible to review, to design, and to 583 green tests, and it was only ever going to surface in a browser.
 
-**Recording caveat, stated rather than assumed:** the operator's confirmation was given as a whole ("it all works now") rather than as the step-by-step table the guide asks for. The three paths above are confirmed by the detail in which they were originally reported and re-tested. Whether steps 4, 6, 7 and 9 — last-document-deleted, save-a-field, the D8 residue, and a forced delete failure — were each individually exercised is **not established by the record**. Left explicit here rather than inferred, so `/akili-validate` reads what was actually observed. See the follow-up question to the operator.
+**Full coverage confirmed.** The operator subsequently confirmed that **all nine steps were run and all nine passed**, so the earlier recording caveat is withdrawn. Every step of `requirements.md` §6's walkthrough has been exercised against a live local stack:
+
+| Step | Covers | Result |
+|---|---|---|
+| 1 | Delete and replace — the reported bug, and **D4** cross-screen cache invalidation | ✅ |
+| 2 | Delete without replacing — the withheld state, and **D6** comprehensibility | ✅ |
+| 3 | Polling stops (NFR-DDP-010) | ✅ |
+| 4 | Last document deleted — no-documents state, upload offered rather than re-analysis (FR-DDP-003 Sc 3) | ✅ |
+| 5 | **Adding a document must not hide the analysis** — the path three designs failed, checked through upload, parse *and* the run | ✅ |
+| 6 | Saving a field does not blank the panel | ✅ |
+| 7 | **D8** cross-field residue bounded, and cleared by re-analysing | ✅ |
+| 8 | The remedy works — notice clears with no manual reload, ten fields not twenty | ✅ |
+| 9 | A failed deletion is not reported as success (FR-DDP-004 Sc 3) | ✅ |
+
+**Every defect class in `requirements.md` §6 now has an observed result** — D1–D3, D5 and D7 from the automated suites, and **D4, D6 and D8 from this walkthrough**, which is the only evidence any of those three was ever going to get.
+
+Step 8 deserves a specific note: it is the **sole gate** on the `onReAnalyze` caller expression, which the T-007 review established leaves every test green when reverted. That line now rests on observed evidence rather than on an argument.
