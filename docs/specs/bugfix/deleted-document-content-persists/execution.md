@@ -868,3 +868,26 @@ Code audited **sound**: server-side placement of the bound; `createdAt` as the f
 | Reliability | The cross-package invariant "server bound < client budget" has **no automated guard** — lowering `MERGED_CONTENT_MAX_EMPTY_POLLS` would silently invert it with every suite green. Held only by paired comments |
 | Risk / perf | The `GAP_DETECTION` count still filters the unindexed JSON path `input->>'assessmentId'`; the comment's index claim is true for the status/createdAt columns only |
 | Readability | "Four minutes" now lives in four places; §6 could defer the numeral to §7.3 |
+
+## T-008 — Manual browser walkthrough: PASSED
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** — confirmed by the operator after T-009 |
+| **Date** | 2026-08-25 |
+| **Evidence** | Operator ran the walkthrough against the local stack after T-009 landed and reported that everything now works |
+
+**The three paths that failed on the first run are confirmed fixed** — they are what the operator had reproduced in detail and what T-009 targeted:
+
+1. **Delete and replace** (step 1) — the deleted document's content no longer survives into the merge, and the deleted document no longer reappears in Manage Documents.
+2. **In-flight state** (steps 1, 2, 5) — a running analysis now says so, and no longer shows an empty panel on a first analysis or an "out of date" notice while the remedy is visibly running.
+3. **Delete without replacing** (step 2) — the correct state now renders, and the guide's own step 2/step 4 contradiction is corrected.
+
+**This is the gate KZ-008 exists for, and it earned its place.** Three real defects, none reachable by any automated test in this spec:
+- **D4** (cross-screen cache invalidation) — the missing documents-list invalidation.
+- **D6** (is the copy comprehensible / is the state honest) — the "out of date" notice shown during an in-flight run.
+- Plus a defect **no defect class had anticipated**: a whole category of analysis completion — the server-chained run — had no client-side signal at all, which produced the intermittent "sometimes I have to refresh".
+
+The third is the most valuable finding of the entire spec. It was invisible to review, to design, and to 583 green tests, and it was only ever going to surface in a browser.
+
+**Recording caveat, stated rather than assumed:** the operator's confirmation was given as a whole ("it all works now") rather than as the step-by-step table the guide asks for. The three paths above are confirmed by the detail in which they were originally reported and re-tested. Whether steps 4, 6, 7 and 9 — last-document-deleted, save-a-field, the D8 residue, and a forced delete failure — were each individually exercised is **not established by the record**. Left explicit here rather than inferred, so `/akili-validate` reads what was actually observed. See the follow-up question to the operator.

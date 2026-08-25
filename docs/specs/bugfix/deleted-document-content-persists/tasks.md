@@ -211,7 +211,7 @@ No cycles. T-003 and T-004 touch different files and may run concurrently; T-005
 
 ### T-008: Manual browser walkthrough `[QA]`
 
-- **Status:** `[~]` — halted at step 2; three findings, see `## Pivot Record: T-008` in `execution.md`
+- **Status:** `[x]` — PASS; operator confirmed after T-009. Three findings from the first run are recorded in `## Pivot Record: T-008` and were fixed by T-009
 - **Skills:** none
 - **Size:** M · **Dependencies:** T-003, T-004, T-005, T-006, T-007 · **Requirements:** FR-DDP-002 Sc 3–4, FR-DDP-003 Sc 1–3, FR-DDP-004 Sc 3, NFR-DDP-010 · **Design Ref:** §11
 - **Scope:** run all nine steps in `requirements.md` §6 against a local stack (`docs/infrastructure.md` §6), recording pass/fail per step in `execution.md`. **A step-by-step operator guide is at [`./qa-walkthrough.md`](./qa-walkthrough.md)** — written for manual execution, with the start commands verified against this machine, what to observe at each step, and what would constitute a bug.
