@@ -690,4 +690,251 @@ describe('GapDetectionHandler', () => {
       expect(mockPrisma.assessmentDocument.findMany).toHaveBeenCalled();
     });
   });
+
+  // ─── T-009 INDEPENDENT GATE — FR-DDP-001 / BR-DDP-001 ──────────────────────
+  //
+  // Authored by the /akili-test Tester, deliberately NOT derived from the three
+  // T-002 fixtures above. /akili-validate found those three to be the *sole*
+  // automated gate on the bug this spec exists to fix: every other test in this
+  // file stubs `job.findMany` with a bare `mockResolvedValue(...)` that ignores
+  // the `where` clause, so it is structurally blind to the merge-scoping fix.
+  // Any future edit to those three would leave the reported bug uncovered. This
+  // block is a second gate that does not depend on them surviving — it carries
+  // its own fixtures, its own Prisma fake, and its own seam.
+  //
+  // Three deliberate differences from the block above:
+  //
+  //  1. **Different seam.** It drives the public `execute()`, not the private
+  //     `processUploadMode()`. That also proves `sourceParseJobIds` reaches the
+  //     value persisted as the GAP_DETECTION job's result — the record
+  //     `AssessmentsService.getMergedContent` later subtracts against
+  //     (design.md §7.3 / DD-DDP-002).
+  //  2. **Permissive fake.** Its `job.findMany` fake honours only the query
+  //     shape design.md §7.1 specifies (`id: { in: … }` + type + status +
+  //     `orderBy.completedAt`) and silently *ignores* an `input.assessmentId`
+  //     filter. A reversion to the pre-fix query therefore does not merely fail
+  //     an equality — every orphaned job leaks back into the merge and these
+  //     tests fail loudly, on content.
+  //  3. **Different properties.** The query issued, the document→job traversal
+  //     itself, zero current documents, a null `parseJobId`, a non-COMPLETED
+  //     job, and ordering across four documents — none of which the three
+  //     fixtures above touch.
+  describe('execute() — merge input resolved through current documents, independent gate (FR-DDP-001 / BR-DDP-001)', () => {
+    interface StoredJob {
+      id: string;
+      type: string;
+      status: string;
+      input: { assessmentId: string; fileName: string };
+      result: { markdownContent: string };
+      completedAt: Date;
+    }
+
+    function storedJob(
+      id: string,
+      fileName: string,
+      markdownContent: string,
+      completedAt: Date,
+      status: 'COMPLETED' | 'FAILED' | 'PENDING' | 'PROCESSING' = 'COMPLETED',
+    ): StoredJob {
+      return {
+        id,
+        type: 'PARSE_DOCUMENT',
+        status,
+        input: { assessmentId: 'assessment-1', fileName },
+        result: { markdownContent },
+        completedAt,
+      };
+    }
+
+    /**
+     * Honours ONLY the §7.1 query shape. An `input`-scoped filter is ignored on
+     * purpose: the pre-fix query must leak, not quietly return nothing.
+     */
+    function seedJobStore(jobs: StoredJob[]) {
+      mockPrisma.job.findMany.mockImplementation(
+        ({
+          where = {},
+          orderBy,
+        }: { where?: Record<string, any>; orderBy?: Record<string, string> } = {}) => {
+          let rows = jobs.slice();
+          if (where.id?.in !== undefined) {
+            const ids = new Set(where.id.in as unknown[]);
+            rows = rows.filter((j) => ids.has(j.id));
+          }
+          if (where.type !== undefined) rows = rows.filter((j) => j.type === where.type);
+          if (where.status !== undefined) rows = rows.filter((j) => j.status === where.status);
+          if (orderBy?.completedAt === 'asc') {
+            rows = [...rows].sort((a, b) => a.completedAt.getTime() - b.completedAt.getTime());
+          }
+          return Promise.resolve(rows);
+        },
+      );
+    }
+
+    function seedCurrentDocuments(docs: Array<{ id: string; parseJobId: string | null }>) {
+      mockPrisma.assessmentDocument.findMany.mockResolvedValue(
+        docs.map((d) => ({ ...d, assessmentId: 'assessment-1' })),
+      );
+    }
+
+    function jobFindManyWhere(): Record<string, any> {
+      return mockPrisma.job.findMany.mock.calls[0][0].where;
+    }
+
+    beforeEach(() => {
+      mockPrisma.assessment.findUniqueOrThrow.mockResolvedValue({
+        id: 'assessment-1',
+        intakeMode: 'UPLOAD',
+        country: 'Kenya',
+      });
+      mockPrisma.assessment.update.mockResolvedValue({});
+      mockPrisma.gapField.deleteMany.mockResolvedValue({ count: 10 });
+      mockPrisma.gapField.createMany.mockResolvedValue({ count: 10 });
+      mockPrisma.prompt.findFirst.mockResolvedValue({
+        systemPrompt: 'System prompt for {{country}}.',
+        userPromptTemplate: 'User prompt for {{country}}: {{extracted_data}}',
+      });
+      mockBedrock.invokeModel.mockResolvedValue({
+        output: JSON.stringify(createGapAIResponse()),
+        tokensUsed: 100,
+      });
+    });
+
+    it("[FR-DDP-001 / BR-DDP-001] issues exactly one job query, scoped by the current documents' parse job ids and by nothing else", async () => {
+      seedJobStore([
+        storedJob('job-A', 'A.pdf', "A's deleted content", new Date('2026-01-01T00:00:00Z')),
+        storedJob('job-B', 'B.pdf', "B's content", new Date('2026-01-02T00:00:00Z')),
+      ]);
+      seedCurrentDocuments([{ id: 'doc-B', parseJobId: 'job-B' }]); // A was deleted
+
+      await handler.execute({ assessmentId: 'assessment-1' });
+
+      // The traversal happens at all, and against this assessment's documents.
+      expect(mockPrisma.assessmentDocument.findMany).toHaveBeenCalledWith({
+        where: { assessmentId: 'assessment-1' },
+      });
+
+      // `toHaveBeenCalledWith` is a recursive equality, so an extra surviving
+      // `input`-scoped clause (the pre-fix query), a widened id set, or a
+      // dropped type / status / order filter all fail here — on the QUERY the
+      // handler issues, not on the merged output. The three fixtures above
+      // assert only the output, so none of them can fail on this.
+      expect(mockPrisma.job.findMany).toHaveBeenCalledTimes(1);
+      expect(mockPrisma.job.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['job-B'] },
+          type: 'PARSE_DOCUMENT',
+          status: 'COMPLETED',
+        },
+        orderBy: { completedAt: 'asc' },
+      });
+    });
+
+    it('[FR-DDP-001 Sc1 / BR-DDP-001] resolves nothing when no documents remain — the orphaned job never reaches the model, and sourceParseJobIds is an empty array rather than an absent key', async () => {
+      seedJobStore([
+        storedJob('job-A', 'A.pdf', "A's deleted content", new Date('2026-01-01T00:00:00Z')),
+      ]);
+      seedCurrentDocuments([]); // the only document was deleted, nothing uploaded
+
+      const result = await handler.execute({ assessmentId: 'assessment-1' });
+
+      // Not short-circuited and not fallen back on: the job query is still
+      // issued, scoped to the (empty) current set.
+      expect(jobFindManyWhere().id).toEqual({ in: [] });
+      expect(result.mergedMarkdown).toBe('');
+      // The strongest available form of "A's content does not appear": it never
+      // reached Bedrock at all.
+      expect(mockBedrock.invokeModel).not.toHaveBeenCalled();
+
+      // design.md §7.3 — an empty array is a complete record of a run that
+      // genuinely had nothing to analyse and is NEVER superseded; an ABSENT key
+      // is a pre-fix snapshot and fails closed. getMergedContent cannot tell
+      // those apart if this run records the wrong one, so the distinction is
+      // asserted here and not merely the value.
+      expect('sourceParseJobIds' in result).toBe(true);
+      expect(result.sourceParseJobIds).toEqual([]);
+    });
+
+    it('[FR-DDP-001 / BR-DDP-001] drops a current document whose parseJobId is null instead of passing null into the job id filter', async () => {
+      seedJobStore([
+        storedJob('job-B', 'B.pdf', "B's content", new Date('2026-01-02T00:00:00Z')),
+      ]);
+      seedCurrentDocuments([
+        { id: 'doc-A', parseJobId: null }, // uploaded, parse not yet linked
+        { id: 'doc-B', parseJobId: 'job-B' },
+      ]);
+
+      const result = await handler.execute({ assessmentId: 'assessment-1' });
+
+      // `.map(d => d.parseJobId)` without the null filter yields
+      // `in: [null, 'job-B']`, which real Prisma rejects for a String column —
+      // a runtime failure of every UPLOAD analysis that has an unparsed
+      // document, which is the normal state moments after any upload.
+      expect(jobFindManyWhere().id).toEqual({ in: ['job-B'] });
+      expect(result.mergedMarkdown).toBe("## Document: B.pdf\n\nB's content");
+    });
+
+    it('[FR-DDP-001 / BR-DDP-002] excludes a current document whose parse job never completed, and records only the RESOLVED job ids in sourceParseJobIds', async () => {
+      seedJobStore([
+        storedJob(
+          'job-A',
+          'A.pdf',
+          "A's half-parsed text",
+          new Date('2026-01-01T00:00:00Z'),
+          'FAILED',
+        ),
+        storedJob('job-B', 'B.pdf', "B's content", new Date('2026-01-02T00:00:00Z')),
+      ]);
+      seedCurrentDocuments([
+        { id: 'doc-A', parseJobId: 'job-A' },
+        { id: 'doc-B', parseJobId: 'job-B' },
+      ]);
+
+      const result = await handler.execute({ assessmentId: 'assessment-1' });
+
+      // All three fixtures above use only COMPLETED jobs, so none of them can
+      // fail on a dropped `status: 'COMPLETED'` filter. This one can.
+      expect(result.mergedMarkdown).not.toContain("A's half-parsed text");
+      expect(result.mergedMarkdown).not.toContain('A.pdf');
+      expect(result.mergedMarkdown).toBe("## Document: B.pdf\n\nB's content");
+
+      // Recording `currentParseJobIds` instead of the resolved jobs would put
+      // job-A into the snapshot. Re-parsing A then repoints doc-A at a new job,
+      // job-A stops being any document's parseJobId, and §7.3's subtraction
+      // marks SUPERSEDED a snapshot that never contained a word of A — the
+      // false-withhold class BR-DDP-002 exists to forbid.
+      expect(result.sourceParseJobIds).toEqual(['job-B']);
+    });
+
+    it('[FR-DDP-001 Sc2 / Sc3] orders four surviving documents by parse completion time, not by the order the document rows come back in', async () => {
+      // Store order is deliberately neither completion order nor document-row
+      // order, so an implementation that drops `orderBy` fails here too.
+      seedJobStore([
+        storedJob('job-3', 'Third.pdf', 'third content', new Date('2026-03-01T00:00:00Z')),
+        storedJob('job-1', 'First.pdf', 'first content', new Date('2026-01-01T00:00:00Z')),
+        storedJob('job-4', 'Fourth.pdf', 'fourth content', new Date('2026-04-01T00:00:00Z')),
+        storedJob('job-2', 'Second.pdf', 'second content', new Date('2026-02-01T00:00:00Z')),
+      ]);
+      seedCurrentDocuments([
+        { id: 'doc-4', parseJobId: 'job-4' },
+        { id: 'doc-2', parseJobId: 'job-2' },
+        { id: 'doc-1', parseJobId: 'job-1' },
+        { id: 'doc-3', parseJobId: 'job-3' },
+      ]);
+
+      const result = await handler.execute({ assessmentId: 'assessment-1' });
+
+      // A per-document lookup (`currentDocuments.map(d => findJob(d.parseJobId))`)
+      // is a plausible reading of §7.1 step 2 and produces document-row order.
+      // The Sc2 fixture above cannot catch it: there the document rows happen to
+      // be in completion order already. Here they deliberately are not.
+      expect(result.mergedMarkdown).toBe(
+        '## Document: First.pdf\n\nfirst content\n\n---\n\n' +
+          '## Document: Second.pdf\n\nsecond content\n\n---\n\n' +
+          '## Document: Third.pdf\n\nthird content\n\n---\n\n' +
+          '## Document: Fourth.pdf\n\nfourth content',
+      );
+      expect(result.sourceParseJobIds).toEqual(['job-1', 'job-2', 'job-3', 'job-4']);
+    });
+  });
 });
