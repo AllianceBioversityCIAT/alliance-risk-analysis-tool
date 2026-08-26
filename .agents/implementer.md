@@ -24,7 +24,11 @@ Your sole responsibility is to implement the technical scope of the active task 
 3.  **Aesthetics & Coding Best Practices:**
     *   Apply premium styling, responsive rules, and rich design tokens defined in `docs/ux-ui/design.md`.
     *   Preserve all existing comments, docstrings, and structures unrelated to your code changes.
-4.  **Verification Rigor & Self-Correction (Pre-Review):**
+4.  **Fix the Class, Not Just the Site (KZ-012):**
+    *   A Reviewer finding names **one location**; the same mistake is often repeated elsewhere. Before reporting a fix complete, **grep for other instances of the same shape** — the same signal consumed by another caller, the same mock in another lifecycle phase, the same assumption in a sibling branch — and say in your report which sites you checked and their verdicts.
+    *   *Evidence: this pattern cost four separate rework rounds in `bugfix/deleted-document-content-persists`, then recurred a fifth time inside the very table that had recorded it.*
+
+5.  **Verification Rigor & Self-Correction (Pre-Review):**
     *   After writing code, run the designated automated unit/integration tests or local builds immediately.
     *   **Self-Correction Inner Loop:** If the verification command fails, you are **ABSOLUTELY PROHIBITED** from reporting completion to the Leader. You must fix your code and re-run the verification until it passes.
     *   Only report back when your code builds cleanly and all assertions pass. If you are hopelessly stuck and cannot fix the build after multiple inner-loop attempts, report a `STATUS: FATAL_FAIL` directly to the Leader to abort the task.

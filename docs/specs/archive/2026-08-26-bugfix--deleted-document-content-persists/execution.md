@@ -1,0 +1,909 @@
+# Execution Log — Deleted Document Content Persists In Gap Detection
+
+## 1. Document Control
+
+| Field | Value |
+|-------|-------|
+| **Module** | `docs/specs/bugfix/deleted-document-content-persists` |
+| **Requirements** | `./requirements.md` (v2.1) |
+| **Design** | `./design.md` (v2.1) |
+| **Tasks** | `./tasks.md` (v1.0) |
+| **Started** | 2026-08-21 |
+| **Approval Mode** | `gated` |
+| **Branch** | `bugfix-deleted-document` |
+| **Budget of record** | `design.md` §12 — re-baselined once during execution; **measured actual: 9 tasks · 2,797 LOC · 7 review rounds** |
+
+### Triad configuration
+
+| Role | Agent | Independence |
+|------|-------|--------------|
+| Leader | this session (T1) | writes no production code |
+| Implementer | `.claude/agents/akili-implementer.md` (T2) | — |
+| Reviewer | `.claude/agents/akili-reviewer.md` (T3) | author ≠ auditor, enforced by wrapper model binding |
+
+---
+
+## 2. Task Execution History
+
+### T-001 — Shared merged-content response type `[SHARED]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-21 |
+| **Requirements covered** | enables FR-DDP-002, FR-DDP-003 |
+| **Design ref** | §9 Shared Contracts, §6 API Design |
+| **Effort** | `low` (Leader selection — mechanical type declaration) |
+| **Skills** | none — repo conventions only, as the task specifies |
+
+**Attempt 1**
+
+- **Files changed:** `packages/shared/src/types/assessment.types.ts`, `packages/shared/src/index.ts`
+- **Change:** added `MergedContentResponse` = `{ mergedMarkdown: string | null; superseded: boolean }` and its `type` export in the barrel.
+- **Verification:** `pnpm --filter @alliance-risk/shared build` → `tsc` clean, no errors.
+- **Disqualifier check** (T-001: "the build passes because the type was added but not exported"): the Implementer read the emitted `dist/index.d.ts` and `dist/types/assessment.types.d.ts` after building. The **Reviewer independently re-verified** both files rather than accepting the report — `dist/index.d.ts:13` names `MergedContentResponse` in the type export, and `dist/types/assessment.types.d.ts:29-32` emits the interface with both fields at the declared types.
+- **Reviewer verdict:** `STATUS: PASS` — the type matches `design.md` §9's contract and §6's semantics field-for-field, sits on the correct side of the package's value-vs-type export split, and touches nothing outside the two-file scope. No enum was introduced, honouring §6's deliberate one-boolean decision (DD-DDP-003).
+- **Not Done / Assumptions:** none reported.
+- **KZ-004 compliance:** the done-when was scoped to `@alliance-risk/shared` only. API and Web build/typecheck were deliberately **not** run — their consumers land in T-005…T-007 and would fail correctly.
+
+**ADVISORY (4R lenses — recorded, never gating, never a new task)**
+
+| Lens | Finding |
+|------|---------|
+| Readability | `packages/shared/CLAUDE.md` documents `assessment.types.ts` as containing only `AssessmentSummary`, `AssessmentDetail`, `AssessmentStats`. That inventory line is now stale |
+| Readability / Reliability | `design.md` §6 states an invariant the type cannot express — "when `superseded` is `true`, `mergedMarkdown` is `null`". A discriminated union would contradict the mandated shape, so the Reviewer explicitly recommends **not** restructuring; a JSDoc note would carry the invariant to T-005 |
+| Risk (forward) | Until T-005 and T-006 adopt the shared type, three parallel declarations of this shape coexist (shared, the API's inline return type, `use-merged-content.ts:6-8`). Correct at T-001, but **T-005 and T-006 must be audited for *replacing* the local declarations, not merely coexisting with them** |
+| Resilience | Type-only change, no runtime emit; `dist/index.js` unchanged, zero blast radius on deployed consumers |
+
+**Leader disposition of advisories:** recorded and closed here. None is minted as a task — an advisory is not approved scope (`/akili-execute` → *Advisory Never Becomes A Task*). The forward-looking risk item is carried into T-005's and T-006's Reviewer briefs as an audit focus, which is a brief instruction, not new scope.
+
+---
+
+### T-002 — Regression suite, RED before any fix `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-21 |
+| **Requirements covered** | FR-DDP-001 Sc 1–3, FR-DDP-002 Sc 1–2 & 4, FR-DDP-004 Sc 1–2, BR-DDP-003 |
+| **Design ref** | §7.1, §7.2, §7.3, §11 |
+| **Effort** | attempt 1 `high` → attempt 2 `xhigh` (bumped on rework) |
+| **Skills** | `nestjs-expert`, `tdd` |
+
+**Leader skill deviation (recorded per `.agents/leader.md` → Delegation Discipline):** added `tdd` beyond the task's own list. T-002's disqualifier is "the suite must fail for the right reason", which is precisely the red-green discipline and test-anti-pattern material that skill carries.
+
+#### Attempt 1 — Reviewer `STATUS: FAIL`
+
+- **Files changed:** `packages/api/src/domain/assessments/assessments.service.spec.ts` (+176), `packages/api/src/platform/jobs/handlers/gap-detection.handler.spec.ts` (+162). No production source touched.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern='gap-detection.handler|assessments.service'` → Test Suites 2 failed / 2 total; Tests **10 failed, 44 passed**, 54 total.
+- **Implementer's `Not Done / Assumptions`:** none reported.
+
+**What the Reviewer confirmed as sound** — worth recording, because the rework must not undo it:
+
+- The red baseline is **genuine**. All 10 failures traced to production code and confirmed behavioural (`not.toContain`, `toBeNull`, `toHaveBeenCalledWith`), none a `TypeError` or wiring artefact. 54 tests collected proves both suites compiled.
+- The 44 pre-existing tests (25 handler + 19 service) still pass, none relaxed or deleted.
+- **The `[jobA]` / `{A, B}` → serve fixture is strong.** It asserts both that content is served verbatim and that `superseded === false`, so a set-equality implementation — the defect three prior designs shipped — fails both assertions. This is the single most valuable test in the suite and it holds.
+- `wireJobFindManyToStore` is a legitimate seam, not over-fitting: it answers by semantics and its unrecognised-`where` fallback returns *all* jobs, failing **red** rather than green. Fail-closed direction.
+- KZ-005 single-dash form used correctly.
+
+**FAIL issues (3) — Reviewer report, verbatim**
+
+1. **Discovered Issue:** The `$transaction` mock (`assessments.service.spec.ts:66`) is a bare `jest.fn()`, and the new describe's `beforeEach` calls `mockPrisma.$transaction.mockReset()` (`:304-307`). This wiring supports **only** the array form `$transaction([p1, p2])`. If T-004 uses the interactive callback form — which is this repo's dominant idiom, 7 call sites (`prompts.service.ts:34,164,250,266,300,367`, `comments.service.ts:35`) against 2 array-form sites — the callback never executes, so `mockPrisma.job.delete` is never called and tests at `:309` and `:323` stay red against a *correct* implementation. `mockReset()` would also wipe any implementation a later task added at the mock literal. T-004's scope is `assessments.service.ts` only, so it cannot repair this, and the file's own comment at `:58-61` ("so T-004 … can turn these same tests green without touching this spec file again") is false for that path. This is criterion 4's failure mode: a test coupled to one implementation shape that blocks a right implementation.
+   - **Violated Rule:** `design.md` §7.2 / DD-DDP-004 (mandates one `$transaction`, does not mandate a form); `tasks.md` T-004 Scope (production file only) and T-004 "Tests: T-002's deletion cases turn green"; repo convention `prompts.service.spec.ts:46`.
+   - **Remediation Suggestion:** Adopt the established convention and make the mock form-agnostic, e.g. `$transaction: jest.fn((arg: any) => (typeof arg === 'function' ? arg(mockPrisma) : Promise.all(arg)))`, and replace the `mockReset()` in the describe's `beforeEach` with `mockClear()` (or re-install the implementation after reset) so the seam survives. The red baseline is unaffected — `deleteDocument` calls `$transaction` zero times today, so all three deletion tests stay red.
+
+2. **Discovered Issue:** Nothing asserts that the `AssessmentDocument` row itself is deleted, nor that **both** deletes occur inside the single transaction. `:309` asserts only `job.delete`; `:352` asserts only `expect(mockPrisma.$transaction).toHaveBeenCalledTimes(1)`. An implementation that drops the document delete entirely, or that deletes the document outside the transaction and wraps only the job delete, passes all three deletion tests. FR-DDP-004 Sc1's "**both** the document record and its parse job record are gone" and Sc2's "both or neither" are therefore ungated — and Sc2 is the whole point of the transaction.
+   - **Violated Rule:** `tasks.md` T-002 Scope — "deletion removes the document **and** its parse job … the two deletes are one transaction"; `requirements.md` FR-DDP-004 Sc 1 and Sc 2; `design.md` §7.2.
+   - **Remediation Suggestion:** Once issue 1 is fixed, assert `assessmentDocument.delete` was called with `{ where: { id: 'doc-1' } }`, and assert both deletes are attributable to the transaction (with the callback form, assert both delegates were called from within the `$transaction` callback; with the array form, assert `mockPrisma.$transaction.mock.calls[0][0]` has length 2 — the pattern already used at `gap-detection.handler.spec.ts:449-450`).
+
+3. **Discovered Issue:** BR-DDP-003 has no test anywhere in the diff. `tasks.md` T-002 lists it in its **Requirements** field, and §5 Requirement Coverage names T-002 as its **sole** owner ("BR-DDP-003 | Analyst edits survive | T-002"). No new or existing assertion in `assessments.service.spec.ts` establishes that withholding an analysis leaves gap-field corrections untouched; the service spec's `mockPrisma` has no `gapField` delegate at all, so the property is only implicitly protected by a would-be `TypeError`.
+   - **Violated Rule:** `tasks.md` T-002 Requirements and §5 Requirement Coverage ("a requirement ID appearing in a task is not coverage"); `requirements.md` §5 BR-DDP-003.
+   - **Remediation Suggestion:** Add a `gapField: { deleteMany: jest.fn(), updateMany: jest.fn(), update: jest.fn() }` delegate to `mockPrisma` and, in the withholding fixture (`:410`), assert none of them was called — i.e. the withheld read is a pure read and destroys no Analyst edit. This will be green today and stays green through T-005, which is correct for a "must not change" business rule.
+
+**Leader adjudication.** All three are in-scope spec-conformance failures, not stylistic preferences:
+- Issues 1 and 2 are the same class the spec's own §6 gate language warns about — a check that cannot fail, or that fails a *correct* implementation. Issue 1 would have surfaced as a phantom T-004 FAIL, costing rework attempts on a task that was right.
+- Issue 3 is a coverage hole against `tasks.md` §5, which closes at clause granularity and names T-002 as BR-DDP-003's only owner.
+
+**ADVISORY (recorded, non-gating, not absorbed into this task)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | `expect(assessmentDocument.findMany).toHaveBeenCalled()` is Sc3's only red and is an implementation-shape assertion; a behaviourally equivalent `assessment.findUnique({ include: { documents: true } })` would satisfy every FR yet fail it | **Carried into T-003's brief as an audit note.** Not a T-002 change |
+| Reliability | D2 fixture 3 asserts only `superseded === false`, never that content is actually served | Recorded |
+| Risk (forward, T-004) | T-004's done-when requires proving no job is enqueued (NFR-DDP-011), but T-004's scope is production-only | **Carried into T-004's brief** |
+| Risk (forward, T-005) | FR-DDP-002 Sc4 also requires serving while B is *unparsed* (`parseJobId: null`) and when B's parse *failed* — the case where a naive `documents.map(d => d.parseJobId)` yields `[null]` | **Carried into T-005's brief** |
+| Readability | `mockResolvedValue` set inside the new describes persists into later tests; harmless today as both describes are last in the file | Recorded |
+
+Per `/akili-execute` → *Advisory Never Becomes A Task*, none of these widens T-002 or mints new work. Three are carried forward as **brief instructions** to later tasks' workers — which is orchestration, not scope growth.
+
+#### Attempt 2 — Reviewer `STATUS: FAIL` (1 of 3 issues remains)
+
+- **Files changed:** `assessments.service.spec.ts` (mock rework + assertions), `gap-detection.handler.spec.ts` (comment-only).
+- **Verification:** the Implementer ran a variant (`pnpm --filter @alliance-risk/api exec jest … --verbose`) rather than the command the task specifies. **The Leader re-ran the specified command inline** — `pnpm --filter @alliance-risk/api test --testPathPattern='gap-detection.handler|assessments.service'` → Test Suites 2 failed / 2 total; Tests **10 failed, 44 passed**, 54 total. Same counts; the deviation was cosmetic, and the gate as written holds.
+
+**Fixed and confirmed by the Reviewer:**
+
+- **Issue 2 — closed.** Test 1 now gates the `AssessmentDocument` delete, so an implementation that drops it fails. Test 3's callback branch asserts neither delegate escaped onto the raw client, so "document deleted outside the transaction, only the job wrapped" now fails; the array branch's length-2 check catches the same shape.
+- **Issue 3 — closed and non-vacuous.** `gapField.{deleteMany,updateMany,update}` are real delegates on `mockPrisma`, so a T-005 implementation touching gap fields would land on them and fail.
+- Attempt 1's confirmed-sound elements survived intact: `wireJobFindManyToStore`, the `[jobA]`/`{A,B}` serve fixture, and the 44 pre-existing tests.
+- All 10 failures remain behavioural. Test 3 fails at the `toHaveBeenCalledTimes(1)` assertion, which aborts before `mock.calls[0][0]` could throw — correct ordering.
+
+**Remaining FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** `mockTx`'s delegates are never reset, so test 2 leaks its `deleteFromStore` implementation into test 3 — reintroducing exactly the attempt-1 failure mode (a correct callback-form T-004 cannot turn the suite green).
+
+   `packages/api/package.json` Jest config sets neither `resetMocks` nor `restoreMocks`, and `jest.clearAllMocks()` (line 124) only calls `mockClear()` — it clears call history but **does not remove implementations**. The describe-level `beforeEach` (lines 335-344) resets `mockPrisma.job.delete` but nothing on `mockTx`.
+
+   Test 2 installs `mockTx.job.delete.mockImplementation(deleteFromStore)` (line 392), closing over a `jobStore` from which `job-1` has been removed by the time that test ends. Test 3 then runs with that stale implementation still attached. Under a callback-form T-004, `deleteFromStore` finds no `job-1`, returns a rejection, it propagates out of `$transaction`, and `deleteDocument()` throws. Test 3 fails with a **mock-fixture error, not a behavioural assertion** — the precise disqualifier in T-002's "Evidence is disqualified if".
+
+   The array form is unaffected, so the seam still silently favours one shape. The comment at lines 337-342 is true about call history and false about its conclusion, and will mislead the next maintainer.
+
+   This does not affect today's red run (production never calls `job.delete`), so the recorded baseline stands; it fails against *correct* T-004 code, which is what T-002 exists to gate.
+   - **Violated Rule:** `tasks.md` §4 T-002 — Scope and "Evidence is disqualified if: the suite fails for the wrong reason — a mock wiring error … is **not** a red test"; `design.md` §7.2 (mandates one `$transaction`, prescribes no form).
+   - **Remediation Suggestion:** In the describe-level `beforeEach`, reset the transaction-scoped delegates alongside `mockPrisma.job.delete` — they carry no literal-level implementation, so `mockReset()` is safe there (unlike on `$transaction`): `mockTx.assessmentDocument.delete.mockReset(); mockTx.job.delete.mockReset();` — and correct the comment so it distinguishes "clears call history" from "removes implementations", noting that `$transaction` alone needs `mockClear()` because its dispatch implementation lives on the object literal. Symmetric treatment of `mockPrisma.job.delete` and `mockTx.job.delete` is the invariant to state.
+
+**Leader adjudication.** Correct and in scope. The finding is the same defect class as attempt 1's issue 1 — a fixture that fails a *right* implementation — relocated from the mock's shape to its lifecycle. Attempt 2 fixed the shape and left the lifecycle, which is why the Reviewer caught it and the counts did not move: the leak is invisible in the red baseline and only bites when T-004 lands. Two of three issues are closed; one attempt of three remains.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | Test 3's array-form branch asserts only `toHaveLength(2)`; an implementation deleting the document outside the transaction and passing `[job.delete(...), <other write>]` satisfies it. The callback branch is strictly stronger | Recorded. The callback form is the repo's dominant idiom, so the weaker branch is the less-travelled path |
+| Readability | BR-DDP-003's assertions sit at the end of D2 fixture 2, after two expectations that fail today — so they never execute in the red baseline and begin gating only when T-005 turns that fixture green. A standalone `it()` would be exercised from the first run | **Carried into T-005's brief as an audit note** |
+| Risk | `mockTx` is module-scoped and shared by every `describe`; any future test installing an implementation on it inherits this same leak class. Building it in `beforeEach`, or a `resetMockTx()` helper, removes the hazard structurally | Recorded |
+| Readability | Block comments carrying line-number citations will silently rot; consider trimming coordinates to file names once T-003/T-004 land | Recorded |
+
+#### Attempt 3 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `assessments.service.spec.ts` only (two added `mockReset()` lines + a rewritten comment).
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern='gap-detection.handler|assessments.service'` → Test Suites 2 failed / 2 total; Tests **10 failed, 44 passed**, 54 total. The specified command, not a variant.
+- **Implementer's `Not Done / Assumptions`:** none.
+
+**How the fix was proven** — this matters, because the defect was invisible in the red baseline and confirming unchanged counts would have proved nothing. The Implementer ran a controlled probe: temporarily added a callback-form `$transaction` to production `deleteDocument()`, confirmed all three deletion tests went green **with** the fix, then reverted only the fix while keeping the probe and reproduced the exact reported failure (`Record to delete does not exist.` thrown from the leaked implementation), then removed the probe entirely.
+
+**Leader's independent checks** (the probe touched production source, so this was verified rather than trusted): `git status --porcelain` shows only the two spec files modified; `grep -rn "PROBE" packages/api/src` returns nothing; `git diff` on `assessments.service.ts` is empty.
+
+**Reviewer verdict:** PASS. Traced test 2 → test 3 ordering under Jest 29 semantics independently rather than relying on the probe narrative. Confirmed: both `mockTx` delegates now `mockReset()` while `$transaction` stays on `mockClear()` so its literal-level dispatch survives; `mockReset()` does not replace the function object, so the `$transaction` closure still hands the callback the same `mockTx` identity; a correct T-004 turns all three deletion tests green under **both** transaction forms; no assertion was altered; the red baseline stays behavioural (10 failed = 3 handler + 3 deletion + 4 `getMergedContent`); no production file was touched. The Reviewer also searched for a third variant of the defect class and found none blocking.
+
+**Final status: ✅ PASS on attempt 3 of 3.**
+
+| Field | Value |
+|-------|-------|
+| **Requirements covered** | FR-DDP-001 Sc 1–3, FR-DDP-002 Sc 1–2 & 4, FR-DDP-004 Sc 1–2, BR-DDP-003 |
+| **Red baseline of record** | 10 failed, 44 passed, 54 total |
+| **Decisions** | Form-agnostic `$transaction` seam so T-004 is free to choose the callback or array form (`design.md` §7.2 mandates a transaction, not a form) |
+| **Issues encountered** | The same defect class — *a fixture that fails a correct implementation* — recurred twice: first in the mock's **shape** (array-only), then in its **lifecycle** (unreset delegates). Both were invisible in the red run and would have surfaced as phantom T-004 FAILs, burning rework attempts on a task that was right |
+
+**ADVISORY from attempt 3 (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | After `mockReset()` the delegates return `undefined`. A T-004 that dereferences a delete's return value would throw a `TypeError` against otherwise-correct code — the last remaining way this fixture can fail right code | **Carried into T-004's brief:** do not read the return value of the deletes |
+| Reliability | The stated invariant is broader than the code — `mockPrisma.assessmentDocument.delete` is deliberately not reset because it carries a literal `mockResolvedValue`. True today; a future test installing a per-test implementation on it would reopen the leak | Recorded |
+| Readability | The root cause of both recurrences is that this file needs `clearAllMocks` + surgical `mockReset` where the sibling handler spec can use `jest.resetAllMocks()`, purely because implementations live on the object literal. Moving the dispatch into a `beforeEach` re-install would retire the defect class | Recorded — a legitimate follow-up, explicitly **not** minted as a task here |
+| Risk | Blast radius nil — test-only, no production source, no schema, no shared types | — |
+
+---
+
+## 3. Budget Tripwire — ⚠️ ESCALATED TO USER
+
+`design.md` §12 records the budget `/akili-execute` trips against. Measured after 2 of 8 tasks:
+
+| Dimension | Budgeted (whole spec) | Actual after T-001 + T-002 | Status |
+|---|---|---|---|
+| Tasks | 8 | 2 complete | on track |
+| **Test LOC** | **~130** | **441** | ⚠️ **3.4× over, with 3 test files still unwritten** |
+| Backend LOC | ~90 | 0 | not started |
+| Frontend LOC | ~80 | 0 | not started |
+| Shared LOC | (in backend) | 6 | on track |
+| **Total LOC** | **~300** | **447** | ⚠️ **1.5× over at 25% of tasks** |
+
+**Cause — a sizing error in `design.md` §12, not scope creep in execution.** Every line of T-002 is inside its approved scope, and two Reviewer rounds tightened rather than widened it. What the budget mis-sized is the cost of the evidence this spec demands of itself:
+
+- `requirements.md` §6 D2 requires **four** withholding fixtures, each needing its own mocked document/job state.
+- `tasks.md` §5 closes coverage at **clause** granularity, so each `AND IT MUST` / `BUT it must NOT` needs its own assertion.
+- T-002's disqualifier requires the suite fail for the *right* reason, which is what produced the form-agnostic `$transaction` seam and the `mockTx` machinery — roughly 60 lines of scaffolding that a laxer gate would not have needed.
+
+The estimate of ~130 test LOC was made against a design of comparable behavioural surface but did not price the gate rigour the same documents mandate. That rigour has already paid: it caught two fixtures that would have failed a correct T-004.
+
+**Projection if the pattern holds:** the three remaining test files (T-006 × 2, T-007 × 1) plus production code across T-003…T-007 put the spec near **~900–1000 LOC**, roughly 3× the budget — close to the ~810 the v1.x design was rejected for, though for a materially different reason (evidence weight, not design complexity).
+
+**Leader disposition:** halted before starting T-003 and escalated. Per `/akili-execute` → *Budget Tripwire*, exceeding a budget is information, not failure, and the cost of a mis-sized spec is only recoverable while the spec is still running. Awaiting the user's decision.
+
+**User decision (2026-08-21): re-baseline and continue.** `design.md` §12 updated to ~1,050 LOC (≈115 backend, ≈140 frontend, ≈795 tests) and 2 review rounds. Rationale accepted: the overrun is concentrated in test evidence that has already demonstrated its value, so trimming it would optimise the wrong dimension. Implementation LOC remains close to the original estimate — the spec did not grow, the estimate of its test weight was wrong by roughly 6×. Flagged as a `/akili-archive` Kaizen candidate: Step 2.4 sizing should price gate rigour explicitly.
+
+---
+
+### T-004 — Delete the orphaned parse job with the document `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-21 |
+| **Requirements covered** | FR-DDP-004 Sc 1–2, NFR-DDP-011, BR-DDP-004 |
+| **Design ref** | §7.2, §10 |
+| **Effort** | `medium` |
+| **Skills** | `nestjs-expert`, `error-handling-patterns` |
+
+**Attempt 1**
+
+- **Files changed:** `assessments.service.ts` (`deleteDocument`), plus the single NFR-DDP-011 assertion in `assessments.service.spec.ts` permitted by the Leader adjudication below.
+- **Change:** both row deletions moved into one interactive `$transaction` — document first (FK-correct: the FK is `assessment_documents.parse_job_id → jobs.id`, so the referencing row must go first), then its own job scoped by `id` **and** `type: 'PARSE_DOCUMENT'`. S3 deletion unchanged, still before and outside the transaction, still best-effort.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` → 22 passed, 4 failed, 26 total. The 3 FR-DDP-004 tests green; all 19 pre-existing green; the 4 failures are the `getMergedContent` fixtures, which are T-005's scope. Baseline confirmed by `git stash`: 19/7 before → 22/4 after, exactly the 3 target tests flipping and nothing else moving.
+- **Not Done / Assumptions:** none.
+
+**Leader adjudication — a conflict inside the task itself.** T-004's *scope* said production file only, but its *done-when* required "an assertion proves no job is enqueued on the delete path (NFR-DDP-011)", and no such assertion existed or was owned elsewhere. I authorised exactly one assertion in the existing Sc 1 test. Recorded because it is a deviation from the task's written scope, made to satisfy that same task's written done-when.
+
+**Reviewer verdict:** `STATUS: PASS`. The highest-value check was whether `type` is legal in a Prisma `delete` where-clause, since `delete` requires a unique selector and `type` is not unique — if Prisma silently dropped it, FR-DDP-004 Sc 1's "not any other job type" clause would be enforced only by the mock. The Reviewer verified against the **generated client**: `JobWhereUniqueInput` is `Prisma.AtLeast<{ id?, type?, … }, "id">`, so `id` satisfies the uniqueness requirement and `type` is a first-class additional filter (extended where-unique, GA since Prisma 5; this repo is on `@prisma/client` 7.4.1). It compiles to `DELETE … WHERE id = $1 AND type = $2`, and a non-match raises P2025 rather than being ignored. **The clause is a real database-level constraint.**
+
+Also confirmed: `parseJobId` captured before the callback so the transaction reads no stale state; neither delete's return value dereferenced (the sharp edge carried forward from T-002's review); with `parseJobId === null` the transaction holds one delete and "both or neither" is vacuously satisfied; the NFR-DDP-011 assertion is non-vacuous (`mockJobs.create` is proven observable by the `triggerParseDocument` suite).
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Resilience | A job row missing or of the wrong type makes `tx.job.delete` raise P2025 and roll back the document delete — **while the S3 object was already removed before the transaction.** The document becomes permanently undeletable with its file already gone, and every retry fails identically. `design.md` §10 assumes transaction failure is retryable; this sub-case is not | **Recorded as a real gap in §10's assumption.** Risk is low today (no code path in `packages/api/src` deletes `Job` rows, and all three parse paths write `parseJobId` in the same call). If ever observed, the fix is to catch P2025 specifically on the job delete — **not** to relax the scoping |
+| Resilience | The `PARSING` guard and the `parseJobId` read happen outside the transaction; a re-parse racing between them would delete the old job while orphaning the new one. Pre-existing class, not introduced here | Recorded |
+| Risk | Assessment-level deletion cascades `AssessmentDocument` rows but leaves their `PARSE_DOCUMENT` jobs behind, so FR-DDP-004's storage-growth motivation is closed only for the per-document path | Recorded as a follow-up; correctly excluded under NFR-DDP-012 |
+
+---
+
+## Pivot Record: T-003
+
+**Status:** ⛔ blocked, awaiting user approval. T-003 marked `[~]`. Rework attempts **not** consumed — this is a spec defect, not an implementation failure, and the Pivot Protocol forbids looping on one.
+
+### The blocker
+
+T-003's disqualifier and its scope instruct opposite things for one input.
+
+- **Scope says:** guard `createSkeletonFields` behind `!isReAnalyze` — stated twice, with a design rationale (`design.md` §7.1).
+- **Disqualifier says:** all 25 pre-existing handler tests must still pass.
+
+One pre-existing test asserts the *unguarded* behaviour for exactly the input the guard closes:
+
+```
+✕ clears detectedCountry to null on zero completed parse jobs during a re-run,
+  without createSkeletonFields() touching prisma.assessment
+```
+
+It calls `execute({ assessmentId, reAnalyze: true })` with zero completed parse jobs and asserts `gapField.createMany` **was** called once. With the guard in place it is called zero times. No implementation satisfies both.
+
+The Implementer implemented the guard as specified, reported the conflict in `Not Done / Assumptions` rather than silently reverting it or editing the test, and left the suite at 27 passed / 1 failed. **That was the correct call** and is why this reached a Pivot rather than a HALT.
+
+### Leader investigation (inline, two file reads)
+
+**1. The duplication the guard prevents is real.** `GapField` (`schema.prisma:309-329`) carries only `@@index([assessmentId, category])` — **no unique constraint** on `(assessmentId, field)`. So `createMany` of ten Core-10 rows against an assessment that already has ten genuinely produces twenty. Combined with `execute()` deleting existing fields only when `!isReAnalyze` (`gap-detection.handler.ts:65`), a re-analyse resolving zero jobs duplicates the list. **The design is correct; the guard must stay.**
+
+**2. The pre-existing test's subject is not skeleton creation.** Reading it in full, its own comments give it away:
+
+> `// createSkeletonFields() ran (GapField-only helper) ...`
+> `// ... but the ONLY prisma.assessment.update call is the single execute()-level fold-in write — createSkeletonFields() performs no Assessment write of its own.`
+
+Its claim, inherited from the archived country-match spec, is **"`createSkeletonFields` performs no `Assessment` write of its own."** The `createMany` assertion is the *precondition* establishing that the helper ran, so the next assertion means something. It is not the thing under test.
+
+The guard removes that precondition **in re-analyse mode only**. The test's actual subject is untouched and still verifiable — in a non-re-analyse run, where the helper still executes.
+
+### Conclusion
+
+Neither `design.md` nor `requirements.md` is wrong. The defect is in **`tasks.md` T-003's disqualifier**, which was written assuming the guard could not disturb existing coverage. It can, for one input, and the affected test is incidentally — not essentially — coupled to the old behaviour.
+
+### Alternatives considered
+
+| Option | Verdict |
+|---|---|
+| Drop the guard to keep all 25 green | **Rejected.** Ships a real data-corruption path (twenty Core-10 rows), and T-007's re-analyse control makes it reachable. The disqualifier would be protecting a bug |
+| Weaken the pre-existing test to `toHaveBeenCalledTimes(0)` | **Rejected.** Destroys the CMV coverage it exists for — its "no `Assessment` write" claim needs the helper to actually run |
+| **Retarget the pre-existing test to a non-re-analyse run, and add a test for the guard** | **Recommended.** Preserves the CMV claim in a scenario where its precondition holds, and gives the new behaviour its own gate |
+| Treat it as an acceptable known failure | **Rejected.** A permanently red test is indistinguishable from a regression to every future run |
+
+### Proposed spec amendment (not yet applied — awaiting approval)
+
+1. **`tasks.md` T-003 disqualifier** — from *"the 25 pre-existing tests must still pass"* to: *"24 of the 25 pre-existing tests pass unchanged. The one asserting unguarded skeleton creation during a re-analyse is **retargeted, not weakened**: its subject — that `createSkeletonFields` performs no `Assessment` write — must still be asserted, in a non-re-analyse run where the helper executes."*
+2. **`tasks.md` T-003 scope** — add the retarget plus one new test asserting the guard: with `reAnalyze: true` and zero resolved jobs, `gapField.createMany` is **not** called.
+3. **`design.md` §7.1** — record that the guard changes behaviour a pre-existing CMV test incidentally asserted, and why the retarget preserves that test's real claim.
+
+Cost: roughly 15 lines of test change inside T-003, no change to the fix itself. `design.md` and `requirements.md` need no behavioural change.
+
+### TRD impact
+
+None. No `ADR-NNN` is overturned — this is a handler-level guard, not an architecture decision.
+
+### Work already completed under T-003 and preserved
+
+The query-shape change, `sourceParseJobIds` persistence (verified through `jobs.service.ts` to the stored `Job.result`, both the populated and empty-array cases), the skeleton guard itself, and the untouched separator/header/ordering/truncation behaviour. `pnpm --filter @alliance-risk/api build` passes clean. All three FR-DDP-001 tests are green.
+
+### T-003 — Scope the merge to current documents `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** after an approved Pivot (rework attempts not consumed) |
+| **Date** | 2026-08-21 |
+| **Requirements covered** | FR-DDP-001 Sc 1–3, BR-DDP-001, NFR-DDP-012 |
+| **Design ref** | §7.1 |
+| **Effort** | `high` |
+| **Skills** | `nestjs-expert`, `tdd` (the latter for the amended test work) |
+
+**Pivot resolution applied.** `tasks.md` T-003's disqualifier and scope amended, `design.md` §7.1 extended to record the interaction, correction-closure sweep run in both directions. The guard stayed; the pre-existing test was retargeted.
+
+- **Files changed:** `gap-detection.handler.ts` (implementation), `gap-detection.handler.spec.ts` (one retarget + one new guard test).
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=gap-detection.handler` → **29 passed, 29 total** (25 pre-existing incl. the retarget + 3 T-002 FR-DDP-001 + 1 new guard).
+- **Not Done / Assumptions:** none. One judgment call flagged and not silently taken: the requirement tag chosen for the new tests, since no FR/NFR is written specifically for the skeleton guard.
+
+**Reviewer verdict:** `STATUS: PASS`, with the retarget audited as the highest-value item:
+
+- **The retarget preserves the original claim and is not vacuous.** Traced through the new fixture: with `isReAnalyze === false` the guard is open, so `createSkeletonFields` genuinely executes — the `createMany` precondition would read `0` if it did not. The surviving assertion (`assessment.update` called exactly once, with the exact payload) still discriminates: a helper that wrote to `Assessment` would make it 2. Crucially the retarget **kept the same call site** rather than drifting to the non-UPLOAD `createSkeletonFields` call, which an existing GUIDED_INTERVIEW test already covers — drifting there would have duplicated coverage and abandoned the original path.
+- **The guard test is a real gate.** Deleting `!isReAnalyze &&` from the handler makes `execute({ reAnalyze: true })` reach `createSkeletonFields` and fail the assertion. No other `createMany` call site is reachable on that path.
+- **The `[]`-vs-absent distinction reaches the persisted result.** `sourceParseJobIds` is declared non-optional, initialised to `[]`, and included unconditionally in `execute()`'s returned literal; `jobs.service.ts:152` assigns that return and `:166` writes it into `Job.result`. `[]` is a JSON value, so it serialises as `"sourceParseJobIds": []` rather than being dropped — **exactly the distinction T-005 reads.**
+- Test count reconciles: 29 = 25 pre-existing + 3 T-002 + 1 guard. Nothing weakened; the rejected `toHaveBeenCalledTimes(0)` shortcut was not taken.
+- **The Bedrock-failure path recording real ids is correct**, and both alternatives are wrong: the handler swallows the error and the job is marked `COMPLETED`, so this snapshot *will* be read by T-005. Omitting the key would make it indistinguishable from a pre-fix snapshot and withhold content that truthfully describes current documents; recording `[]` would make it permanently non-superseded even after every document it describes is deleted — the original bug.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Readability | Both tests are tagged `[T-003 guard / NFR-DDP-012]`, but NFR-DDP-012 is a scope constraint, not a behavioural requirement. Doubly misleading on the **retargeted** test, whose subject is the inherited country-match claim — a future maintainer removing the guard could read the tag as licence to delete it, **precisely the incidental coupling this Pivot was fought to break** | Recorded. The 11-line block comment above the test largely mitigates it. Worth correcting at `/akili-archive` |
+| Reliability | The `?? []` on `assessmentDocument.findMany` is production code shaped around a test mock — unreachable in production (`findMany` always resolves an array) and unable to mask a real failure, but its only function is to let ~20 pre-existing tests leave the call unstubbed. One `mockResolvedValue([])` in the outer `beforeEach` would achieve the same and let the production fallback go away | Recorded |
+| Reliability | Both new tests express "zero resolved jobs" via `job.findMany → []` while leaving the document lookup unstubbed, so neither states its actual premise (zero *current documents*) | Recorded |
+| Risk | Most pre-existing tests stub `job.findMany` with `mockResolvedValue`, ignoring the `where` clause, so they are structurally blind to the new `id: { in: … }` scoping. **T-002's three FR-DDP-001 tests are therefore the sole automated gate on the merge-scoping fix** — any future edit to those three fixtures removes all coverage of the reported bug | Recorded — worth a note in the PR description |
+
+---
+
+### T-005 — Withhold an analysis that describes a deleted document `[BE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-24 |
+| **Requirements covered** | FR-DDP-002 Sc 1–2 (Sc 4 partially — see the coverage gap below), BR-DDP-002, BR-DDP-003 |
+| **Design ref** | §7.3, §6, §9 |
+| **Effort** | `high` |
+| **Skills** | `nestjs-expert`, `api-design-principles` |
+
+**Attempt 1**
+
+- **Files changed:** `assessments.service.ts` only.
+- **The rule as implemented:** `sourceParseJobIds.some((jobId) => !currentParseJobIds.has(jobId))` — one-directional subtraction, no status filter, no ordering, no time window. Absent key short-circuits to superseded before the document query runs; a recorded `[]` flows through `.some()` on an empty array and is never superseded.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` → **26 passed, 26 total.** Build clean.
+- **Not Done / Assumptions:** none.
+
+**Reviewer verdict:** `STATUS: PASS`, after attacking the rule across nine cases (delete only doc; delete one of several; re-parse; add one; add several; `parseJobId: null`; recorded `[]`; absent key; delete-and-add in one session). **No case serves what it should withhold, and none withholds what it should serve.**
+
+Also confirmed: the shared type genuinely **replaced** the inline return type rather than coexisting with it (`design.md` §9); T-002's four fixtures are unedited — they still carry the pre-fix defensive cast and the RED-baseline header comment, neither of which survives a fixture rewritten to fit an implementation; BR-DDP-003's assertions now execute for real; and the producing side never omits the key, so `[]`-vs-absent stays a clean discriminator.
+
+**A factual error in the Implementer's reasoning — confirmed, and provably harmless here.** The report claimed *"a failed parse leaves `parseJobId` null."* It does not: `parseJobId` is written at job **creation** (`assessments.service.ts:270-273`, `:330-333`) and failure sets only `status: 'FAILED'` + `errorMessage` (`parse-document.handler.ts:59-67`), leaving it populated.
+
+The rule still produces the design-mandated verdict, necessarily: a failed-parse document is either newly added — its id was never in the snapshot, and an addition only *grows* the current set, which one-directional subtraction can never be made true by — or a re-parse, which §7.3 already requires to be superseded. The wrong belief can only shrink the *predicted* current set for ids the rule never reads.
+
+**Where the wrong model does bite:** it predicts away a real state. Re-parsing an already-analysed document and having that parse **fail** correctly sets `superseded: true`, leaving the Analyst on a withheld notice whose "Re-analyse now" button resolves nothing until the parse succeeds. Design-conformant, but worth handing to T-007 and T-008 rather than to this task.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Readability | The comment at `assessments.service.ts:438-441` **encodes the same wrong model** — it says an added-but-unparsed document "is still current and cannot supersede", but such a document is *filtered out* of the current set by the `!== null` guard. It cannot supersede because it is absent from the **snapshot**, not because it is present in the current set. This is the durable artifact of the misconception, and it is what the next maintainer inherits | **Worth correcting at `/akili-archive`.** Not minted as a task |
+| Reliability | Prefer `Array.isArray(result.sourceParseJobIds)` over `'sourceParseJobIds' in result` — strictly stronger, preserves both mandated verdicts, and fails closed on JSON `null` and non-array values that `?? []` currently serves open | Recorded |
+| Resilience | A truthy non-object `result` makes `in` throw a `TypeError` (500) where the pre-diff code degraded to `null`. Unreachable for `GAP_DETECTION` today, but a new throw path on a read endpoint; the `Array.isArray` change removes it | Recorded |
+| Risk / perf | `assessmentDocument.findMany` selects full rows on every polled read while only `parseJobId` is used; `select: { parseJobId: true }` narrows it and is mock-compatible | Recorded |
+
+---
+
+## Coverage Gap — ⚠️ ESCALATED TO USER
+
+**`requirements.md` FR-DDP-002 Sc 4's clause *"AND IT MUST stay readable if B's parse fails"* has no gate anywhere in the plan** — automated or manual.
+
+- `tasks.md` §5 names Sc 4's owners as *T-002 (serve fixture), T-005, T-008 §5*. None of the three covers this clause.
+- T-002's fixture 1 gives the added document `parseJobId: 'job-B'` — added **and parsed**. No fixture anywhere sets `parseJobId: null` or `status: 'FAILED'`.
+- Manual step 5 walks upload → parse → run. It never induces a parse failure.
+
+So the clause is covered **by argument, not by evidence** — and the argument offered for it was the false one about `parseJobId`. This is precisely the failure mode `tasks.md` §5 exists to prevent: the coverage table asserts ownership that does not hold at clause granularity.
+
+The Reviewer classified it advisory and correctly declined to gate T-005 on it — the clause is outside T-005's contract, which reads "T-002's four fixtures turn green". **This is a `tasks.md` traceability defect, not a T-005 defect.**
+
+Cost to close: roughly 8 lines — a fifth fixture with `{ id: 'doc-B', parseJobId: 'job-B', status: 'FAILED' }` alongside `{ id: 'doc-A', parseJobId: 'job-A' }`, asserting `superseded === false`. It would have caught the mental-model error at authoring time.
+
+Escalated rather than absorbed: minting work from a review finding without approval is exactly what `/akili-execute` → *Advisory Never Becomes A Task* forbids, and the honest alternative — leaving `tasks.md` §5 asserting coverage that does not exist — is worse. Nothing is blocked; T-006 and T-007 can proceed either way.
+
+### Coverage gap closed (approved follow-on to T-005)
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ closed |
+| **Date** | 2026-08-24 |
+| **Clause** | FR-DDP-002 Sc 4 — *"AND IT MUST stay readable if B's parse fails"* |
+
+- **Added:** `[D2 fixture 5 / FR-DDP-002 Sc4]` in `assessments.service.spec.ts` — a recorded `['job-A']` analysis against current documents `{A (parsed), B (parseJobId: 'job-B', status: 'FAILED')}`, asserting `superseded === false` and content served verbatim.
+- **Verification:** `pnpm --filter @alliance-risk/api test --testPathPattern=assessments.service` → **27 passed, 27 total.**
+- **Leader inline check** (one file, puntual): read the diff and confirmed the fixture encodes a **populated** `parseJobId` alongside `status: 'FAILED'` — the real post-failure state — rather than the null-`parseJobId` state the earlier false argument assumed. Pure 26-line addition; the four existing fixtures and all production source untouched.
+
+**Why this was worth doing rather than accepting as a risk.** `getMergedContent` reads only `parseJobId`, never `status`. So the clause's correct verdict comes from B's populated job id being absent from the *snapshot* — not, as previously argued, from it being null. The fixture proves the clause against the **actual mechanism**. Had it existed at authoring time, it would have caught the mental-model error before it reached a Reviewer.
+
+**`tasks.md` §5 corrected:** Sc 4's single row is now split by clause, and a note records that row-level ownership of a *scenario* had been mistaken for clause-level closure — the exact failure mode that section's own rule warns about.
+
+### T-006 — Bound the poll and invalidate the cache `[FE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-24 |
+| **Requirements covered** | NFR-DDP-010, FR-DDP-002 Sc 3, FR-DDP-003 Sc 2 |
+| **Design ref** | §8.2, §8.3 |
+| **Effort** | attempt 1 `high` → attempt 2 `xhigh` |
+| **Skills** | `vercel-react-best-practices` |
+
+#### Attempt 1 — Reviewer `STATUS: FAIL` (1 issue)
+
+- **Files changed:** `use-merged-content.ts`, `use-multi-document-status.ts`, `gap-detector-client.tsx`, `gap-detector-client.test.tsx`, plus two new hook test suites.
+- **Verification:** hooks 14/14, gap-detector-client 17/17.
+- **Leader-authorised owed scope:** the Implementer's first pass correctly reported that amending both completion effects broke two pre-existing tests it was barred from touching. That was owed scope, not new scope — my brief told it to amend both effects without checking what asserted on them — so I re-spawned rather than escalating. Both tests were retargeted, not weakened.
+
+**Confirmed sound by the Reviewer** (the rework must not undo these):
+
+- **Both** completion effects amended with all three keys, including the server-chained path FR-DDP-003 Sc 2 depends on. Keys verified to match their producers exactly.
+- The two retargeted tests keep their subjects. The one-shot gate is load-bearing and the Reviewer named the concrete regression: `useQueryClient` is mocked as a fresh object literal per render, so the effect's dep array churns every render — deleting `prevGapTotalRef.current === 0 &&` makes the second rerender re-fire and the filtered count reach 2. The `total: 1 → 2` rerender also catches the weaker `total !== prev` variant.
+- **The cap's stated basis was verified, not accepted:** `gap-detector-client.tsx:926` really carries `subtitle="This typically takes 30–60 seconds"`, and `use-job-polling.ts:39` really is `maxAttempts = 100` at 3000 ms ≈ 300 s.
+- **The `staleTime` claim was verified in React Query's source**, not accepted: `queryClient.js:149-165` routes `invalidateQueries` → `refetchQueries({ type: 'active' })` → `query.fetch()` directly, with **no `isStaleByTime` gate** on that path (unlike `fetchQuery` at `:188`). So the invalidation is not blunted by the 60 s `staleTime`, and FR-DDP-002 Sc 3 holds.
+- Shared type genuinely replaces the local one — exactly one declaration repo-wide.
+- Both new suites are real gates, with concrete caught-regressions named for each, and collect 14 tests (clearing the `--passWithNoTests` disqualifier).
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** `getMergedContentRefetchInterval` bounds the poll on `query.state.dataUpdateCount`, which in TanStack Query v5 is incremented **only on a successful fetch**. Verified in `@tanstack/query-core@5.90.20/build/modern/query.js`: `:346` `dataUpdateCount: state.dataUpdateCount + 1` under `case "success"`, while `:360` increments a separate `errorUpdateCount` under the error action. The refetch interval keeps running regardless of error state — `queryObserver.js:214-218` re-arms the timer with no error check, and `:424-428` recomputes it on every query update. So a merged-content request that **fails on every attempt** never advances the counter, `data` stays `undefined`, and the function returns `5000` forever.
+
+   This is reachable: `getMergedContent` returns `200 {mergedMarkdown: null, superseded: false}` for the no-job case (`assessments.service.ts:424`), so it does not error on the benign path — but `findOne`'s ownership check at `:413` throws `NotFound` for an assessment deleted or unshared in another tab, and any 5xx or expired-refresh 401 behaves the same. In every one of those states the Gap Detector polls `/merged-content` every 5 s indefinitely, which is precisely the "any state that will never produce content polls forever" defect the NFR exists to remove.
+
+   The repo's own cited precedent counts the right thing: `use-job-polling.ts:48` increments `attemptCountRef` inside `queryFn` *before* the request, outcome-independent, and hard-disables the query via `enabled: … && !timedOut` (`:58`) once the cap trips.
+   - **Violated Rule:** `requirements.md` NFR-DDP-010 — "**THEN** polling stops after a bounded number of **attempts**" (an errored request is an attempt; the implementation bounds successes only). Also `design.md` §8.2 — "a response that will never carry content polls forever" is the stated defect, and DD-DDP-006's decision is to "cap consecutive empty polls" without needing to know *why* content is absent; an error is exactly such a case. `tasks.md` T-006 "Done when: polling … stops at it".
+   - **Remediation Suggestion:** Count attempts, not successes. Pass `query.state.dataUpdateCount + query.state.errorUpdateCount` (both exist on `QueryState` in 5.90.20 — `query.js:417,420`) and widen the parameter name. Add two test cases: the interval still `5000` below the cap when the count is composed of failures, and `false` at the cap when *no* fetch has ever succeeded — the second is the case that is currently red-proof. Update the JSDoc, which describes the counter as "the number of completed fetches, including the initial one" — true only of successes.
+
+**Leader adjudication.** In scope and correct. The defect is the same shape as the one that escalated the v1.x design: a bound that looks like a bound but cannot fire in the state it exists for. It is invisible in every green test because no fixture exercises a failing request — which is also why the remediation's second new case matters more than the first.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Readability | The cap's JSDoc attributes the "30–60 seconds" copy to `GAP_PIPELINE_STEPS`; it is actually the `subtitle` prop passed to `PipelineStepper` at `gap-detector-client.tsx:926`. Cite the line, not the constant |
+| Readability | "Consecutive empty polls" overstates the guarantee — `dataUpdateCount` is cumulative for the cache lifetime. Safe (it can only ever be tighter), but "total completed fetches while content is absent" is accurate |
+| Reliability | The 0 → positive effect invalidates `['gap-fields', id]`, the very query whose `total` produced the signal. `prevGapTotalRef` prevents a loop today, so it costs one redundant refetch — but a future change loosening that guard would turn it into a self-retriggering cycle. Worth an inline note |
+| Resilience | `use-merged-content.test.ts:31` passes `1` for the "no response yet" case where the real value is `0`. Harmless under `>=`, but `0` is the truthful fixture |
+
+#### Attempt 2 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `use-merged-content.ts` (call site + parameter rename + JSDoc) and its test suite. Nothing else touched.
+- **Verification:** hooks **16 passed, 16 total**; `gap-detector-client` **17 passed, 17 total**; `tsc --noEmit` clean.
+- **Not Done / Assumptions:** none.
+
+**The fix:** the call site now passes `dataUpdateCount + errorUpdateCount`. The Implementer verified both fields on the installed 5.90.20 rather than trusting the Reviewer's line numbers, and found the same idiom used internally at `query.js:95`.
+
+**How it was proven.** The Implementer temporarily reverted the call site to `dataUpdateCount` alone, reran the at-the-cap test, and observed `Expected: 60, Received: 71` before restoring. The **Reviewer independently reproduced that arithmetic by construction** — mount fetch is call 1, each interval fire is call *n*, the arm after call 59 produces call 60 whose settle returns `false` and clears the interval; under a success-only cap the counter never leaves 0, so 70 loop iterations yield 71 calls. Corroborated, not merely asserted.
+
+**A judgment call worth recording.** The Implementer chose integration-style tests over pure-function ones, arguing that `getMergedContentRefetchInterval(data, N)` is agnostic to what `N` represents, so no fixture over the pure function could distinguish the two implementations — the defect lives entirely in *which expression the call site supplies*. The Reviewer judged this sound: **the integration approach was necessary, not preferred.** This is the reason the defect survived 14 green tests in attempt 1.
+
+**Fake timers + React Query determinism** was specifically audited, since that pairing is a common source of flake. Both tests use `act(async () => await jest.advanceTimersByTimeAsync(...))` rather than `waitFor`, React Query's `timeoutManager` wraps globals in closures so late-installed fake timers still intercept, a settle re-arms at the same fake instant so each advance produces exactly one fetch, and `retry: false` removes retry-delay ambiguity. **Outcome is a function of the counter, not of elapsed wall time.**
+
+**Third variant of the bound-cannot-fire class: searched, none found.** Disabled queries return early before the interval is armed; a remount inside `gcTime` preserves the counters and past it starts a fresh budget (per-session bounding, not unbounded); focus refetches and §8.3 invalidations *consume* the budget rather than resetting it; malformed payloads still advance the counter. Every residual case errs toward over-bounding.
+
+**Final status: ✅ PASS on attempt 2 of 3.**
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | **Production runs `retry: 1`** (`query-provider.tsx:13`) while the tests use `retry: false`. Each capped attempt is therefore **two** HTTP requests in the real app, so reaching the cap takes longer than the 300 s the JSDoc basis records. The bound still holds; the basis is mildly optimistic | **Carried into T-008's brief** — step 3 waits ~60 s for polling to stop and should not be surprised by the timing |
+| Resilience | The counter is cumulative over the cached query's lifetime, so invalidation-driven and focus refetches draw on the same 60-attempt budget. A long-lived session could exhaust it and then not re-arm in a later genuine waiting state. This is the **over-bounding** direction, and §8.3's invalidation is the refresh path NFR-DDP-010 explicitly relies on | Recorded. **T-008 step 5 is what would expose it** if the invalidation backstop ever regressed |
+| Resilience | The interval *timer* is unbounded even though the *requests* are — while the tab is hidden the callback fires but skips the fetch, and `api-client.ts` sets no axios timeout. Neither state advances a counter nor emits HTTP traffic, so the NFR is satisfied; the residue is a ticking timer | Recorded |
+| Readability | The below-cap test asserts `> 1` and `< 60` where its sibling pins an exact count | Recorded |
+| Risk | **`use-multi-document-status.ts:30-37` has the same polling shape with no cap** — `if (!docs || docs.length === 0) return 3000` polls forever on an empty list or a document stuck in `PARSING`. Same defect class this task exists to close | Recorded as a **follow-up candidate**, out of scope under NFR-DDP-012. Not minted as a task |
+
+---
+
+### T-007 — Explain withheld content and surface failed deletions `[FE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-24 |
+| **Requirements covered** | FR-DDP-003 Sc 1–3, FR-DDP-004 Sc 3 |
+| **Design ref** | §8.1, §8.4, §10 |
+| **Effort** | attempt 1 `high` → attempt 2 `xhigh` |
+| **Skills** | `shadcn-ui`, `tailwind-design-system`, `vercel-react-best-practices` |
+
+#### Attempt 1 — Reviewer `STATUS: FAIL` (1 issue)
+
+- **Files changed:** `document-viewer.tsx` (+102), `gap-detector-client.tsx` (+30), `upload-business-plan-modal.tsx` (+20), plus a new `document-viewer` suite.
+- **Verification:** `document-viewer` **12/12**; `gap-detector-client|use-merged-content|use-multi-document-status` **33/33**. Full web suite 166/168, the 2 failures being the pre-existing unrelated `assessment-table.test.tsx`.
+
+**Confirmed sound — the rework must not undo these:**
+
+- **State precedence is right, and for the right reason.** Zero-documents is checked before `superseded`, which is load-bearing: deleting the last document makes `superseded` true *and* leaves zero documents, so a `superseded`-first order would render "Re-analyse now" in exactly the state FR-DDP-003 Sc 3 forbids it. Two independent guards enforce it — the ordering, and `onReAnalyze` passed only when documents remain.
+- **The disqualifier is cleared.** The suite distinguishes states by user-visible strings, not only by `data-testid`: one test asserts the empty-state copy is *absent* from the withheld notice, another that it is *present* in the empty state, so reusing the copy fails the suite. 11 of 12 tests can fail (the exception is noted below).
+- `GapLayout`'s contract is untouched; the panel now mounts for every UPLOAD assessment. MANUAL_ENTRY unaffected.
+- `DocumentViewer` stayed presentational — no hook, no `apiClient`, no React Query.
+- Tokens only: `bg-warning/10`, `text-warning`, `border-warning/40`, resolved through `--color-warning` in `globals.css:50`. No raw hex added.
+- **The delete failure path is sound**, including the edge cases: a network error is still an `AxiosError` but with `response === undefined`, so it takes the toast-and-keep-the-row branch; a non-Axios throw fails the `instanceof` and does the same. `apiClient`'s interceptor re-rejects the original error, so the `instanceof` is reliable.
+- **The added `onManageDocuments` prop is justified, not scope creep.** FR-DDP-003 Sc 3 requires offering an upload remedy and §8.1's table names "Manage Documents" as that row's action; keeping the component presentational rules out embedding `useRouter`, and keeping the FR-DDP-003 gate on the `document-viewer` suite rules out moving the state up. A third optional callback was the cheapest conforming option, and it was disclosed.
+- No pre-existing test was edited — the correct call given this spec's history.
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** The zero-documents branch keys on `(documents?.length ?? 0) === 0`, which in this application means *"no documents, or we do not yet know"*. `useMultiDocumentStatus` returns `documents = query.data ?? []` (`use-multi-document-status.ts:40`), and that query is only *enabled* once the assessment resolves (`gap-detector-client.tsx:181`), while `GapLayout` renders as soon as `isLoading = assessmentLoading || gapLoading` clears (`:399`, `:748`). The documents request therefore starts one round trip *after* the two queries that gate the render, so on any cold entry to the Gap Detector for an UPLOAD assessment the panel asserts **"No documents remain on this assessment."** with a Manage Documents button for roughly one round trip before flipping to the real content. Second manifestation: if the documents request *fails*, `documents` stays `[]` and that false assertion is permanent on an assessment that still has documents. Third: a DRAFT UPLOAD assessment where nothing was ever uploaded gets copy claiming documents no longer "remain".
+
+   Note that the same file already treats this signal as ambiguous — `gap-detector-client.tsx:598` reads `{/* Fallback when no documents loaded yet */}` and deliberately uses neutral copy (`"Uploaded Documents"`) for `docCount === 0`. The new branch makes a definite claim on the signal the adjacent code documents as unknowable. Test `document-viewer.test.tsx:177` locks the conflation in.
+   - **Violated Rule:** `requirements.md` FR-DDP-003 preamble — *"It SHALL NOT present a silently empty or absent document panel, which is indistinguishable from 'still loading' and from 'nothing was ever uploaded'."* The implementation **inverts, rather than avoids, that conflation**: the terminal zero-documents state is now indistinguishable from "still loading". Compounding: FR-DDP-003 Sc 3's GIVEN is *"an assessment whose only document has been deleted"*, and this fires well outside it. `design.md` §14 (DD-DDP-007) sanctioned the new initial render as *"two-column with a placeholder"* — the neutral pre-existing placeholder — not as a state that asserts documents are gone and offers a remedy for it. OQ-3 routes the *layout* change to HITL; it does not cover shipping a false claim on the normal path.
+   - **Remediation Suggestion:** Give the component a loading-aware signal rather than inferring absence from an empty array. Add `documentsLoading?: boolean` to `DocumentViewerProps`, guard the branch as `if (!markdownContent && !documentsLoading && (documents?.length ?? 0) === 0)`, and let it fall through to the ordinary empty state while unresolved — which is exactly the placeholder §14 sanctioned. Wire it from `gap-detector-client.tsx` off `useMultiDocumentStatus`'s already-returned `isLoading`; verify the flag is true for the whole window in which an *enabled* documents query has not yet returned, since React Query v5 reports `isLoading === false` for a disabled query, and consider `isPending && enabled` or `!isFetched` if `isLoading` proves too narrow. Add one test — `documents={[]}` with `documentsLoading` renders the empty state, not the no-documents notice — and confirm it fails against the current code before the fix.
+
+**Leader adjudication.** Correct and in scope. The requirement's preamble names the conflation explicitly, and attempt 1 reproduced it in the opposite direction — which is subtler than the original bug and would have shipped, since every fixture passes `documents` as a settled value. The Reviewer's own evidence that the codebase already treats this signal as unknowable (the adjacent neutral-copy fallback) is what makes it unambiguous.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | **The 404 branch bypasses `useDeleteDocument`'s `onSuccess`**, so `['merged-content']` and `['gap-fields']` are not invalidated on a path whose server-side end state is identical to a successful delete. Up to 60 s of now-deleted content can survive it | **Raised with the user at the approval gate** — it touches FR-DDP-002 Sc 3's "must not be re-served from any client-side cache", so it may be a clause gap rather than an advisory. Not absorbed into T-007's rework |
+| Reliability | `document-viewer.test.tsx:57-63` cannot fail — the pre-existing `!markdownContent` guard already guarantees no content node, so it holds even with the superseded branch deleted. The clause it nominally covers is genuinely enforced server-side by T-005, and both fields arrive atomically from one query, so no client desync is possible | Recorded |
+| Risk / coverage | **The single line that stops the panel vanishing has no automated assertion anywhere.** `DocumentViewerStub` exists in the client suite but is never queried, so nothing would catch a revert to `hasDocument && !!mergedMarkdown`. T-008 §2 is the only gate | **Raised with the user** — closing it means editing a pre-existing suite, which is a Leader call |
+| Readability | The notice copy has an ambiguous referent: *"the current documents — one of them was removed or replaced"*, but the removed document is by definition not among the current ones | **Raised with the user** alongside OQ-1 |
+| a11y | Neither new state carries `role="status"` or `aria-live`, so the transition from content to the withheld notice is silent to assistive technology — the one class of user for whom "the panel changed" is not self-evident | Recorded |
+
+#### Attempt 2 — Reviewer `STATUS: FAIL` (1 issue)
+
+- **Files changed:** `document-viewer.tsx` (new `documentsLoading` prop + guard), `gap-detector-client.tsx` (wiring), `document-viewer.test.tsx` (+1 test).
+- **Verification:** `document-viewer` **13/13**; the three sibling suites **33/33**; lint clean.
+
+**Confirmed sound by the Reviewer:**
+
+- **The signal choice was verified, not accepted.** The Implementer built two empirical probes against the real query-core rather than assuming, and found that `isLoading` *would* have covered the cold-entry window (TanStack's optimistic-result mechanism starts the fetch synchronously during the render that enables the query, so there is no stale-`false` frame) but reads `false` after an error — the "asserts forever" mode. The Reviewer independently confirmed against `query.ts` that `status !== 'success'` is the only signal true across disabled, fetching **and** errored, and false only on a confirmed answer.
+- The hardcoded key matches `use-multi-document-status.ts:22` exactly, and resolves under the default hash function.
+- The new test genuinely gates, and the five pre-existing zero-documents tests still gate what they did.
+- No pre-existing test file was edited; the react-query mock is untouched, which is exactly why the optional chaining was needed.
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** The rework disambiguated `documents.length === 0` inside `DocumentViewer` but left the *identical* conflation in the caller that supplies the remedy. `gap-detector-client.tsx:792` still reads `onReAnalyze={documents.length > 0 ? handleReAnalyzeNow : undefined}`. The new guard makes `superseded && documentsLoading && documents.length === 0` a reachable render path — it now falls through the zero-documents branch into the withheld-notice branch — and in that path `onReAnalyze` is `undefined`, so the notice renders **with no "Re-analyse now" button at all**.
+
+   This is not an edge case, it is the first painted frame of the primary scenario. `useMergedContent` is enabled on mount, whereas the documents query is enabled only once `assessment` resolves — and the panel itself only mounts after `assessmentLoading || gapLoading` clears. So on every cold load of a superseded assessment, `superseded` is already known while the documents query is still `'pending'`: the Analyst sees "This analysis no longer matches the current documents" with no action for a full documents round trip, after which the button pops in. For the duration of any outage of the documents endpoint, `status` stays `'error'`, `documentsLoading` stays `true`, and the panel is inert with a notice and no remedy for as long as the outage lasts. **Attempt 1 rendered a false claim *with* an action in this state; attempt 2 renders honest copy with *no* action, which is the clause-level violation.**
+   - **Violated Rule:** `requirements.md:151` (FR-DDP-003 preamble — "the Gap Detector SHALL say so **and name how to refresh it**") and `:157` (Sc 1 — "**and offers a way to re-analyse**"). Also `tasks.md` T-007 "Done when": "the re-analyse action reaches the existing endpoint".
+   - **Remediation Suggestion:** Gate the remedy on the same settled signal the guard uses, not on the ambiguous count — `onReAnalyze={documentsLoading || documents.length > 0 ? handleReAnalyzeNow : undefined}`. Offering re-analysis while the count is unknown is safe in both resolutions: if it settles at zero, the zero-documents branch takes precedence and hides the button anyway (already asserted); if it settles above zero, the button was correct all along. A re-analyse fired during the unknown window with genuinely zero documents is **non-destructive because T-003 already guards `createSkeletonFields` behind `!isReAnalyze`**. Add one test pinning it. (Passing `onReAnalyze` unconditionally and letting the component decide is an equally acceptable shape; what must not survive is a remedy gated on a signal the spec says cannot distinguish "zero" from "unknown".)
+
+**Leader adjudication.** Correct. The defect is the *same* one attempt 2 was sent to fix, surviving one layer up — the guard moved, the remedy gate did not. Worth naming plainly: this spec has now seen the same shape three separate times (T-002's mock, T-006's counter, and here) — a fix applied at the site the finding named, while an identical instance one level away went unexamined.
+
+**Leader constraint lifted for attempt 3.** The Reviewer recommends the signal belong to the hook rather than the caller, and notes correctly that **the constraint barring `use-multi-document-status.ts` was mine.** I am lifting it. Its reasoning holds: exposing the signal from the hook deletes the hardcoded `['assessment-documents-poll', id]` duplication, deletes the `getQueryState?.` optional-chaining workaround (the hook is already mocked wholesale in the client suite, so no react-query mock change is needed), and removes a non-subscribed cache read — whose failure mode is the *unsafe* direction: a key rename would pin `documentsLoading` to `true` forever, making both the zero-documents notice and the re-analyse button permanently unreachable, with **no automated test able to see it**.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | `getQueryState` is read during render without a subscription. The load-bearing pending→success flip is observed because `data` changes `undefined` → `[]`, but a background poll failure after a first success changes neither tracked prop, so the flag can read stale until an unrelated render. Benign today; it is the tearing the hook's own return value exists to prevent — another argument for moving the signal into the hook |
+| Resilience | query-core sets `status: 'error'` even when prior data exists, so a single failed 3 s poll on a genuinely empty assessment flips the panel between notice and placeholder and back. Cosmetic flapping only; self-heals |
+| Readability | `documentsLoading` defaults to `false` — the component still trusts a bare `[]` unless told otherwise. Fine with one caller, but the conservative default is the footgun-free choice for a flag whose purpose is "do not trust the empty array" |
+
+#### Attempt 3 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `use-multi-document-status.ts` (+`isSettled`), `gap-detector-client.tsx` (hook wiring + the FAIL site), `document-viewer.test.tsx` (+1), `use-multi-document-status.test.ts` (+3).
+- **Verification:** `document-viewer` **14/14**; the three sibling suites **36/36**; lint clean.
+- **Not Done / Assumptions:** none.
+
+**The fix:** `onReAnalyze={documentsLoading || documents.length > 0 ? … : undefined}` — the predicate is now "unknown or non-empty", belt-and-braces with the component's own guard. The Reviewer evaluated all three resolutions: unsettled → button present; settles at zero → the zero-documents branch takes precedence and shows Manage Documents; settles above zero → button correct.
+
+**The lifted constraint paid off.** A repo-wide grep confirms `getQueryState` returns **zero hits** and `assessment-documents-poll` now appears only at its own declaration — the hardcoded key and the optional-chaining workaround are *gone, not bypassed*. `isSettled: query.isSuccess` is semantically identical to the previously-verified `status !== 'success'`, including staying `false` on error, which a new test pins.
+
+**The sweep worked, and was not exhaustive.** The Implementer named seven consumer sites with verdicts, all independently verified correct. The Reviewer then found **two more it had missed** — `gap-detector-client.tsx:609` (`hasDocument && docCount === 0`, the negative twin of a bar the sweep *did* name) and `use-multi-document-status.ts:32`. Both benign, neither a violation. Recorded because the miss is the exact "fixed the site, missed its twin" shape this spec has now hit three times.
+
+**The coverage gap — Reviewer's judgment, and I accept it.** The Implementer disclosed honestly that reverting its own one-line fix left all 50 tests green: `gap-detector-client.test.tsx` stubs `DocumentViewer`, so no test in the permitted file set can exercise the caller's JSX. The Reviewer ruled this an **accepted, recorded gap rather than a FAIL**, on four grounds — and the second is the one that decides it:
+
+1. `requirements.md` §6 maps **D6** to the `document-viewer` suite, and that gate *can* be made to fail by its named input; the new test adds the `documentsLoading` case to it. The "a check that cannot fail is not evidence" rule indicts the *gate*, and this gate is not indicted.
+2. **T-007's own disqualifier forbids `gap-detector-client` as evidence**, on precisely the stub argument. Demanding a stub-prop assertion would require building evidence the spec has already declared non-evidentiary, in a file the Implementer was barred from editing. *"I will not FAIL a task for declining to violate its own disqualifier."*
+3. The property has an owner: `requirements.md` §6 **steps 2 and 8** both fail in a browser if this line regresses — the D4/D6 class §6 routes to manual QA rather than pretending to automate.
+4. The residue is a *future* revert shipping silently — a bounded maintenance risk on one boolean, not a defect in what ships.
+
+**Leader action taken:** recorded here, with **T-008 step 8 named as its owning gate.** The walkthrough is not optional for this line. Closing it automatically later means a new caller-level suite rendering the real `DocumentViewer` — a scope expansion, not a T-007 rework.
+
+**Final status: ✅ PASS on attempt 3 of 3.**
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding | Disposition |
+|------|---------|-------------|
+| Reliability | With `isSettled` as the signal, a **permanently failing documents fetch** leaves `documentsLoading` true forever — so the confirmed-zero "Manage Documents" state is unreachable and the notice keeps offering a re-analysis that cannot produce content. Safe (T-003's skeleton guard), and an accepted consequence of the verified signal choice | Recorded as the Reviewer requested |
+| Reliability | The sweep missed `gap-detector-client.tsx:609`, the negative twin of a site it did name. Verdict benign | Recorded |
+| Risk | **"Re-analyse now" has no `disabled` state while a run is in flight**, and the notice persists until refetch — so repeated clicks enqueue repeated Bedrock runs. NFR-DDP-011 governs deletion only, so not a violation, but one click away from avoidable spend | **Raised with the user** |
+| Resilience | `use-multi-document-status.ts:32` polls every 3 s indefinitely on a genuinely empty list. Pre-existing, outside NFR-DDP-010's scope (which governs merged-content), but adjacent to its intent | Recorded — same follow-up candidate noted in T-006 |
+| Readability | The 13-line comment at the call site is longer than the expression it explains and restates the hook's own doc comment | Recorded |
+
+### Two approved gap closures (follow-on to T-007)
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** on attempt 1 |
+| **Date** | 2026-08-24 |
+| **Authorisation** | Both raised as T-007 Reviewer advisories, put to the user, approved |
+| **Effort** | `medium` · **Skills** `vercel-react-best-practices`, `shadcn-ui` |
+
+**Gap 1 — the 404 delete path skipped cache invalidation.** Closes `requirements.md` FR-DDP-002 Sc 3's *"must NOT be re-served from any client-side cache"*: the already-gone path removed the row but bypassed `onSuccess`, so up to 60 s of deleted content could survive on the Gap Detector.
+
+Placed in `useDeleteDocument`'s own `onError`, **not** the call site — the Implementer's argument being that "404 means already gone" is a fact about the mutation's semantics, not something each future consumer should rediscover. `upload-business-plan-modal.tsx` needed **zero changes**.
+
+Reviewer verification, done against the installed library rather than assumed:
+- `@tanstack/query-core@5.90.20` `mutation.js` awaits `onError` at `:159` and only reaches `throw error` at `:192` — so the hook's handler completes before `mutateAsync` rejects into the modal's existing catch. Mutations default to `retry: 0`, so it fires exactly once.
+- The hook's 404 predicate is **character-for-character** the modal's own, same axios import, no drift possible.
+- A non-404 does **not** invalidate — gated by a 500 test, which is what catches a status-blind `instanceof AxiosError` check. That wrong implementation would have been *worse than the original gap*.
+- The cited `use-assessments.ts:121-129` precedent (409 in `onError`) is real and says what was claimed.
+
+**Gap 2 — "Re-analyse now" had no in-flight state**, so repeated clicks enqueued repeated Bedrock runs. Not required by any clause; approved as prudence.
+
+The subtlety is that the run finishes at *job* terminal state, long after the kickoff mutation resolves. The Implementer used a local flag set **before** the mutation call and cleared only on a terminal `jobStatus`, arguing `useJobPolling`'s own `isProcessing` is insufficient because it turns true only once the first status fetch resolves. The Reviewer traced the full span and confirmed **no re-enable window exists**:
+
+| Moment | Button |
+|---|---|
+| click → mutation pending | disabled |
+| **mutation resolves with `jobId`** | **disabled** ← the window a mutation-only guard loses |
+| `startPolling`, first fetch in flight | disabled |
+| polls PENDING/PROCESSING → terminal | disabled → enabled |
+
+**Can it stick disabled forever?** This mattered — a permanently disabled remedy would be worse than the defect. The Reviewer verified the mechanism rather than trusting the comment: for a job reset to `PENDING` that nothing retries (the platform defect DD-DDP-006 records), `useJobPolling` polls past `maxAttempts = 100`, sets `timedOut`, and **computes `status` as `FAILED`** — which trips the clear path. Bounded at ~5 minutes. The same recovery holds for the pathological `startPolling(undefined)` case.
+
+**The widened stub was the regression risk**, since `gap-detector-client.test.tsx` is a pre-existing suite. Verified additive collision-wise, not just by assertion: the stub's only new node is a button whose accessible name matches no pre-existing query in the file, and no existing test queries the stub, counts buttons, or counts renders. All 17 pre-existing tests intact.
+
+**A useful side effect.** The props-aware stub **partly closes T-008 step 8's caller-line gap for free** — the three new tests now prove `onReAnalyze` → `handleReAnalyzeNow` → `reAnalyze()` → `startPolling`. The Reviewer named the cheap remainder (one test flipping `jobStatus` to `COMPLETED` and asserting both invalidations; one setting the documents mock to settled-and-empty to assert no button). **Not done here** — it is a scope expansion, and the genuinely un-automatable half of step 8 stays T-008's.
+
+- **Verification:** 4 suites, **57 passed** (baseline 50 + 7 new); lint clean. Each new test verified red pre-fix by stashing only the relevant source file.
+- **Not Done / Assumptions:** none.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | The in-flight flag keys on *any* terminal `jobStatus`, not the `jobId` this button started. Interleaving edge: click Re-analyse (job A) → save a field → the debounce starts job B → B's terminal state clears the flag while A may still run. Costs at most one extra Bedrock run in a rare sequence |
+| Reliability | The ~5-minute ceiling rests entirely on `useJobPolling`'s `maxAttempts` → `timedOut` → `FAILED` path, and the call-site comment does not say so. A future change to `maxAttempts` could silently become a stuck-remedy bug |
+| Reliability | Unmounting the Gap Detector mid-run resets the flag, so returning re-enables the button while the job still runs. Pre-existing property, same as the debounced path — **noted for the T-008 walkthrough** |
+| Risk | The three new client tests depend on an *incidental* property of the pre-existing documents mock (it omits `isSettled`). Anyone completing that mock would silently invert the precondition and get "unable to find button" rather than a meaningful failure |
+| Readability | A comment claims "a second click while disabled must not enqueue a second run" above an assertion that performs no second click — the claim is actually proven elsewhere |
+
+---
+
+### OQ-1 and OQ-3 resolved (Leader decisions, 2026-08-24)
+
+The user declined to arbitrate these and directed the Leader to decide. Both are recorded in `requirements.md` §8 with their reasoning.
+
+**OQ-1 — notice copy. Decided and implemented.**
+
+| State | Final copy |
+|---|---|
+| Withheld | *"This analysis is out of date — it doesn't reflect the documents currently on this assessment."* |
+| Zero documents | *"No documents on this assessment."* |
+
+Two defects in the provisional wording drove this:
+- The withheld string had a **dangling referent** — *"the current documents — one of them was removed or replaced"* points grammatically at the current set, which by definition **excludes** the removed document. Found by the T-007 Reviewer.
+- The zero-documents string had **drifted from `design.md` §8.1 during implementation**, from "No documents on this assessment" to "No documents **remain**". "Remain" asserts there were documents before — false for a DRAFT UPLOAD assessment that never had any, which is a reachable state. Found by the Leader while deciding OQ-1.
+
+"Out of date" is honest for all three causes the rule fires on — deletion, re-parse, and a pre-fix analysis — **without asserting which**, which is what FR-DDP-003 Sc 1's *"must NOT state a cause the application cannot know"* requires. "It" refers unambiguously to the analysis.
+
+- **Verification:** `document-viewer|gap-detector-client` → **36/36**; lint clean.
+- **Reduced ceremony, recorded as a deliberate Leader deviation:** no Reviewer was spawned for this change. The diff is **two JSX text nodes and nothing else** — the Leader verified that inline by filtering the diff for non-string lines and finding none. The behavioural properties the copy must hold are already gated by the existing suite (the notice must be textually distinguishable from both other states, and must never say "deleted"), and those assertions were updated to the new strings rather than relaxed. Spawning the triad for a literal string, with 36 tests green and the disqualifier assertions intact, is ceremony without added assurance. Every other code change in this spec went through `author ≠ auditor` unchanged.
+
+**OQ-3 — panel mounting / layout change. Decided: keep it.**
+
+`design.md` §14's reversion challenge already established the reflow is **not eliminated** either way: `hasDocument` derives from `intakeMode`, which is `undefined` while the assessment query is in flight, so a one-to-two-column reflow still happens on first paint. So the real choice is between *one reflow, earlier* and *one reflow, later plus a panel that vanishes in several states* — and the second is the behaviour this whole fix exists to remove. Mounting the panel is also what makes `DocumentViewer`'s states reachable at all; without it there is no surface for the notice.
+
+Reversible in one line (`gap-detector-client.tsx`'s `hasDocument` argument) if the T-008 walkthrough disagrees. **T-008 should eyeball the first paint of a normal upload** and say whether the placeholder reads acceptably.
+
+---
+
+## Pivot Record: T-008
+
+**Status:** ⛔ walkthrough halted at step 2. Three findings from the operator, all reproduced or confirmed by code inspection. **Two are real defects; one is an error in the guide I wrote.** Recorded before any fix, per the Pivot Protocol.
+
+**The walkthrough did exactly what it exists for.** the whole automated suite was green and none of these three could have been caught by it — the first is a cross-screen cache effect (defect class **D4**), the second is a design-level omission with no requirement clause to violate, and the third was a defect in the instructions themselves.
+
+### Finding 1 — the deleted document reappears in Manage Documents ⛔ REAL BUG
+
+**Reported:** after deleting a document and returning to Manage Documents, the deleted document is listed again.
+
+**Confirmed by inspection.** `useDeleteDocument` invalidates `['merged-content', assessmentId]` and `['gap-fields', assessmentId]` — **and not `['assessment-documents-poll', assessmentId]`**, which is the documents list itself (`use-multi-document-status.ts:23`). The upload modal reads its existing-documents list from that same query (`upload-business-plan-modal.tsx:61`), so it is served stale cache and re-lists the deleted document.
+
+**How this escaped every gate.** `design.md` §8.3 named two keys to invalidate and the question "does the list the user is *looking at* also need invalidating?" was never asked — not in the design, not in the task, not in review. The T-006 Reviewer verified the two named keys "match their producers exactly", which was true and incomplete: it audited the keys that were specified rather than whether the specification was complete. **This is defect class D4 — the class `requirements.md` §6 explicitly records as having no automated gate, found by the manual step designed to catch it.**
+
+**Likely cascade:** this probably contaminates finding 3. A stale `documents` array keeps `documents.length` at 1 after the delete, so `DocumentViewer`'s zero-documents branch cannot fire and the client's view of the assessment disagrees with the server's.
+
+### Finding 2 — no "analysis running" state ⛔ REAL DESIGN GAP, mine
+
+**Reported:** (a) during the *first* analysis of a freshly uploaded document, the panel is split and the left side is blank; (b) after deleting a document, while the *new* analysis is running, the left shows "This analysis is out of date…" while the right is visibly analysing.
+
+**Both are the design behaving as written**, and the design is wrong.
+
+`design.md` §8.1's state table has **no row for "an analysis is running"**. So:
+- First analysis, no content yet, nothing superseded → falls to the ordinary empty state, *"No document content available"* — which during an active analysis reads as broken.
+- Re-analysis after a deletion → `superseded` is genuinely `true` (the stored analysis really does describe a deleted document), so the notice shows. Technically correct, and unhelpful: it announces a problem while the fix is visibly in progress.
+
+**This is my error, and its history is worth recording.** The v1.x design had an in-flight state. Judgment Day round two found it was modelled *wrong* — as a sixth **freshness** value, so it short-circuited the snapshot rules and suppressed valid content (finding R-1, confirmed by both judges). The correct shape was diagnosed at the time: **in-flight is an orthogonal fact, not a freshness value**, and v1.2 implemented it that way — five states plus a boolean.
+
+Then v2.0, rewriting for simplicity after the lineage escalated, discarded the in-flight signal **entirely** rather than keeping the orthogonal boolean. I described the removed machinery as "scaffolding around the wrong question". That was right about the five-state enum and wrong about the boolean: the boolean was the *answer* round two had already produced, and I threw it out with the scaffolding.
+
+**No requirement clause is violated**, which is why no gate caught it: FR-DDP-003 requires the withheld state be distinguishable from never-analysed, and it is. Nothing in the spec ever said "and say when an analysis is running". That absence is the defect.
+
+### Finding 3 — the notice did not appear after deleting without replacing ⚠️ GUIDE ERROR, plus an open question
+
+**Reported:** after deleting the document and not replacing it, returning to the Gap Detector did not show the out-of-date notice.
+
+**My guide is wrong here.** Step 2 says to delete "the document" and expect the out-of-date notice. But if that is the *only* document, `design.md` §8.1 and FR-DDP-003 Sc 3 require the **zero-documents** state — *"No documents on this assessment."* with a Manage Documents button — and that branch deliberately takes precedence, because offering re-analysis with nothing to analyse promises something impossible. Step 2 only produces the out-of-date notice on an assessment with **more than one** document. Steps 2 and 4 of my guide collide as written.
+
+**Open question:** the operator reported what did *not* appear, not what did. If the panel showed "No documents on this assessment", the app was correct and only the guide was wrong. If it showed the bare empty state or nothing, there is a third real defect — most likely downstream of finding 1's stale list. **Not fixing anything here until that is answered.**
+
+### Disposition
+
+T-008 marked `[~]`. No code changed yet. Findings 1 and 2 need spec amendments before implementation — finding 1 to `design.md` §8.3's invalidation set, finding 2 to §8.1's state table and to `requirements.md` FR-DDP-003 — and the Pivot Protocol requires user approval on that plan before execution resumes.
+
+### Pivot Record: T-008 — investigation results
+
+A scoped investigation mapped **every** mechanism that can refresh `['merged-content', id]` and every user transition that has none. It changed the diagnosis: my initial read was correct but understated, and it missed a second defect entirely.
+
+**Refresh paths that exist:** mount-with-stale, the delete mutation's invalidation, two completion effects, the 5 s poll, window-focus, reconnect, full reload. **Verified in the installed query-core source:** `invalidateQueries` with no mounted observer only marks stale (`queryClient.js:149-165`, `utils.js:41`, `query.js:86-90`), but a later mount *does* refetch, because `isStaleByTime` short-circuits on `isInvalidated` (`query.js:120`) **before** consulting `staleTime`. So the two keys the delete does invalidate work as intended — for the keys they name.
+
+#### Defect 1 — the documents list, worse than first diagnosed (hit rate: **100% of deletes**)
+
+Beyond the missing invalidation: `['assessment-documents-poll']` has **no `staleTime` override**, so it inherits **5 minutes** from `query-provider.tsx:12`, and its own poll **self-disables** once every cached document is terminal (`use-multi-document-status.ts:31-38`). So after a delete, nothing corrects it — not mount, not focus, not the poll — for up to five minutes.
+
+**This cascades into the operator's finding 3.** Journey E, traced: delete the only document → merged-content correctly reports `superseded` → but `documents.length` is still 1 from cache → `DocumentViewer`'s zero-documents branch **cannot fire** (`document-viewer.tsx:472`) → the screen shows "This analysis is out of date" **instead of** "No documents on this assessment", and offers a "Re-analyse now" that would burn a job against zero documents. Deterministic, no timing dependency, testable in ten seconds.
+
+#### Defect 2 — server-chained analysis completion has *no* invalidation path (this is the intermittency)
+
+Both completion effects have holes, and together they leave a whole class uncovered:
+- **Effect A** (job-polling status) can only fire when *this component* called `startPolling`. A server-chained `GAP_DETECTION` job's id is created inside `jobs.service.ts:169-193` and **never returned to any HTTP response**, so the client cannot poll it.
+- **Effect B** (`gapData.total` 0 → positive) requires witnessing the rising edge — but `useGapFields` polls **only while `total === 0`** (`use-gap-detection.ts:31-35`). If the Gap Detector mounts with `total: 10`, the poll never arms and the transition is never sampled.
+
+**The falsifiable explanation of "it works sometimes":** self-healing depends on whether the gap-fields query happens to sample `total === 0` during the ~30–60 s window in which the chained job has deleted the old fields but not yet written the new ones. The modal's auto-redirect (`upload-business-plan-modal.tsx:111-119`) lands the user *inside* that window, so the guided path works. Navigating back manually lands *before* it, and the panel freezes until a reload — or until a tab-switch after 60 s triggers the focus refetch, which is why it reads as flaky rather than broken.
+
+#### Defect 3 — no in-flight state (unchanged from the first record; see above for its history)
+
+#### An incidental finding worth preserving
+
+`prevGapTotalRef = useRef(0)` (`gap-detector-client.tsx:247`) **resets on every mount**, so Effect B fires once on *every* Gap Detector mount for any assessment with fields — an undocumented, load-bearing mount-time refresh that is why navigation-based journeys mostly look fine. **A future "obvious" fix seeding that ref from cache would silently remove it**, and no test covers it.
+
+### Proposed plan — awaiting approval
+
+| # | Change | Fixes |
+|---|--------|-------|
+| 1 | **Backend:** `merged-content` response gains `analysisInFlight: boolean` — true when a non-terminal `PARSE_DOCUMENT` or `GAP_DETECTION` job exists for the assessment | Defects 2 and 3 |
+| 2 | **Frontend:** poll while in-flight (not only while content is absent); render an explicit "analysing" state; stop leading with "out of date" while a run is visibly in progress | Defects 2 and 3 |
+| 3 | **Frontend:** invalidate `['assessment-documents-poll', id]` on delete, and give that query an explicit `staleTime` | Defect 1 |
+| 4 | **Docs:** fix `qa-walkthrough.md` steps 2 and 4, which contradict each other | Guide error |
+
+**Changes 1 and 2 re-add what v2.0 removed.** Judgment Day round two diagnosed the correct shape — an orthogonal boolean, not a freshness value — and v1.2 implemented it. v2.0 discarded the boolean along with the five-state enum it was wrongly bundled with. Restoring it is not new design; it is reverting an over-correction, and the reasoning is already on the record in this file.
+
+Spec amendments required before implementation: `design.md` §6 (response shape), §8.1 (state table), §8.2 (poll condition), §8.3 (invalidation set); `requirements.md` FR-DDP-003 (an in-flight clause) and NFR-DDP-010 (poll condition).
+
+### Leader error during the T-009 spec amendment — caught by the Implementer
+
+My amendment script for `requirements.md` **asserted and threw partway through, before writing the file.** The version bump and the two new scenarios (FR-DDP-003 Sc 4, FR-DDP-004 Sc 4) were silently lost; only a later, separate script's NFR-DDP-010 edit landed. **I committed without verifying the result**, so commit `640a414`'s message claims amendments that were not in the tree.
+
+The T-009 Implementer found it: its brief cited those scenarios as things to read, they did not exist, and rather than proceeding on a dangling citation it added them under its own wording and **disclosed the judgment call**. That was the right move — the alternative was implementing against requirements that existed only in a task description.
+
+Corrected: version bumped to 2.1; the scenarios are in place as the Implementer wrote them. Commit history is left intact rather than rewritten — this note is the record. **The lesson is mine: a multi-edit script that can abort mid-way needs its result verified before the commit, not after.**
+
+### T-009 — Fix the three defects manual QA found `[BE]` `[FE]`
+
+| Field | Value |
+|-------|-------|
+| **Status** | 🔄 in rework — attempt 1 FAIL |
+| **Date** | 2026-08-25 |
+| **Requirements** | FR-DDP-003 Sc 4, FR-DDP-004 Sc 4, NFR-DDP-010 |
+| **Effort** | attempt 1 `xhigh` → attempt 2 `xhigh` (already at the T2 ceiling) |
+| **Skills** | `nestjs-expert`, `vercel-react-best-practices`, `shadcn-ui` |
+
+#### Attempt 1 — Reviewer `STATUS: FAIL` (1 issue) + a Leader-promoted advisory
+
+**Verification reported:** API `assessments.service` 32/32 (baseline 27); web four suites 73/73 (baseline 57); lint clean; full API 410, full web 194 with only the known unrelated failure.
+
+**Confirmed sound — the rework must not undo these:**
+
+- **Orthogonality holds on both ends** — the defect that sank v1.1. Backend: `analysisInFlight` is computed before every return branch and `superseded` reads only the job-id sets; neither reads the other. Frontend: every notice branch is guarded by `!markdownContent`, so content always wins and in-flight adds only a toolbar indicator. Both directions have tests that fail if the wiring is inverted.
+- **`isAnalysisInFlight` was derived from the enum, not assumed.** `JobStatus` has exactly four values; the helper uses `PENDING`/`PROCESSING`, so a `FAILED` job is terminal and cannot read as in flight. Parse jobs are scoped by `id: { in: currentParseJobIds }` **and** type.
+- **The cap is checked before in-flight**, so a permanently in-flight response still terminates at 60 attempts. DD-DDP-006's "in-flight decides whether to keep spending the budget, never how large it is" is honoured.
+- **Precedence matches §8.1** and the both-true test fails against a superseded-first ordering — the task's stated disqualifier.
+- **The documents invalidation names the specific key**, asserts it is *not* invalidated on a 500, and `staleTime: 0` is asserted on the query's own options.
+- **`prevGapTotalRef`'s `useRef(0)` is intact**, and the new mount/unmount/remount test genuinely fails against a cache-seeded ref.
+- **The self-authored requirements are honest.** The Implementer wrote FR-DDP-003 Sc 4 and FR-DDP-004 Sc 4 because my amendment script had silently lost them (see the Leader-error note above). The Reviewer audited whether they were reverse-engineered to fit the code and found they were not: they restate definitions already in `design.md` v2.1, their negative clauses are falsifiable, and FR-DDP-004 Sc 4 is written in user-observable terms naming no query key.
+
+**FAIL issue — Reviewer report, verbatim**
+
+1. **Discovered Issue:** Making `analysisInFlight` a **required** member of `MergedContentResponse` breaks the web package's type check. Seven pre-existing fixtures in `use-merged-content.test.ts` annotate object literals with the shared type while omitting the new required field — lines 35, 40, 45, 55, 60, 67, 74. The built declaration confirms the field is not optional, so each is a `TS2741`. `packages/web/tsconfig.json` includes `**/*.ts` with no test exclusion and `next.config.ts` sets no `ignoreBuildErrors`, so `next build` type-checks these files: **`pnpm build`, `pnpm build:web` and therefore `pnpm deploy:web` fail.** Neither of T-009's verification commands can see this — Jest compiles via SWC (types stripped) and `next lint` does not type-check, which is exactly why it survived a green 73/73 and a clean lint.
+   - **Violated Rule:** root `CLAUDE.md` § Build & Development Commands and § Deployment; `tasks.md` T-009 *"Done when: all four code changes land green"*; `design.md` §6/§9.
+   - **Remediation Suggestion:** Add `analysisInFlight: false` to the seven annotated literals — a field addition that edits no assertion. Then verify with a **type check**, not Jest: `pnpm --filter @alliance-risk/web exec tsc --noEmit`, and record that command, because the task's stated verification is structurally blind to this class.
+
+**Leader verification:** I ran `tsc --noEmit` myself. Exactly 7 `TS2741` errors at exactly those lines. Confirmed.
+
+**Leader adjudication — one advisory promoted to a required fix.**
+
+The Reviewer recorded as advisory: a `GAP_DETECTION` job stuck in `PENDING`/`PROCESSING` never becomes terminal — `design.md` §8.2 itself records that **nothing in this platform retries a job reset to `PENDING`**. Because in-flight now outranks superseded with **no time bound**, such an assessment shows "Analysing your documents…" indefinitely and the **"Re-analyse now" remedy becomes unreachable, even across reloads.** The poll cap bounds network waste, not this dead end.
+
+The Reviewer declined to gate on it because the precedence is what §8.1 mandates. **I wrote §8.1, and I am overruling that classification.** FR-DDP-003's preamble requires the screen to *"say so **and name how to refresh it**"* — a remedy that is unreachable forever does not satisfy it. And this is the same shape that has now bitten this spec four times: **a bound that cannot fire in the state it exists for.** Shipping a worse dead end than the defect we set out to fix is not an acceptable trade.
+
+Included in the rework, with the remedy left to the Implementer's judgment between the two the Reviewer named.
+
+**Gate gap this exposed.** `tsc --noEmit` is now a **permanent** verification for any task touching a shared type. Neither Jest nor `next lint` can see a type error, and this spec has now shipped one past both.
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | `isAnalysisInFlight`'s `where` clause is never asserted — the mock keys only on `where.type`, so widening the status filter to `{ not: 'COMPLETED' }` or dropping the id scope would stay green. One `toHaveBeenCalledWith(expect.objectContaining(...))` closes both |
+| Risk / perf | Every poll now issues two extra `job.count` queries, one filtering a JSON path (`input->>'assessmentId'`) that no index covers — and in-flight lengthens the polling window. Measurable on RDS with several Gap Detectors open |
+| Resilience | `useMultiDocumentStatus` polls forever on a zero-document list; newly reachable, and `staleTime: 0` adds mount/focus refetches on top |
+| Readability | **`design.md` §9's Shared Contracts table still shows the two-field shape** while §6 shows three — the document disagrees with itself. **Leader-owned; I will fix it** |
+| Readability | `job.count.mockReset()` in a `beforeEach` discards the file-level default for any later describe. Safe only because that block is currently last |
+
+#### Attempt 2 — Reviewer `STATUS: FAIL` (documentation, not code)
+
+Code audited **sound**: server-side placement of the bound; `createdAt` as the field — the Reviewer independently established `updatedAt` would be **wrong**, since the failure-reset write touches it and a job failing at 4:50 would restart that clock and evade the bound forever; the dead end genuinely closed including on reload; the `staleTime` cast a legitimate narrowing of a real library typing gap that still gates; and the age test gating on production output rather than its own mock's arithmetic.
+
+**The FAIL:** three spec documents stated a rule the code deliberately did not implement — the age bound was justified only in a code comment. A maintainer reading the constitutional documents would have seen the `createdAt` filter as unexplained drift, and the obvious "fix" (deleting it to match §7.3) reopens the exact dead end the attempt was commissioned to close.
+
+**Leader absorbed it** rather than spending a rework cycle, as the Reviewer explicitly suggested and consistent with having claimed §9's table on the same grounds. Amended `design.md` §6, `design.md` §7.3, and `requirements.md` FR-DDP-003 Sc 4.
+
+**A premise correction worth recording.** The attempt-1 review claimed the seven `TS2741` errors broke `pnpm build` / `deploy:web`. **I verified that and it is wrong — the build passes**, before and after; `next build` does not in practice type-check those test files despite `tsconfig` including `**/*.ts`. The finding was real and worth fixing; only its blast radius was inflated. I also stated `tsc --noEmit` as a hard "must be clean" gate, which is **unsatisfiable**: 190 pre-existing errors (189 `TS2339` + 1 `TS2739`) come from a jest-dom / `@types/jest` augmentation drift. **Zero** mention `analysisInFlight`, `MergedContentResponse`, or `TS2741`. The correct gate is *"no new errors attributable to the change"* — satisfied.
+
+#### Attempt 3 — Reviewer `STATUS: PASS` ✅
+
+- **Files changed:** `assessments.service.ts` (the constant + its comment), `assessments.service.spec.ts` (tests).
+- **Verification:** API `assessments.service` **35/35**; full API **413 passed**, 2 skipped, 0 failed; web four suites **73/73** unchanged; full web **194 passed** with only the known unrelated failure; **`pnpm --filter @alliance-risk/web build` passes.**
+
+**The change:** `ANALYSIS_IN_FLIGHT_MAX_AGE_MS` 5 min → **4**. The 5-minute figure was well-sourced but landed on *exactly* the client's poll budget (60 × 5000 ms), so a continuously-open screen could stop polling on the same tick the server flipped the flag — the reveal reachable by luck rather than construction. **The coincidence was the defect.**
+
+**Reviewer verification, done independently rather than accepted:**
+- Both derivation figures confirmed at their source, and the cap confirmed to be a hard stop.
+- **The arithmetic of the bracketing fixtures was worked out**, not trusted: they require `C > 180 000` and `C < 300 000`, so 30 s and 9 min both fail deterministically. The Implementer's mutation-testing claims hold.
+- The `PARSE_DOCUMENT` age branch — which previously had **no gate at all**, so deleting its age spread stayed green — now has one, and on the *age* behaviour specifically.
+- The where-clause assertion catches both mutations: `expect.objectContaining` relaxes only *which keys* are required, not their values, so a widened status filter no longer deep-equals and a dropped id scope removes a required key.
+- The Leader's three spec amendments are accurate and at the right altitude. On whether a concrete duration belongs in a *requirement*: **yes here** — it is user-observable and it is what acceptance tests against, while the constant, the file and the client-budget derivation all correctly stay in design.
+
+**Two Leader corrections applied after the PASS:**
+1. A test comment still read *"well past the 5 minute bound"* — the only place in the repo still asserting 5, twenty lines above the block that correctly says 4. Corrected.
+2. `design.md` §7.3 claimed a shorter bound *"guarantees"* a poll sees the flip. The Reviewer showed the claim is stronger than the mechanism: the client's attempt counter is cumulative and is not reset when a job starts, so the real invariant is that the poll window must not have opened more than 60 s before the job was created; outside that, the backstops are remount and focus refetch. **Corrected to say what is actually true**, and the cross-package invariant recorded as having no automated guard.
+
+**Final status: ✅ PASS on attempt 3 of 3.**
+
+**ADVISORY (recorded, non-gating)**
+
+| Lens | Finding |
+|------|---------|
+| Reliability | The upper bracket sits at exactly 5 min, so the specific mutation the comment warns against (`C = 300 000`) is caught only on a millisecond race. ~4.5 min would make it deterministic |
+| Reliability | The cross-package invariant "server bound < client budget" has **no automated guard** — lowering `MERGED_CONTENT_MAX_EMPTY_POLLS` would silently invert it with every suite green. Held only by paired comments |
+| Risk / perf | The `GAP_DETECTION` count still filters the unindexed JSON path `input->>'assessmentId'`; the comment's index claim is true for the status/createdAt columns only |
+| Readability | "Four minutes" now lives in four places; §6 could defer the numeral to §7.3 |
+
+## T-008 — Manual browser walkthrough: PASSED
+
+| Field | Value |
+|-------|-------|
+| **Status** | ✅ **PASS** — confirmed by the operator after T-009 |
+| **Date** | 2026-08-25 |
+| **Evidence** | Operator ran the walkthrough against the local stack after T-009 landed and reported that everything now works |
+
+**The three paths that failed on the first run are confirmed fixed** — they are what the operator had reproduced in detail and what T-009 targeted:
+
+1. **Delete and replace** (step 1) — the deleted document's content no longer survives into the merge, and the deleted document no longer reappears in Manage Documents.
+2. **In-flight state** (steps 1, 2, 5) — a running analysis now says so, and no longer shows an empty panel on a first analysis or an "out of date" notice while the remedy is visibly running.
+3. **Delete without replacing** (step 2) — the correct state now renders, and the guide's own step 2/step 4 contradiction is corrected.
+
+**This is the gate KZ-008 exists for, and it earned its place.** Three real defects, none reachable by any automated test in this spec:
+- **D4** (cross-screen cache invalidation) — the missing documents-list invalidation.
+- **D6** (is the copy comprehensible / is the state honest) — the "out of date" notice shown during an in-flight run.
+- Plus a defect **no defect class had anticipated**: a whole category of analysis completion — the server-chained run — had no client-side signal at all, which produced the intermittent "sometimes I have to refresh".
+
+The third is the most valuable finding of the entire spec. It was invisible to review, to design, and to every green test in the suite, and it was only ever going to surface in a browser.
+
+**Full coverage confirmed.** The operator subsequently confirmed that **all nine steps were run and all nine passed**, so the earlier recording caveat is withdrawn. Every step of `requirements.md` §6's walkthrough has been exercised against a live local stack:
+
+| Step | Covers | Result |
+|---|---|---|
+| 1 | Delete and replace — the reported bug, and **D4** cross-screen cache invalidation | ✅ |
+| 2 | Delete without replacing — the withheld state, and **D6** comprehensibility | ✅ |
+| 3 | Polling stops (NFR-DDP-010) | ✅ |
+| 4 | Last document deleted — no-documents state, upload offered rather than re-analysis (FR-DDP-003 Sc 3) | ✅ |
+| 5 | **Adding a document must not hide the analysis** — the path three designs failed, checked through upload, parse *and* the run | ✅ |
+| 6 | Saving a field does not blank the panel | ✅ |
+| 7 | **D8** cross-field residue bounded, and cleared by re-analysing | ✅ |
+| 8 | The remedy works — notice clears with no manual reload, ten fields not twenty | ✅ |
+| 9 | A failed deletion is not reported as success (FR-DDP-004 Sc 3) | ✅ |
+
+**Every defect class in `requirements.md` §6 now has an observed result** — D1–D3, D5 and D7 from the automated suites, and **D4, D6 and D8 from this walkthrough**, which is the only evidence any of those three was ever going to get.
+
+Step 8 deserves a specific note: it is the **sole gate** on the `onReAnalyze` caller expression, which the T-007 review established leaves every test green when reverted. That line now rests on observed evidence rather than on an argument.

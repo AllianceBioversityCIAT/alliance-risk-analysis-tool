@@ -178,12 +178,37 @@ export default function GapDetectorClient() {
     documents,
     allParsed,
     isProcessing: docsProcessing,
+    isSettled: documentsSettled,
   } = useMultiDocumentStatus(id, hasDocument ?? false);
+
+  // Whether the documents-poll query behind `documents` has produced a
+  // confirmed answer, sourced from the hook itself (`use-multi-document-status.ts`)
+  // rather than re-derived here. An empty `documents` array alone is
+  // ambiguous — it is also what a disabled, still-fetching, or permanently
+  // errored query reports — so anything gated on "zero documents remain"
+  // must wait for `documentsSettled`, not just `documents.length === 0`
+  // (design.md §14; requirements.md FR-DDP-003 preamble).
+  const documentsLoading = !documentsSettled;
 
   // ─── Re-analyze on save ──────────────────────────────────────────────────────
   const { mutateAsync: reAnalyze } = useReAnalyzeGaps(id ?? '');
   const { startPolling, isProcessing: isReAnalyzing, status: jobStatus } = useJobPolling();
   const reAnalyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Tracks the "Re-analyse now" button's own in-flight span (T-007 Reviewer
+  // advisory, Gap 2) — from the click through to the triggered job's
+  // terminal state, not merely while the kickoff mutation is pending. A
+  // guard keyed only on the mutation's `isPending` re-enables the button as
+  // soon as the kickoff request resolves with a `jobId`, which is well
+  // before the job (and its Bedrock call) actually finishes — most of the
+  // window that matters. This flag is set the moment the click handler
+  // fires and only cleared once the completion effect below observes
+  // `jobStatus` reach COMPLETED or FAILED, so it spans the whole run
+  // regardless of `useJobPolling`'s own internal timing. It also folds in
+  // `isReAnalyzing` (below) so the button stays disabled if a run is
+  // already active via the debounced field-save path (`handleUpdateField`),
+  // which drives the same underlying job.
+  const [isReAnalyzeNowInFlight, setIsReAnalyzeNowInFlight] = useState(false);
 
   // Clean up debounce timer on unmount
   useEffect(() => {
@@ -196,9 +221,17 @@ export default function GapDetectorClient() {
   useEffect(() => {
     if (jobStatus === JobStatus.COMPLETED) {
       queryClient.invalidateQueries({ queryKey: ['assessment', id] });
+      // Also invalidate merged-content and gap-fields (design.md §8.3): a
+      // re-analysis is exactly the remedy the superseded notice offers, so
+      // the notice must clear and the panel must refresh without a manual
+      // reload once the run completes (FR-DDP-003 Sc 2).
+      queryClient.invalidateQueries({ queryKey: ['merged-content', id] });
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
       sileo.success({ title: 'Re-analysis complete', description: 'Gap fields updated with new insights.' });
+      setIsReAnalyzeNowInFlight(false);
     } else if (jobStatus === JobStatus.FAILED) {
       sileo.error({ title: 'Re-analysis failed', description: 'Please try again.' });
+      setIsReAnalyzeNowInFlight(false);
     }
   }, [jobStatus, queryClient, id]);
 
@@ -216,9 +249,49 @@ export default function GapDetectorClient() {
     const total = gapData?.total ?? 0;
     if (prevGapTotalRef.current === 0 && total > 0) {
       queryClient.invalidateQueries({ queryKey: ['assessment', id] });
+      // Also invalidate merged-content and gap-fields (design.md §8.3). This
+      // is the server-chained run's only completion signal — it never goes
+      // through useJobPolling, so without this invalidation here the
+      // superseded notice (or an unbounded poll) would have no refresh path
+      // at all for a re-analysis kicked off after upload rather than a field
+      // edit.
+      queryClient.invalidateQueries({ queryKey: ['merged-content', id] });
+      queryClient.invalidateQueries({ queryKey: ['gap-fields', id] });
     }
     prevGapTotalRef.current = total;
   }, [gapData?.total, queryClient, id]);
+
+  // Triggers a fresh analysis run from the withheld-content notice
+  // (design.md §8.4, FR-DDP-003 Sc 1) — the only reachable remedy when the
+  // Analyst has no field to edit and therefore no other path to
+  // useReAnalyzeGaps. Reuses the same mutation and polling as the
+  // debounced field-save flow; a failure here surfaces via sileo since,
+  // unlike the debounced path, there is no other affordance signalling it.
+  const handleReAnalyzeNow = useCallback(async () => {
+    if (isReAnalyzeNowInFlight) return;
+    setIsReAnalyzeNowInFlight(true);
+    try {
+      const { jobId } = await reAnalyze();
+      startPolling(jobId);
+    } catch (err) {
+      // The kickoff request itself failed — no job was ever started, so the
+      // completion effect above will never see a terminal `jobStatus` to
+      // clear this flag. Clear it here so the button doesn't stay
+      // disabled forever after a failed kickoff.
+      setIsReAnalyzeNowInFlight(false);
+      sileo.error({
+        title: 'Failed to start re-analysis',
+        description: err instanceof Error ? err.message : 'Please try again.',
+      });
+    }
+  }, [reAnalyze, startPolling, isReAnalyzeNowInFlight]);
+
+  // Withheld-notice remedy: navigates to document management for the
+  // zero-documents case (FR-DDP-003 Sc 3) — mirrors the existing "Manage
+  // Documents" buttons in the header above.
+  const handleManageDocuments = useCallback(() => {
+    router.push(`/assessments/upload?id=${id}`);
+  }, [router, id]);
 
   const handleUpdateField = useCallback(
     async (fieldId: string, value: string, currentStatus?: GapFieldStatus) => {
@@ -718,7 +791,7 @@ export default function GapDetectorClient() {
           </div>
         ) : (
           <GapLayout
-            hasDocument={hasDocument && !!mergedMarkdown}
+            hasDocument={hasDocument}
             documentPanel={
               <DocumentViewer
                 markdownContent={mergedMarkdown}
@@ -728,6 +801,36 @@ export default function GapDetectorClient() {
                   fileName: d.fileName,
                   mimeType: d.mimeType,
                 }))}
+                superseded={mergedContentData?.superseded ?? false}
+                // T-009: the only signal by which the client can observe a
+                // server-chained analysis completing, and it takes
+                // precedence over `superseded` in DocumentViewer's own
+                // rendering (design.md §8.1 v2.1) — passed straight through
+                // rather than re-derived here, since DocumentViewer stays
+                // presentational.
+                analysisInFlight={mergedContentData?.analysisInFlight ?? false}
+                // Gated on the same settled signal as the zero-documents
+                // guard below, not on the ambiguous count alone: offering
+                // the remedy while the count is still unknown is safe in
+                // both resolutions — it settles at zero, DocumentViewer's
+                // own zero-documents branch (guarded by `documentsLoading`)
+                // takes precedence and hides the button regardless; or it
+                // settles above zero, and the button was correct all along.
+                // A re-analyse fired during that window with genuinely zero
+                // documents is non-destructive — `createSkeletonFields` is
+                // guarded behind `!isReAnalyze` (T-003). Gating on
+                // `documents.length > 0` alone left the notice with no
+                // remedy for the entire cold-load window, since `documents`
+                // reads `[]` before the documents query has settled.
+                onReAnalyze={documentsLoading || documents.length > 0 ? handleReAnalyzeNow : undefined}
+                onManageDocuments={handleManageDocuments}
+                documentsLoading={documentsLoading}
+                // Covers the whole in-flight span (T-007 Gap 2): the local
+                // click-to-terminal flag above, OR'd with `isReAnalyzing`
+                // (useJobPolling's own signal) so the button also disables
+                // when a run was kicked off via the debounced field-save
+                // path instead of this button.
+                reAnalyzeInFlight={isReAnalyzeNowInFlight || isReAnalyzing}
               />
             }
             fieldsPanel={

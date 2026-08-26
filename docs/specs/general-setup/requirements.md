@@ -104,6 +104,12 @@ Optional: `execution.md` (created by `/akili-execute`), `validation.md` (from `/
 
 ---
 
+## 6b. Defect Classes — Enumerate, Never Claim Exhaustiveness (KZ-014)
+
+When a spec maps defect classes to gates, word the table as **the classes known at authoring time**, never as *"every class this spec can produce"*. No enumeration can list the unknown, and the stronger phrasing converts a useful discipline into false confidence — in `bugfix/deleted-document-content-persists` the defect that mattered most had no class, no gate, and survived design, five review passes and the entire automated suite. It was found by a human in a browser.
+
+---
+
 ## 7. Constitution Alignment Checklist
 
 Before marking requirements complete:

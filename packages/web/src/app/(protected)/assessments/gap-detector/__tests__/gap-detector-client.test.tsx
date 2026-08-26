@@ -40,10 +40,30 @@ jest.mock('next/navigation', () => ({
 }));
 
 // next/dynamic — replace the lazily-imported DocumentViewer with a stub so we
-// never touch the real (markdown-heavy) component.
+// never touch the real (markdown-heavy) component. The stub renders enough
+// of the real "Re-analyse now" contract (an onClick trigger gated by a
+// disabled prop) that T-007 Gap 2's in-flight wiring — computed in
+// gap-detector-client.tsx and passed down as a prop, exactly like
+// `documentsLoading` — can be exercised without rendering the real,
+// markdown-heavy DocumentViewer.
 jest.mock('next/dynamic', () => () => {
-  function DocumentViewerStub() {
-    return <div data-testid="document-viewer-stub" />;
+  function DocumentViewerStub(props: {
+    onReAnalyze?: () => void;
+    reAnalyzeInFlight?: boolean;
+  }) {
+    return (
+      <div data-testid="document-viewer-stub">
+        {props.onReAnalyze && (
+          <button
+            type="button"
+            onClick={props.onReAnalyze}
+            disabled={!!props.reAnalyzeInFlight}
+          >
+            {props.reAnalyzeInFlight ? 'Re-analysing…' : 'Re-analyse now'}
+          </button>
+        )}
+      </div>
+    );
   }
   DocumentViewerStub.displayName = 'DocumentViewerStub';
   return DocumentViewerStub;
@@ -355,6 +375,74 @@ describe('GapDetectorClient — country mismatch validation', () => {
     });
   });
 
+  describe('"Re-analyse now" in-flight guard (T-007 Gap 2)', () => {
+    // Catches the naive fix: a guard keyed only on the re-analyze mutation's
+    // own pending state. `mockReAnalyze` resolves immediately (it is a
+    // `mockResolvedValue`, not a pending promise), so by the time this test
+    // asserts, the mutation itself has long since settled — exactly the
+    // "resolved but the job has not terminated" window the naive guard
+    // misses, since `mockJobStatus` (the mocked useJobPolling `status`) is
+    // still `null`, i.e. not yet COMPLETED or FAILED. A guard based only on
+    // the mutation's pending flag would already read as idle here and
+    // re-enable the button; the fix must not.
+    it('disables the button after the kickoff mutation resolves but before the job reaches a terminal state', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockJobStatus = null;
+      const user = userEvent.setup();
+      const { rerender } = render(<GapDetectorClient />);
+
+      const initialButton = screen.getByRole('button', { name: /re-analyse now/i });
+      expect(initialButton).not.toBeDisabled();
+
+      await user.click(initialButton);
+
+      // The kickoff mutation has resolved and startPolling was called with
+      // its jobId — but no job status has arrived yet (mockJobStatus is
+      // still null, matching the mocked useJobPolling's fixed `status`).
+      await waitFor(() => expect(mockStartPolling).toHaveBeenCalledWith('job-1'));
+      rerender(<GapDetectorClient />);
+
+      expect(screen.getByRole('button', { name: /re-analysing/i })).toBeDisabled();
+
+      // A second click while disabled must not enqueue a second run.
+      expect(mockReAnalyze).toHaveBeenCalledTimes(1);
+    });
+
+    it('re-enables the button once the job reaches a terminal state (COMPLETED)', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockJobStatus = null;
+      const user = userEvent.setup();
+      const { rerender } = render(<GapDetectorClient />);
+
+      await user.click(screen.getByRole('button', { name: /re-analyse now/i }));
+      await waitFor(() => expect(mockStartPolling).toHaveBeenCalledWith('job-1'));
+      rerender(<GapDetectorClient />);
+      expect(screen.getByRole('button', { name: /re-analysing/i })).toBeDisabled();
+
+      mockJobStatus = JobStatus.COMPLETED;
+      rerender(<GapDetectorClient />);
+
+      expect(screen.getByRole('button', { name: /^re-analyse now$/i })).not.toBeDisabled();
+    });
+
+    it('re-enables the button if the job instead reaches a terminal state (FAILED)', async () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      mockJobStatus = null;
+      const user = userEvent.setup();
+      const { rerender } = render(<GapDetectorClient />);
+
+      await user.click(screen.getByRole('button', { name: /re-analyse now/i }));
+      await waitFor(() => expect(mockStartPolling).toHaveBeenCalledWith('job-1'));
+      rerender(<GapDetectorClient />);
+      expect(screen.getByRole('button', { name: /re-analysing/i })).toBeDisabled();
+
+      mockJobStatus = JobStatus.FAILED;
+      rerender(<GapDetectorClient />);
+
+      expect(screen.getByRole('button', { name: /^re-analyse now$/i })).not.toBeDisabled();
+    });
+  });
+
   // ─── QA Tester independent completeness pass ─────────────────────────────────
   // The 10 tests above (implementer + reviewer authored) were re-checked against
   // every FR-CMV-002..006/BR-CMV-001 scenario in requirements.md. The tests below
@@ -452,7 +540,7 @@ describe('GapDetectorClient — country mismatch validation', () => {
     // invalidate ['assessment', id] when useGapFields()'s own
     // poll-until-populated signal (gapData.total) transitions from 0 to a
     // positive count.
-    it('invalidates ["assessment", id] exactly once when gapData.total transitions from 0 to positive', () => {
+    it('invalidates ["assessment", id], ["merged-content", id], and ["gap-fields", id] when gapData.total transitions from 0 to positive', () => {
       mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
       mockGapData = { ...mockGapData, total: 0, data: [] };
       const { rerender } = render(<GapDetectorClient />);
@@ -465,34 +553,103 @@ describe('GapDetectorClient — country mismatch validation', () => {
       mockGapData = { ...mockGapData, total: 1 };
       rerender(<GapDetectorClient />);
 
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      // design.md §8.3: this completion effect now invalidates THREE keys per
+      // firing (assessment, merged-content, gap-fields), not one — the count
+      // moved from 1 to 3 because the fix's surface grew, not because the
+      // one-shot guarantee weakened. The next test isolates that guarantee.
+      expect(mockInvalidateQueries).toHaveBeenCalledTimes(3);
       expect(mockInvalidateQueries).toHaveBeenCalledWith({
         queryKey: ['assessment', 'assessment-1'],
       });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['merged-content', 'assessment-1'],
+      });
+      expect(mockInvalidateQueries).toHaveBeenCalledWith({
+        queryKey: ['gap-fields', 'assessment-1'],
+      });
     });
 
-    it('does NOT invalidate again once total is already positive and stays positive across further re-renders (ref-based one-shot)', () => {
+    it('does NOT invalidate ["assessment", id] again once total is already positive and stays positive across further re-renders (ref-based one-shot)', () => {
       mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
       mockGapData = { ...mockGapData, total: 0, data: [] };
       const { rerender } = render(<GapDetectorClient />);
 
+      // Count firings of the ['assessment', id] invalidation specifically,
+      // not raw invalidateQueries call totals. design.md §8.3 made one
+      // firing of this effect invalidate three keys instead of one, so a
+      // raw-count assertion breaks every time a key is added even though
+      // the one-shot property it was meant to express still holds — that
+      // is exactly what happened to this test before this retarget.
+      const assessmentInvalidations = () =>
+        mockInvalidateQueries.mock.calls.filter(
+          ([arg]) =>
+            JSON.stringify(arg?.queryKey) === JSON.stringify(['assessment', 'assessment-1']),
+        );
+
       // Trigger the one, legitimate 0 -> positive transition.
       mockGapData = { ...mockGapData, total: 1 };
       rerender(<GapDetectorClient />);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(assessmentInvalidations()).toHaveLength(1);
 
       // Re-render with the same positive total — proves the ref actually
       // gates on the transition itself, not merely "total is truthy".
       mockGapData = { ...mockGapData, total: 1 };
       rerender(<GapDetectorClient />);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(assessmentInvalidations()).toHaveLength(1);
 
       // Re-render with a different, still-positive total — a positive ->
       // positive change must not be mistaken for a new 0 -> positive
       // transition either.
       mockGapData = { ...mockGapData, total: 2 };
       rerender(<GapDetectorClient />);
-      expect(mockInvalidateQueries).toHaveBeenCalledTimes(1);
+      expect(assessmentInvalidations()).toHaveLength(1);
+    });
+  });
+
+  // ─── T-009 — `prevGapTotalRef = useRef(0)` (gap-detector-client.tsx:247)
+  // resets on every mount, so the 0 -> positive effect above fires once per
+  // *mount*, not once per assessment lifetime. This is undocumented but
+  // load-bearing: it is why navigation-based journeys (leave the Gap
+  // Detector, come back) mostly self-heal today even without T-009's other
+  // fixes. T-009 explicitly must NOT seed this ref from cached data — doing
+  // so reads like the obviously-correct change and would silently remove
+  // this refresh path, since a re-mount on an already-analysed assessment
+  // would then see the ref pre-seeded to the same positive total and never
+  // observe a 0 -> positive transition. This test exists because no test
+  // covered this before T-009. ────────────────────────────────────────────
+  describe('mount-time refresh — prevGapTotalRef re-arms on every fresh mount (undocumented, load-bearing; T-009)', () => {
+    it('fires the 0 -> positive invalidation again on a fresh mount of an assessment that already has fields, not only on the first mount ever', () => {
+      mockAssessment = baseAssessment({ country: 'Kenya', detectedCountry: 'Kenya' });
+      // Simulate returning to an assessment that was already analysed in a
+      // prior visit — gapData.total starts positive from the very first
+      // render this component instance ever does.
+      mockGapData = { ...mockGapData, total: 5 };
+
+      const assessmentInvalidations = () =>
+        mockInvalidateQueries.mock.calls.filter(
+          ([arg]) =>
+            JSON.stringify(arg?.queryKey) === JSON.stringify(['assessment', 'assessment-1']),
+        );
+
+      const first = render(<GapDetectorClient />);
+      // useRef(0) starts at 0 on this fresh mount, and total (5) is already
+      // positive on the very first render, so the transition fires
+      // immediately — this is the "fires once per mount for any assessment
+      // with fields" behaviour the task description calls out.
+      expect(assessmentInvalidations()).toHaveLength(1);
+
+      first.unmount();
+      mockInvalidateQueries.mockClear();
+
+      // A second, independent mount — e.g. the Analyst navigated away and
+      // back. `mockGapData.total` is unchanged (still 5, still positive).
+      // An implementation that seeds `prevGapTotalRef` from a cached value
+      // (the exact "obviously correct" change T-009 forbids) would start
+      // this ref already at 5, never observe 0 -> positive, and this
+      // assertion would fail with zero invalidations. `useRef(0)`
+      // re-initializing on every mount is what makes it pass.
+      render(<GapDetectorClient />);
+      expect(assessmentInvalidations()).toHaveLength(1);
     });
   });
 });

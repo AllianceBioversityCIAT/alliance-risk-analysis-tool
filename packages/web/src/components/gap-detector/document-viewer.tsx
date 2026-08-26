@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Components } from 'react-markdown';
-import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, FileX, FileText, FileSpreadsheet, File, ChevronDown, AlertTriangle, RefreshCw, Upload, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -22,6 +22,72 @@ interface DocumentViewerProps {
   /** Document metadata for section badges and navigation */
   documents?: DocumentMeta[];
   className?: string;
+  /**
+   * True when the stored analysis describes a document that no longer
+   * exists on the assessment (FR-DDP-002). Content is withheld and the
+   * viewer must say so — without asserting *why*, since the server cannot
+   * distinguish deletion, re-parsing, and a pre-fix analysis from the
+   * stored record alone (design.md §7.3, §8.1).
+   */
+  superseded?: boolean;
+  /**
+   * Triggers a fresh analysis run from the withheld-content notice
+   * (design.md §8.4). Omitted (or ignored) when zero documents remain —
+   * re-analysing then cannot produce content (FR-DDP-003 Sc 3).
+   */
+  onReAnalyze?: () => void;
+  /**
+   * True from the moment "Re-analyse now" is clicked until the triggered
+   * job reaches a terminal state — not merely while the kickoff request
+   * (the mutation) is pending. `handleReAnalyzeNow` in `gap-detector-client.tsx`
+   * calls the re-analyze mutation and then starts job polling; the run is
+   * only actually finished once that job completes or fails, well after the
+   * mutation itself resolves (T-007 Reviewer advisory, Gap 2). Disables the
+   * button and swaps its icon/label for a visible in-flight affordance so
+   * repeated clicks cannot enqueue repeated Bedrock runs and the control does
+   * not read as unresponsive. Defaults to `false` so existing callers are
+   * unaffected.
+   */
+  reAnalyzeInFlight?: boolean;
+  /**
+   * Navigates to document management when zero documents remain on the
+   * assessment (FR-DDP-003 Sc 3) — the remedy there is uploading a
+   * document, not re-analysing.
+   */
+  onManageDocuments?: () => void;
+  /**
+   * True while work is actively in progress for this assessment: a
+   * non-terminal PARSE_DOCUMENT job for one of its current documents, or a
+   * non-terminal GAP_DETECTION job for the assessment itself
+   * (`MergedContentResponse.analysisInFlight`, design.md §7.3, §8.1 v2.1).
+   *
+   * Takes precedence over `superseded` (below zero-documents, above
+   * content/empty — design.md §8.1's table): T-008 found the reverse
+   * ordering in practice — after deleting a document and uploading a
+   * replacement, the panel announced "This analysis is out of date" while
+   * the new analysis was visibly running on the same screen. Both facts
+   * were true; only one was useful.
+   *
+   * Never suppresses content — when `markdownContent` is already present,
+   * this renders the ordinary viewer with an unobtrusive indicator rather
+   * than replacing it, which is the whole lesson of Judgment Day round two
+   * (finding R-1): modelling in-flight as a freshness value blanked valid
+   * analyses. Defaults to `false` so existing callers are unaffected.
+   */
+  analysisInFlight?: boolean;
+  /**
+   * True while the caller's documents query has not yet produced a
+   * confirmed answer — including the window before it is even enabled.
+   * An empty `documents` array is ambiguous on its own: it is what both a
+   * genuinely empty assessment *and* an unresolved (disabled, still
+   * fetching, or permanently errored) query report. Without this flag the
+   * zero-documents notice below cannot tell those apart from the signal
+   * alone, and would assert documents are gone during an ordinary load —
+   * or forever, if the request fails (FR-DDP-003 preamble). Defaults to
+   * `false` so existing callers that already know their count is settled
+   * are unaffected.
+   */
+  documentsLoading?: boolean;
 }
 
 // Stop words excluded from highlight matching (too generic to be useful)
@@ -68,6 +134,12 @@ export function DocumentViewer({
   highlightKeyword,
   documents,
   className,
+  superseded = false,
+  analysisInFlight = false,
+  onReAnalyze,
+  onManageDocuments,
+  documentsLoading = false,
+  reAnalyzeInFlight = false,
 }: DocumentViewerProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [fontIdx, setFontIdx] = useState(DEFAULT_FONT_IDX);
@@ -401,9 +473,136 @@ export function DocumentViewer({
     [],
   );
 
+  // The three states below are only reachable when there is no content to
+  // show — real content always takes priority, however `documents` or
+  // `superseded` happen to be set.
+  //
+  // ─── Zero documents remain (FR-DDP-003 Sc 3) ────────────────────────────
+  // Checked ahead of `superseded`: with no documents left, the remedy is
+  // uploading one, never re-analysing — this must be true regardless of how
+  // the analysis record itself reads.
+  //
+  // Guarded by `!documentsLoading`: an empty `documents` array alone does not
+  // mean zero documents remain — it is also what an unresolved query
+  // reports (disabled, still fetching, or errored). Asserting removal on
+  // that signal would fire on every cold load of an UPLOAD assessment, and
+  // forever on a fetch error, both of which read as "documents are gone"
+  // when in fact nothing is known. Falling through to the ordinary,
+  // cause-neutral empty state below is the same placeholder used while
+  // waiting for real content and is safe in every one of those cases.
+  if (!markdownContent && !documentsLoading && (documents?.length ?? 0) === 0) {
+    return (
+      <div
+        data-testid="no-documents-notice"
+        className={cn(
+          'flex flex-col h-full items-center justify-center text-center px-6',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-3 max-w-sm">
+          <FileX className="h-10 w-10 text-muted-foreground opacity-30" />
+          <p className="text-sm text-muted-foreground">
+            No documents on this assessment.
+          </p>
+          {onManageDocuments && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1"
+              onClick={onManageDocuments}
+            >
+              <Upload className="h-3.5 w-3.5 mr-1.5" />
+              Manage Documents
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ─── An analysis is in flight, no content to show yet (design.md §8.1
+  // v2.1, FR-DDP-003 in-flight clause) ──────────────────────────────────────
+  // Checked ahead of `superseded`: T-008 found the reverse ordering in
+  // practice — after deleting a document and uploading a replacement, the
+  // panel announced "This analysis is out of date" while the new analysis
+  // was visibly running on the same screen. Both facts were true; only one
+  // was useful, so in-flight wins whenever there is no content to fall back
+  // on regardless of whether `superseded` also happens to be true (design.md
+  // §7.3: analysisInFlight and superseded are computed independently and
+  // neither reads the other — this precedence lives entirely in rendering,
+  // not in the server's contract).
+  if (!markdownContent && analysisInFlight) {
+    return (
+      <div
+        data-testid="document-analysing-notice"
+        className={cn(
+          'flex flex-col h-full items-center justify-center text-center px-6',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-3 max-w-sm">
+          <div className="flex items-center justify-center h-12 w-12 rounded-full bg-primary/10">
+            <Loader2 className="h-6 w-6 text-primary animate-spin" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            Analysing your documents…
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Withheld analysis (FR-DDP-002, FR-DDP-003 Sc 1) ────────────────────
+  // The stored analysis describes a document that no longer exists. The
+  // copy deliberately does not assert a cause — deletion, re-parsing, and a
+  // pre-fix analysis are indistinguishable from the stored record alone
+  // (design.md §7.3, §8.1) — and it must read as distinct from both "never
+  // analysed" (below) and the ordinary loading state. Only reached when
+  // nothing is in flight — the branch above already claimed the
+  // analysisInFlight-and-superseded case.
+  if (!markdownContent && superseded) {
+    return (
+      <div
+        data-testid="document-withheld-notice"
+        className={cn(
+          'flex flex-col h-full items-center justify-center text-center px-6',
+          className,
+        )}
+      >
+        <div className="flex flex-col items-center gap-3 max-w-sm">
+          <div className="flex items-center justify-center h-12 w-12 rounded-full bg-warning/10">
+            <AlertTriangle className="h-6 w-6 text-warning" />
+          </div>
+          <p className="text-sm font-medium text-foreground">
+            This analysis is out of date — it doesn&apos;t reflect the documents currently on this assessment.
+          </p>
+          {onReAnalyze && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="mt-1 border-warning/40 text-warning hover:bg-warning/10 hover:text-warning"
+              onClick={onReAnalyze}
+              disabled={reAnalyzeInFlight}
+              aria-busy={reAnalyzeInFlight}
+            >
+              <RefreshCw
+                className={cn(
+                  'h-3.5 w-3.5 mr-1.5',
+                  reAnalyzeInFlight && 'animate-spin',
+                )}
+              />
+              {reAnalyzeInFlight ? 'Re-analysing…' : 'Re-analyse now'}
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   if (!markdownContent) {
     return (
       <div
+        data-testid="document-empty-state"
         className={cn(
           'flex flex-col h-full items-center justify-center text-muted-foreground',
           className,
@@ -425,6 +624,19 @@ export function DocumentViewer({
           {hasMultipleDocs && (
             <span className="ml-1 px-1.5 py-0.5 rounded-full bg-primary/10 text-primary text-[10px] font-semibold">
               {docNames.length} docs
+            </span>
+          )}
+          {/* Content stays fully readable while a newer run computes — this
+              is the case that defeated v1.x three times (design.md §7.3) —
+              with only an unobtrusive indicator that something newer is on
+              the way (design.md §8.1: "content present" row). */}
+          {analysisInFlight && (
+            <span
+              data-testid="document-analysing-indicator"
+              className="ml-1 flex items-center gap-1 text-[10px] text-muted-foreground"
+            >
+              <Loader2 className="h-3 w-3 animate-spin" />
+              Analysing the latest documents…
             </span>
           )}
         </div>

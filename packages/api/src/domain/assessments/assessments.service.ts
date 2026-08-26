@@ -9,7 +9,15 @@ import {
 import { PrismaService } from '../../infrastructure/database/prisma.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { JobsService } from '../../platform/jobs/jobs.service';
-import { JobType, ALLOWED_DOCUMENT_MIME_TYPES, MAX_FILE_SIZE_PDF, MAX_FILE_SIZE_OTHER, DEFAULT_COUNTRY } from '@alliance-risk/shared';
+import {
+  JobType,
+  JobStatus,
+  ALLOWED_DOCUMENT_MIME_TYPES,
+  MAX_FILE_SIZE_PDF,
+  MAX_FILE_SIZE_OTHER,
+  DEFAULT_COUNTRY,
+  MergedContentResponse,
+} from '@alliance-risk/shared';
 import {
   CreateAssessmentDto,
   UpdateAssessmentDto,
@@ -18,6 +26,43 @@ import {
   CreateAssessmentCommentDto,
 } from './dto';
 import type { Assessment, AssessmentComment } from '@prisma/client';
+
+/**
+ * Age past which a non-terminal job stops reading as "in flight"
+ * (T-009 attempt 3, Leader-promoted from Reviewer finding — see
+ * `## Pivot Record: T-008` and the T-009 attempt-1/2 entries in
+ * `execution.md`).
+ *
+ * Nothing in this platform retries a job reset to `PENDING`
+ * (`design.md` §8.2, DD-DDP-006), so `analysisInFlight` computed from
+ * status alone is true forever for a stuck job. Because in-flight now
+ * outranks `superseded` with no other bound (§8.1), that stuck state would
+ * show "Analysing your documents…" indefinitely and make "Re-analyse now"
+ * unreachable even across reloads — a worse dead end than the bug this
+ * spec fixes.
+ *
+ * **Why 4 minutes and not 5.** Attempt 2 set this to 5 minutes by matching
+ * two codebase precedents that both land on 300 000ms. That number is
+ * exactly `MERGED_CONTENT_MAX_EMPTY_POLLS` (60) × the client's own
+ * `POLL_INTERVAL_MS` (5000) in `use-merged-content.ts` — the client's
+ * *entire poll budget*. A continuously-open screen can therefore stop
+ * polling on the very same tick the server flips `analysisInFlight` to
+ * `false`, and then never observe the reveal without a remount or a focus
+ * refetch — the fix becomes reachable by luck, not by construction. This
+ * constant must stay **strictly less than** the client's poll budget so at
+ * least one poll is guaranteed to land after the server-side flip; 4
+ * minutes leaves a 60-second margin (twelve polls at the client's
+ * interval). **Do not "tidy" this back to 5 minutes / 300 000ms for
+ * symmetry with the client constants** — that symmetry is precisely the
+ * defect this comment exists to prevent from recurring.
+ *
+ * **Not a cost.** The `createdAt` predicate this bound adds to the
+ * `job.count` queries below aligns with the existing
+ * `@@index([status, createdAt])` on `Job` (`schema.prisma`), so filtering
+ * on it is a query-plan win, not a perf tradeoff — do not "optimise" it
+ * away by dropping the predicate.
+ */
+const ANALYSIS_IN_FLIGHT_MAX_AGE_MS = 4 * 60 * 1000;
 
 @Injectable()
 export class AssessmentsService {
@@ -343,7 +388,8 @@ export class AssessmentsService {
 
   /**
    * Delete a single document from an assessment.
-   * Removes the S3 object and the database record.
+   * Removes the S3 object (best-effort) and, in one transaction, the
+   * database record and its own orphaned PARSE_DOCUMENT job (FR-DDP-004).
    * Rejects deletion if the document is currently being parsed.
    */
   async deleteDocument(
@@ -367,7 +413,8 @@ export class AssessmentsService {
       );
     }
 
-    // Delete from S3
+    // Delete from S3 — best-effort, outside the transaction. A failure here
+    // must not block the row cleanup below.
     if (doc.s3Key) {
       try {
         await this.storageService.deleteObject(doc.s3Key);
@@ -377,7 +424,18 @@ export class AssessmentsService {
       }
     }
 
-    await this.prisma.assessmentDocument.delete({ where: { id: documentId } });
+    // Delete the document row and its own parse job atomically: either both
+    // are removed or neither is (FR-DDP-004 Sc2). The job delete is scoped
+    // by both id and type — id alone would say nothing about job type,
+    // since parseJobId is unique per document but not per job kind.
+    const parseJobId = doc.parseJobId;
+    await this.prisma.$transaction(async (tx) => {
+      await tx.assessmentDocument.delete({ where: { id: documentId } });
+      if (parseJobId) {
+        await tx.job.delete({ where: { id: parseJobId, type: 'PARSE_DOCUMENT' } });
+      }
+    });
+
     this.logger.log(`Deleted document ${documentId} from assessment ${assessmentId}`);
   }
 
@@ -389,7 +447,7 @@ export class AssessmentsService {
   async getMergedContent(
     assessmentId: string,
     userId: string,
-  ): Promise<{ mergedMarkdown: string | null }> {
+  ): Promise<MergedContentResponse> {
     await this.findOne(assessmentId, userId); // Ownership check
 
     const gapJob = await this.prisma.job.findFirst({
@@ -401,10 +459,113 @@ export class AssessmentsService {
       orderBy: { completedAt: 'desc' },
     });
 
-    if (!gapJob?.result) return { mergedMarkdown: null };
+    // "Current" documents: every AssessmentDocument row that exists right
+    // now, with no status filter, no ordering, and no time window — exactly
+    // what design.md §7.3 requires so an added-but-unparsed or
+    // still-parsing document is still "current" and cannot supersede. Read
+    // unconditionally — not only on the withholding path below — because
+    // `analysisInFlight` needs it regardless of whether a completed
+    // analysis exists at all (design.md §7.3 v2.1).
+    const currentDocuments = await this.prisma.assessmentDocument.findMany({
+      where: { assessmentId },
+    });
+    const currentParseJobIds = currentDocuments
+      .map((document) => document.parseJobId)
+      .filter((parseJobId): parseJobId is string => parseJobId !== null);
 
-    const result = gapJob.result as { mergedMarkdown?: string };
-    return { mergedMarkdown: result.mergedMarkdown ?? null };
+    // Computed independently of `superseded` below — neither reads the
+    // other. Content availability is a property of the snapshot;
+    // work-in-progress is a property of the run (design.md §7.3 v2.1,
+    // restoring v1.2's shape after v2.0 discarded it — see `## Pivot
+    // Record: T-008` in execution.md). This is the only signal by which the
+    // client can observe a server-chained analysis completing: that job's
+    // id is created in jobs.service.ts and never returned in any HTTP
+    // response.
+    const analysisInFlight = await this.isAnalysisInFlight(
+      assessmentId,
+      currentParseJobIds,
+    );
+
+    if (!gapJob?.result) {
+      return { mergedMarkdown: null, superseded: false, analysisInFlight };
+    }
+
+    const result = gapJob.result as {
+      mergedMarkdown?: string;
+      sourceParseJobIds?: string[];
+    };
+
+    // A snapshot recorded before this fix carries no `sourceParseJobIds` key
+    // at all, so supersession cannot be evaluated against it. Fail closed:
+    // treat it as superseded rather than trust unevaluable content.
+    if (!('sourceParseJobIds' in result)) {
+      return { mergedMarkdown: null, superseded: true, analysisInFlight };
+    }
+
+    // The one rule: superseded iff the snapshot references a parse job that
+    // is no longer any current document's parseJobId. One-directional
+    // subtraction — sourceParseJobIds \ currentParseJobIds — never a set
+    // comparison. An addition only grows currentParseJobIds, so it can
+    // never make this true; only a removed/re-parsed document can.
+    const currentParseJobIdSet = new Set(currentParseJobIds);
+    const sourceParseJobIds = result.sourceParseJobIds ?? [];
+    const superseded = sourceParseJobIds.some(
+      (jobId) => !currentParseJobIdSet.has(jobId),
+    );
+
+    return {
+      mergedMarkdown: superseded ? null : (result.mergedMarkdown ?? null),
+      superseded,
+      analysisInFlight,
+    };
+  }
+
+  /**
+   * True when a non-terminal PARSE_DOCUMENT job exists for one of the
+   * assessment's current documents, or a non-terminal GAP_DETECTION job
+   * exists for the assessment (design.md §7.3 v2.1), **and that job is no
+   * older than `ANALYSIS_IN_FLIGHT_MAX_AGE_MS`**. Deliberately separate
+   * from — and never consulted by — the withholding rule above: modelling
+   * in-flight as a freshness value is the exact defect Judgment Day round
+   * two found (finding R-1), which short-circuited the snapshot rules and
+   * blanked valid content.
+   *
+   * The age bound exists because a job stuck non-terminal is otherwise
+   * indistinguishable from one genuinely running — see
+   * `ANALYSIS_IN_FLIGHT_MAX_AGE_MS`'s own comment for why that stops being
+   * safe once in-flight outranks `superseded`.
+   */
+  private async isAnalysisInFlight(
+    assessmentId: string,
+    currentParseJobIds: string[],
+  ): Promise<boolean> {
+    const nonTerminalStatuses = [JobStatus.PENDING, JobStatus.PROCESSING];
+    const notStuck = {
+      createdAt: { gte: new Date(Date.now() - ANALYSIS_IN_FLIGHT_MAX_AGE_MS) },
+    };
+
+    const [inFlightParseCount, inFlightGapCount] = await Promise.all([
+      currentParseJobIds.length > 0
+        ? this.prisma.job.count({
+            where: {
+              id: { in: currentParseJobIds },
+              type: 'PARSE_DOCUMENT',
+              status: { in: nonTerminalStatuses },
+              ...notStuck,
+            },
+          })
+        : Promise.resolve(0),
+      this.prisma.job.count({
+        where: {
+          type: 'GAP_DETECTION',
+          status: { in: nonTerminalStatuses },
+          input: { path: ['assessmentId'], equals: assessmentId },
+          ...notStuck,
+        },
+      }),
+    ]);
+
+    return inFlightParseCount > 0 || inFlightGapCount > 0;
   }
 
   async addComment(

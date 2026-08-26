@@ -21,6 +21,15 @@ interface GapDetectionResult {
   bedrockTokensUsed: number;
   /** Compiled Markdown from all parsed documents — stored for frontend viewer */
   mergedMarkdown: string;
+  /**
+   * The COMPLETED PARSE_DOCUMENT job ids this run's merge was built from —
+   * resolved through the assessment's *current* AssessmentDocument records
+   * (BR-DDP-001), never the historical set of jobs ever created. Always
+   * present, even as `[]` when zero jobs resolved: an absent key means a
+   * pre-fix snapshot (fail closed), an empty array means a run that
+   * genuinely had nothing to analyse (design.md §7.3 / §5).
+   */
+  sourceParseJobIds: string[];
 }
 
 interface ExtractionResult {
@@ -72,12 +81,14 @@ export class GapDetectionHandler implements JobHandler {
     let bedrockTokensUsed = 0;
     let mergedMarkdown = '';
     let detectedCountry: string | null = null;
+    let sourceParseJobIds: string[] = [];
 
     if (assessment.intakeMode === 'UPLOAD') {
       const result = await this.processUploadMode(input.assessmentId, assessment.country, isReAnalyze);
       bedrockTokensUsed = result.tokensUsed;
       mergedMarkdown = result.mergedMarkdown;
       detectedCountry = result.detectedCountry;
+      sourceParseJobIds = result.sourceParseJobIds;
     } else {
       // GUIDED_INTERVIEW or MANUAL_ENTRY: create skeleton fields without Bedrock
       if (!isReAnalyze) {
@@ -104,6 +115,7 @@ export class GapDetectionHandler implements JobHandler {
       gapFieldsCreated: GAP_DETECTION_CONFIG.core10Fields.length,
       bedrockTokensUsed,
       mergedMarkdown,
+      sourceParseJobIds,
     };
   }
 
@@ -113,27 +125,49 @@ export class GapDetectionHandler implements JobHandler {
     assessmentId: string,
     country: string,
     isReAnalyze = false,
-  ): Promise<{ tokensUsed: number; mergedMarkdown: string; detectedCountry: string | null }> {
+  ): Promise<{
+    tokensUsed: number;
+    mergedMarkdown: string;
+    detectedCountry: string | null;
+    sourceParseJobIds: string[];
+  }> {
     // Populated in step 4b (re-analyze only) with the Analyst's own correction to
     // the Core-10 `country_of_operation` field, if one exists. When present and
     // sane, it overrides the model's own re-detection (DD-CMV-010) — see the
     // return statement at the end of the try block below.
     let userCorrectedCountry: string | null = null;
 
-    // 1. Fetch ALL completed PARSE_DOCUMENT jobs for this assessment
+    // 1. Resolve the assessment's CURRENT documents (BR-DDP-001) — never the
+    //    historical set of jobs ever created for this assessment — then load
+    //    only the COMPLETED PARSE_DOCUMENT jobs those documents still point at.
+    //    A deleted document's row is gone, so its parseJobId no longer appears
+    //    here even though the orphaned Job row itself may still exist.
+    const currentDocuments =
+      (await this.prisma.assessmentDocument.findMany({
+        where: { assessmentId },
+      })) ?? [];
+    const currentParseJobIds = currentDocuments
+      .map((doc: { parseJobId: string | null }) => doc.parseJobId)
+      .filter((id: string | null): id is string => id !== null);
+
     const parseJobs = await this.prisma.job.findMany({
       where: {
+        id: { in: currentParseJobIds },
         type: 'PARSE_DOCUMENT',
         status: 'COMPLETED',
-        input: { path: ['assessmentId'], equals: assessmentId },
       },
       orderBy: { completedAt: 'asc' },
     });
 
     if (parseJobs.length === 0) {
       this.logger.warn(`No completed PARSE_DOCUMENT jobs found for assessment ${assessmentId}. Creating skeleton fields.`);
-      await this.createSkeletonFields(assessmentId);
-      return { tokensUsed: 0, mergedMarkdown: '', detectedCountry: null };
+      // Guarded behind !isReAnalyze: execute() only deletes existing GapField
+      // rows when !isReAnalyze, so unconditionally creating ten more here would
+      // duplicate them to twenty on a re-analyze that resolves zero documents.
+      if (!isReAnalyze) {
+        await this.createSkeletonFields(assessmentId);
+      }
+      return { tokensUsed: 0, mergedMarkdown: '', detectedCountry: null, sourceParseJobIds: [] };
     }
 
     // 2. Merge all markdownContent with document separators
@@ -250,6 +284,7 @@ export class GapDetectionHandler implements JobHandler {
         tokensUsed,
         mergedMarkdown: extractedText,
         detectedCountry: correctedCountry ?? this.normalizeDetectedCountry(parsed),
+        sourceParseJobIds: parseJobs.map((job) => job.id),
       };
     } catch (error) {
       // On Bedrock failure: create all-MISSING fields with error reasoning
@@ -264,7 +299,14 @@ export class GapDetectionHandler implements JobHandler {
       }
       // detectedCountry: null on any Bedrock failure (initial, later non-re-analyze,
       // or re-analyze) — a prior run's value must never survive a failed run (NFR-CMV-011).
-      return { tokensUsed: 0, mergedMarkdown: extractedText, detectedCountry: null };
+      // sourceParseJobIds still reflects the documents the (failed) run attempted to
+      // analyse — the merge itself succeeded; only the Bedrock call did not.
+      return {
+        tokensUsed: 0,
+        mergedMarkdown: extractedText,
+        detectedCountry: null,
+        sourceParseJobIds: parseJobs.map((job) => job.id),
+      };
     }
   }
 
