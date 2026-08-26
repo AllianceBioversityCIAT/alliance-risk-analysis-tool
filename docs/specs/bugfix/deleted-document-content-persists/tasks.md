@@ -54,6 +54,9 @@ Phase D — frontend, after T-001 and T-005
 
 Phase E — gate
   T-008 [QA] manual walkthrough — after T-003…T-007
+
+Phase F — added after the gate found defects
+  T-009 [BE][FE] — after T-008's partial run; T-008 then resumes and completes
 ```
 
 No cycles. T-003 and T-004 touch different files and may run concurrently; T-005 depends only on T-001.
@@ -237,7 +240,7 @@ Closure at **scenario and clause** granularity — a requirement ID appearing in
 | | Sc 3 (no deletions — unchanged), incl. separator format | T-002, T-003 |
 | FR-DDP-002 | Sc 1 (delete only doc), incl. "not at any later point" | T-002, T-005 |
 | | Sc 2 (delete one of several, never re-run) | T-002, T-005 |
-| | Sc 3 (survives reload), incl. "not from any client-side cache" | T-006, T-008 §2, **+ the 404-path closure (2026-08-24)** — the already-gone delete path bypassed invalidation until then |
+| | Sc 3 (survives reload), incl. "not from any client-side cache" | T-006, T-008 §2, **+ an approved follow-on to T-007 (2026-08-24)** — the already-gone delete path bypassed invalidation until then; recorded in `execution.md` as an approved gap closure, not a task of its own |
 | | Sc 4 (addition withholds nothing) — the added-and-parsed clause | T-002 (fixture 1), T-005, T-008 §5 |
 | | Sc 4 — **the added-with-failed-parse clause** | T-002 (fixture 5, added 2026-08-24) |
 | | Sc 4 — the "remain readable on screen" and "at any point" clauses | T-007, T-008 §5 |
@@ -249,7 +252,8 @@ Closure at **scenario and clause** granularity — a requirement ID appearing in
 | | Sc 2 (both or neither) | T-002, T-004 |
 | | Sc 3 (failed delete not reported as success) | T-007, T-008 §9 |
 | | Sc 4 (deletion reflected everywhere, not only where it happened — documents-list invalidation) — **added v2.1** | T-009 |
-| NFR-DDP-010 | all four clauses | T-006, T-008 §3 |
+| NFR-DDP-010 | the original clauses (bounded polling, stop when nothing is coming) | T-006, T-008 §3 |
+| | the **v2.1-amended clauses** — keep polling while in flight; in-flight is not the bound | **T-009** |
 | NFR-DDP-011 | zero model invocations | T-004 |
 | NFR-DDP-012 | no migration, no unrelated cleanup | T-003, T-004, T-005 done-when |
 | BR-DDP-001 | current records, not historical jobs | T-003 |

@@ -116,7 +116,9 @@ packages/web/src/
 │   └── assessment/
 │       └── upload-business-plan-modal.tsx    EDIT — §10 surface failed deletes
 └── app/(protected)/assessments/gap-detector/
-    └── gap-detector-client.tsx               EDIT — §8.1 panel, §8.3 invalidation
+    ├── gap-detector-client.tsx               EDIT — §8.1 panel, §8.3 invalidation
+    └── __tests__/gap-detector-client.test.tsx EDIT — wiring + two retargets; **not**
+                                                     FR-DDP-003's gate (see §11)
 ```
 
 Nine source files, three new test files.

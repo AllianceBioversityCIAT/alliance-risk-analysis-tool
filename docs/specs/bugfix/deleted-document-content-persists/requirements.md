@@ -254,7 +254,15 @@ Deleting a document SHALL trigger **zero** model invocations. Deleting *n* docum
 
 ### NFR-DDP-012: Fix confined to the root cause
 
-No schema migration. No unrelated cleanup folded in. Adjacent defects found during design are recorded rather than fixed, except where the primary fix is unobservable without them (FR-DDP-004 Scenario 3).
+No schema migration. No unrelated cleanup folded in. Adjacent defects found during design are recorded rather than fixed, **except** where the primary fix is unobservable or unsafe without them. Three such exceptions were approved during execution, named here rather than left to contradict this clause:
+
+| Exception | Why it is not "unrelated cleanup" |
+|---|---|
+| FR-DDP-004 Sc 3 — surfacing a failed deletion | The primary fix is **unobservable** without it: a silent failure reproduces this very bug with a stronger illusion of success |
+| The `!isReAnalyze` skeleton guard (`design.md` §7.1) | The new re-analyse control is **unsafe** without it — `GapField` has no unique constraint, so the control would duplicate the Core-10 list to twenty. DD-DDP-005 names it as a precondition |
+| The re-analyse in-flight guard (T-007) | Stops repeated clicks enqueueing repeated model runs. User-approved as prudence, not required by a clause |
+
+*Clause widened 2026-08-26: `/akili-validate` found it named only the first, so two approved changes sat outside both this exception and §2's out-of-scope list.*
 
 ---
 
@@ -284,7 +292,10 @@ Per **KZ-008**, whose four post-validation bugs were all invisible to mocked uni
 | D5 | Polling unbounded, or stopping while content is still expected | `…web test --testPathPattern=use-merged-content` (**new file**) | A poll returning an interval past the cap, or stopping before it | **Yes** |
 | D6 | The notice renders but is not legible or not actionable | `…web test --testPathPattern=document-viewer` (**new file**) | Rendering the withheld state with no re-analyse affordance, or with the same text as the ordinary empty state | **Presence, yes. Comprehensibility, no** — human check at the HITL pause |
 | D7 | Regression in the undeleted multi-document merge | FR-DDP-001 Scenario 3 test | A two-document fixture with no deletions whose merged output loses a document, changes order, or changes separator format | **Yes** |
-| D8 | **Cross-field propagation** — gap-field values and the country-mismatch hint derive from the same merged text, so after a deletion they still describe the deleted document until the next run | None automatable | Nothing — there is no gate. An **accepted, bounded residue**: out of scope per §2, overwritten by the next run, covered by manual step 6 | **No** |
+| D9 | **A failed deletion removes the row anyway** — the Analyst believes a document is gone while it, its parse job and a matching snapshot all survive. `design.md` DD-DDP-008 treats this as a hazard *"adjacent to the root cause"* | `pnpm --filter @alliance-risk/web test --testPathPattern=upload-business-plan-modal` | A rejection that is not a 404 whose row still disappears — including the offline case, an `AxiosError` with **no `response` at all**, which is the natural way to get this wrong | **Yes** |
+| D8 | **Cross-field propagation** — gap-field values and the country-mismatch hint derive from the same merged text, so after a deletion they still describe the deleted document until the next run | None automatable | Nothing — there is no gate. An **accepted, bounded residue**: out of scope per §2, overwritten by the next run, covered by manual step 7 | **No** |
+
+*D9 added 2026-08-26.* `/akili-validate` found this class **missing entirely** while this table claimed to enumerate *"every class this spec can produce"* — the clause was real, the hazard was documented in `design.md` DD-DDP-008, and only a manual step gated it. `/akili-test` then gave it seven tests. **This was the second instance of the failure mode `tasks.md` §5 had already caught once and written a note about**: ownership recorded at the wrong granularity.
 
 ### Mandatory manual-QA walkthrough (KZ-008)
 
@@ -295,8 +306,8 @@ D4, D6 and D8 have no automated gate for the property that matters. Required bef
 3. Leave that screen open ~60 s → merged-content requests have stopped (NFR-DDP-010).
 4. Delete the last remaining document → the no-documents state, offering upload rather than re-analysis (FR-DDP-003 Sc 3).
 5. **Upload a second document to an already-analysed assessment** → the existing analysis **stays visible and readable** throughout upload, parsing, *and the new analysis run* — not replaced by a spinner or an empty panel — and the screen refreshes by itself when the run completes (FR-DDP-002 Sc 4). *This is the case the v1.x design broke three times; the third failure was during the analysis run specifically, so watch that window.*
-6. **In the withheld state, look at the gap-field values and any country-mismatch hint** → the D8 residue is bounded to those surfaces and clears after re-analysing.
-7. **Save a gap field and watch the document panel** → it does not blank out during the debounced re-analysis. Same class as step 5, on the higher-frequency path.
+6. **Save a gap field and watch the document panel** → it does not blank out during the debounced re-analysis. Same class as step 5, on the higher-frequency path.
+7. **In the withheld state, look at the gap-field values and any country-mismatch hint** → the D8 residue is bounded to those surfaces and clears after re-analysing.
 8. Click **Re-analyse now** → the notice clears with no manual reload, and the gap-field list still holds ten fields, not twenty.
 9. **Force a delete to fail** (e.g. offline) → the failure is surfaced and the document stays listed (FR-DDP-004 Sc 3).
 
