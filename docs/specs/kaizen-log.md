@@ -11,20 +11,64 @@ keep it at 10 rows or fewer.
 |---|---|---|---|---|---|---|
 | KZ-001 | When a task deviates from a `design.md` decision, later tasks whose deliverable restates that same decision (e.g. an implementation note) must cross-check `execution.md`'s deviation notes before closing | enhancements/multi-country-enablement | Medium | Product | — (proposed: `.agents/implementer.md` §Scope Discipline) | Deferred |
 | KZ-002 | `/akili-validate`'s Build Integrity phase should isolate spec-caused failures from unrelated, pre-existing working-tree drift (e.g. a half-edited tooling config) before treating a wrapper-script failure as a verdict signal | enhancements/multi-country-enablement | Medium | Methodology | — (no local edit — upstream candidate) | Deferred |
-| KZ-003 | `design.md` must not assert a file's current imports/exports/consumers from memory — verify by reading the file before writing the claim | changes/all-countries-filter | Medium | Product | `docs/specs/general-setup/design.md` §7 | Applied |
-| KZ-004 | A foundation task's "Done when" must never require full-package build/typecheck success before its dependent consumer task lands — scope the check to the task's own files | changes/all-countries-filter | High | Product | `docs/specs/general-setup/task.md` §8 | Applied |
-| KZ-005 | The documented `pnpm --filter <pkg> test -- --testPathPattern=<pattern>` command is broken in this repo's pnpm — false green on `web`, hard failure on `api`. **Correct form: `pnpm --filter <pkg> test --testPathPattern=<pattern>`** — drop the bare `--` separator; the flag keeps its two dashes. *(Wording clarified 2026-08-26: the original "use single `--testPathPattern=`" was read by an agent as a single **dash**, `-testPathPattern`, which makes jest print its help and collect nothing. Lesson within the lesson: show the whole command, never describe the delta.)* | enhancements/tracking-analytics | Medium | Product | Root `CLAUDE.md`, `packages/api/CLAUDE.md`, `packages/web/CLAUDE.md` (test command examples) | Applied |
 | KZ-006 | Judgment Day round-2 re-judgment findings routed to `tasks.md` only (not `design.md`) let the design-of-record silently drift from shipped code — backport design-decision fixes to `design.md` too | enhancements/tracking-analytics | Medium | Methodology | — (no local edit — upstream candidate for `judgment-day` skill) | Deferred |
 | KZ-007 | A verification command added specifically to fix a "vacuous check" finding (e.g. Judgment Day C1) must itself be checked for the same vacuity class before being recorded as closing the finding | enhancements/tracking-analytics | Medium | Methodology | — (no local edit — upstream candidate for `judgment-day`/`akili-validate`) | Deferred |
 | KZ-008 | 4 real post-validation bugs (cache invalidation, scope-too-narrow design, cross-field propagation) were all invisible to mocked unit tests and only found by manual browser testing after the spec was already "archive-ready" — design.md must name cross-screen cache invalidation and cross-field interaction as defect classes requiring an explicit manual-QA step | changes/country-document-match-validation | High | Product | `docs/specs/general-setup/design.md` §7 | Applied |
 | KZ-009 | AKILI-SPECS has no named workflow for "a real bug is found after archive-readiness but before archiving" — the ad-hoc pattern that worked here (amend requirements/design → re-run Implementer/Reviewer → addend test-report/validation-report → then archive) is worth formalizing | changes/country-document-match-validation | Medium | Methodology | — (no local edit — upstream candidate for a named `/akili-validate` post-audit amendment flow) | Deferred |
-| KZ-010 | Root `CLAUDE.md`'s documented `npx --prefix packages/api tsx prisma/seed.ts` fails with `ERR_MODULE_NOT_FOUND` — `--prefix` only selects the binary's package, not the cwd the path argument resolves against | changes/country-document-match-validation | Low | Product | Root `CLAUDE.md` (Local Development Setup) | Applied |
 | KZ-011 | A constitutional rule that **zero** code follows is a defect in the rule, not in the code that skips it. Root `CLAUDE.md` mandates `ApiResponse<T>` for all API responses; **no endpoint uses it** — all 125 `ApiResponse` occurrences in `packages/api/src` are the unrelated `@nestjs/swagger` decorator. A spec that hits such a rule must neither self-exempt (silently ignoring it) nor comply locally (becoming the codebase's only conforming endpoint). It must escalate **to a named destination** — and "escalated" in a spec's own Open Questions table is not a destination, since it is archived with the spec and dies there | bugfix/deleted-document-content-persists | Medium | Methodology | — (needs a decision: amend the rule to match reality, or plan a migration. Owner: `/akili-constitution`) | **Open** |
 
-> ⚠️ **This table is at 11 rows, over its stated cap of 10.** KZ-011 was added during `/akili-validate` because the finding it records would otherwise have been archived with its spec and lost — which is the very failure the lesson is about. `/akili-archive`'s Kaizen step should resolve the overflow by retiring a lesson whose `Standardized In` target is already applied, rather than dropping this one.
 
+| KZ-012 | **Fix the class, not just the site.** A Reviewer finding names one location; the same mistake usually exists elsewhere. Before reporting a fix done, grep for other instances of the same shape and report which sites were checked | bugfix/deleted-document-content-persists | **High** | Product + Methodology | `.agents/implementer.md` §4 | Applied |
+| KZ-013 | **A tripwire checked only when someone remembers is not a tripwire.** Re-measure actuals against `design.md`'s budget after **every** task closes, not when it occurs to you | bugfix/deleted-document-content-persists | Medium | Product + Methodology | `.agents/leader.md` §Budget Tripwire Cadence | Applied |
+| KZ-014 | **A defect-class table enumerates the classes known at authoring time — it must never claim to list "every class this spec can produce".** No enumeration can list the unknown, and the stronger wording turns a useful discipline into false confidence | bugfix/deleted-document-content-persists | **High** | Product + Methodology | `docs/specs/general-setup/requirements.md` §6b | Applied |
 
 ## Entries
+
+### 2026-08-26 — bugfix/deleted-document-content-persists
+
+**Metrics**
+
+| Signal | Value | Source |
+|---|---|---|
+| Tasks executed | 9 | tasks.md |
+| Reviewer FAIL rework attempts | **7** (T-002 ×2, T-006 ×1, T-007 ×2, T-009 ×2) | execution.md |
+| HALTs / FATAL_FAILs | 0 | execution.md |
+| Pivots | **2** (T-003 spec conflict; T-008 → T-009 from manual QA) | execution.md — `## Pivot Record` ×2 |
+| PRODUCT_BUGs | 0 | test-report.md |
+| Judgment-day severe findings | **9 round 1, 3 round 2, 2 final — lineage escalated** | judgment.md |
+| Validation FAIL / WARN | 7 findings across 2 FAIL sections / 8 WARN — all closed | validation-report.md |
+| Defects found by manual QA | **3** | execution.md — `## Pivot Record: T-008` |
+| Budget | **2,797 LOC actual vs ~1,050 re-baselined** (2.7×; 9.3× the original ~300) | design.md §12 |
+
+**MUDA hunted:** 7 rework rounds (defects), 2 pivots (planning waste), one whole design lineage discarded after escalation (the largest single item), and a 2.7× budget overrun that went unmeasured for three days.
+
+**Jidoka observed:** the line stopped correctly three times — the T-003 Implementer refused to weaken a pre-existing test and reported the spec conflict instead; the T-009 Implementer refused to implement against a dangling citation and disclosed that the Leader's amendment script had silently failed; and the `/akili-test` Tester refused to write a file-scraping test that would have looked like coverage, reporting *not automatable* instead.
+
+**Lessons**
+
+- **KZ-012 — Fix the class, not just the site.** (Product + Methodology, High)
+  - Root cause: the Reviewer→Implementer handover carries **one location**, and nothing obliges a sweep for other instances of the same shape before reporting done.
+  - Evidence: `execution.md` — T-002 (mock shape, then its lifecycle), T-006 (cap counted successes, not attempts), T-007 (ambiguity fixed in the component, not the caller), T-009 (code fixed, spec not). A **fifth** instance appeared inside `tasks.md` §5, the very table that had caught the pattern and written a note about it.
+  - Standardization: `.agents/implementer.md` §4. → **Applied 2026-08-26 (user-approved)**
+
+- **KZ-013 — A tripwire checked only when someone remembers is not a tripwire.** (Product + Methodology, Medium)
+  - Root cause: `/akili-execute`'s Budget Tripwire says *when* to escalate but never *when to measure*, so measurement happens by recollection.
+  - Evidence: fired correctly at 447 LOC after T-002, was re-baselined with user approval, and was never re-evaluated while T-006, T-007 and T-009 landed. Final 2,797. Found by `/akili-validate`, three days late.
+  - Standardization: `.agents/leader.md` §Budget Tripwire Cadence. → **Applied 2026-08-26 (user-approved)**
+
+- **KZ-014 — A defect-class table cannot enumerate the unknown, and must not claim to.** (Product + Methodology, High)
+  - Root cause: `requirements.md` §6's preamble asserted *"every class this spec can produce"* — a claim no enumeration can support, which converts a useful discipline into false confidence.
+  - Evidence: the server-chained-completion defect had **no class and no gate**. It survived the design, five review passes, two Judgment Day rounds and the entire automated suite, and was found by the operator in a browser at step 1 of the manual walkthrough.
+  - Standardization: `docs/specs/general-setup/requirements.md` §6b. → **Applied 2026-08-26 (user-approved)**
+
+**Also recorded this cycle**
+
+- **KZ-011** added during `/akili-validate`: a constitutional rule that zero code follows is a defect in the rule, and *"escalated"* without a named destination is not escalation.
+- **KZ-005's wording corrected** after it misled a Tester into reading *"use single `--testPathPattern=`"* as a single **dash**. Lesson within the lesson: show the whole command, never describe the delta from a broken one.
+- **Retired from the Active digest** (rules now live in guides and templates, which carry them from here): KZ-003, KZ-004, KZ-005, KZ-010. KZ-008 deliberately **kept** — this spec proved it again, and its manual walkthrough found three defects nothing automated could.
+
+**Upstream candidates for the AKILI methodology repo:** all three lessons are dual — none names a stack, domain or local convention.
+
 
 ### 2026-08-19 — changes/country-document-match-validation
 

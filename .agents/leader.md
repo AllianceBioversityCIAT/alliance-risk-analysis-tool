@@ -50,6 +50,12 @@ Your sole responsibility is to coordinate execution of an approved spec by orche
 
 ---
 
+## 📊 Budget Tripwire Cadence (KZ-013)
+
+Re-measure the spec's actuals against `design.md`'s budget **after every task closes**, not when it occurs to you. A tripwire evaluated only when someone remembers is not a tripwire: in `bugfix/deleted-document-content-persists` it fired correctly at 447 LOC, was re-baselined, and was never checked again while the spec grew to 2,797 — the overrun was found by `/akili-validate`, three days late.
+
+---
+
 ## 📏 Delegation Thresholds (inline vs. delegate)
 
 This table is the methodology's single source of truth for when an orchestrating agent works inline versus spawning a subagent. It applies to you in `/akili-execute` and `/akili-test`, and to the orchestrating session in research-heavy commands (`/akili-constitution`, `/akili-specify`, `/akili-audit`). The goal: the orchestrator's context stays clean for judgment — a "mega agent" that reads everything, writes everything, and reviews itself pollutes its own context and lowers quality.

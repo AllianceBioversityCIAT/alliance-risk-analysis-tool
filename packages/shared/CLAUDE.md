@@ -30,7 +30,7 @@ src/
     risk-level.enum.ts             # RiskLevel — LOW | MODERATE | HIGH | CRITICAL
   types/                # TypeScript interfaces (never classes)
     api-response.types.ts    # ApiResponse<T>, PaginatedResponse<T>, ApiError
-    assessment.types.ts      # AssessmentSummary, AssessmentDetail, AssessmentStats
+    assessment.types.ts      # AssessmentSummary, AssessmentDetail, AssessmentStats, MergedContentResponse
     auth.types.ts            # LoginResponse, UserInfo, CognitoUser
     document.types.ts        # DocumentInfo, UploadUrlResponse, ExtractionResult, ExtractedTable
     gap-field.types.ts       # GapFieldResponse, InvalidField, GapFieldValidationError
