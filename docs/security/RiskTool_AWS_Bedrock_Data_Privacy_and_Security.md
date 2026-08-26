@@ -1,16 +1,8 @@
-STAKEHOLDER SUMMARY
-
 # CGIAR Risk Intelligence Tool — AI Processing with Amazon Bedrock
 
 ## What happens to the information submitted to the Risk Intelligence Tool when we use AI, where it is processed, and who can see it
 
 **Audience:** Risk Intelligence Tool stakeholders, CGIAR Centers and Programs, management, Legal and Data Protection, and functional users
-
-**Status:** Draft for stakeholder review
-
-**Version:** 1.0 — 24 August 2026
-
----
 
 ## Executive summary
 
@@ -22,8 +14,6 @@ During AI processing, the information remains within AWS-managed infrastructure.
 
 Our AI processing runs in a single AWS Region in the United States (`us-east-1`), and Amazon Bedrock makes the model we use available for in-Region processing only. Our applications reach Amazon Bedrock and Amazon Textract through private network endpoints inside our own AWS network, so these requests do not travel over the public internet. AWS documents some exceptions for specific models or configurations, so we review these conditions before using a new model or changing our AI configuration.
 
----
-
 ## 1. Why we prepared this document
 
 The Risk Intelligence Tool allows users to upload business plans and supporting evidence in formats such as PDF, Word, Excel, CSV, HTML and plain text. We use AI to read this material, check whether the information we need is present, score the business against seven risk categories, and generate an assessment report.
@@ -33,8 +23,6 @@ These files may contain unpublished business information, financial figures, par
 For this reason, there are three questions we need to answer clearly: what happens to this information, where is it processed, and can the model providers see it or use it?
 
 We have reviewed our current AI implementation and AWS configuration to answer these questions. In this document, we explain the results of that review in simple language.
-
----
 
 ## 2. How we use Amazon Bedrock
 
@@ -76,8 +64,6 @@ The model runs inside the Amazon Bedrock service. We do not hold an account with
 
 Our AWS permissions also allow Anthropic Claude models to be used through Amazon Bedrock, including a United States cross-Region option. These models are **not** currently configured in the tool. If we enable them in the future, the conditions described in section 4.1 must be reviewed again, because that option allows AWS to process a request in more than one AWS Region within the United States.
 
----
-
 ## 3. Who can see and use the information
 
 AWS states that, under the standard Amazon Bedrock configuration, model providers do not have access to the information sent to the model or the responses it generates. AWS also states that this information is not used to train the AI models. [S1, S2, S8]
@@ -85,8 +71,6 @@ AWS states that, under the standard Amazon Bedrock configuration, model provider
 For the model we use, Amazon Bedrock provides no mechanism that would share this information with the model provider. There is no separate agreement with the provider and no data-sharing setting for the model: it is made available to us under the standard AWS terms, which we have reviewed with Legal and Data Protection. We review these conditions again before using a new model or changing our configuration. [S3, S4, S12]
 
 Within the Alliance environment, access to the tool is controlled through AWS Cognito. Accounts are created only by an administrator, users must set their own password on first login, and password rules require at least 12 characters with upper case, lower case, numbers and symbols. Each user can only see their own assessments; administrator functions are restricted to users in the administrator group.
-
----
 
 ## 4. Where it is processed, and what is kept
 
@@ -98,11 +82,15 @@ Amazon Bedrock makes the model we use available for in-Region processing only. A
 
 AWS documents that, where cross-Region routing is used, the information remains within AWS infrastructure, does not travel over the public internet between Regions, and is encrypted while it is transferred. [S5, S6] This applies if we enable one of the cross-Region options described in section 2.4, which is why that change requires a new review.
 
+Amazon Textract, which we use to read PDF files, operates under the AWS terms for AI services. Under those terms, AWS may use and store content processed by these services to improve them, and may store it in an AWS Region other than the one where the service was used, unless the customer opts out. We have opted out. An organization-level opt-out policy applies to our account, so AWS does not retain the content we send to Amazon Textract for service improvement. [S11, S13]
+
 The application data — uploaded files, extracted text, results and generated reports — is also stored in the same Region.
 
 ### 4.2 What is kept
 
 AWS states that, under the standard Amazon Bedrock behaviour, the information sent to the model and the responses generated are not stored. In our current configuration, the optional Amazon Bedrock feature that can log this content is also switched off. [S3, S4, S7]
+
+The same applies to Amazon Textract: because of the opt-out described in section 4.1, AWS does not keep the content of the PDF files we send to it. [S11, S13]
 
 Separately, we keep the information the Risk Intelligence Tool needs to operate. This information remains in our AWS environment and is managed by the Alliance:
 
@@ -116,8 +104,6 @@ Separately, we keep the information the Risk Intelligence Tool needs to operate.
 
 When a user deletes a document from an assessment, the application deletes the stored file and the corresponding extraction record.
 
----
-
 ## 5. Our commitments
 
 The sections above explain how Amazon Bedrock works and what AWS states about the service. In addition, we have defined our own controls to protect information when we use AI:
@@ -126,6 +112,7 @@ The sections above explain how Amazon Bedrock works and what AWS states about th
 - We send to Amazon Bedrock only the information needed for the AI task, never the original uploaded file.
 - We control access to AI models through AWS permissions, restricted to an explicit list of approved models, and we use AWS security and encryption controls to protect the information.
 - We keep the traffic between our application and the AI services inside the AWS network, using private network endpoints.
+- We have opted out of the use of our content for the improvement of AWS AI services, so that the documents we process are used only to deliver the result we asked for.
 - We apply retention and deletion controls to the information we store. We do not keep complete documents, AI requests, or AI responses in application logs unless there is a documented need.
 - We review AWS conditions before using a new model or model version, including where the information may be processed, and we update the information provided to users when needed.
 
@@ -140,8 +127,6 @@ These items do not change the answers above, but we have identified them during 
 | Storage encryption uses AWS-managed keys | Evaluate moving to an Alliance-managed encryption key (AWS KMS) for the file storage and database |
 | The development environment accepts requests from any web origin | Restrict this to the official application address in staging and production |
 
----
-
 ## 6. What we tell our users
 
 The following notice is recommended for the Risk Intelligence Tool platform pages, with a link to this document for users who want more information.
@@ -151,8 +136,6 @@ The following notice is recommended for the Risk Intelligence Tool platform page
 > AWS states that, under the standard Amazon Bedrock configuration, model providers do not have access to the information sent to the model or the responses it generates, and that this information is not used to train the AI models. Our AI processing runs in an AWS Region in the United States.
 >
 > The information we need to keep for the Risk Intelligence Tool to operate remains within AWS and is managed by us.
-
----
 
 ## 7. Limitations and AWS references
 
@@ -188,8 +171,8 @@ The following official AWS sources support the information presented in this doc
   https://docs.aws.amazon.com/textract/latest/dg/security-data-protection.html
 - **[S12] AWS Service Terms.** The contractual terms that apply to Amazon Bedrock, including the provisions on model provider content and customer content.
   https://aws.amazon.com/service-terms/
-
----
+- **[S13] AI services opt-out policies — AWS Organizations.** AWS documents the organization-level policy that governs whether AWS may use content processed by its AI services, including Amazon Textract, to improve those services, and states that opting out also deletes content previously stored for that purpose.
+  https://docs.aws.amazon.com/organizations/latest/userguide/orgs_manage_policies_ai-opt-out.html
 
 ## Appendix A — Configuration reviewed
 
@@ -207,6 +190,7 @@ This appendix records what was checked in the current implementation, so that th
 | Amazon Bedrock request/response logging | Not enabled. No logging configuration is set | Infrastructure template and Amazon Bedrock logging configuration |
 | Network path to Bedrock and Textract | Private VPC interface endpoints for `bedrock-runtime` and `textract`; the application runs in private subnets | `infra/cfn/alliance-risk-stack.template.yaml` — VPC endpoints |
 | Is the original file sent to Bedrock? | No. Only extracted text and derived values are sent | `parse-document.handler.ts`, `gap-detection.handler.ts`, `risk-analysis.handler.ts`, `report-generation.handler.ts` |
+| Use of our content to improve AWS AI services | Opted out. An organization-level AI services opt-out policy applies to the account | AWS Organizations AI services opt-out policy |
 | PDF text extraction | Amazon Textract asynchronous document analysis, reading the file from our own S3 bucket | `packages/api/src/infrastructure/textract/textract.service.ts` |
 | Word, Excel, CSV, HTML, text extraction | Standard software libraries inside our application; no external service | `packages/api/src/infrastructure/extractors/programmatic.extractor.ts` |
 | File storage | Amazon S3, server-side encryption enabled, all public access blocked, bucket retained on stack deletion | Infrastructure template — file bucket |
